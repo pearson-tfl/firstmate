@@ -99,13 +99,8 @@
 #   cwd check refuses any endpoint that still reports another copy; a Herdr shell
 #   that has drifted out of the recorded worktree is told once to return, and
 #   only a shell that will not go refuses.
-#   --loadout <role> starts a claude ship or scout worker on that loadout role's
-#   launch line, and --workflows <on|off> (default config/crew-workflows, else
-#   off) decides whether it may start a dynamic workflow. Both are refused on
-#   another harness, a raw launch, a secondmate, and as relaunch overrides; a
-#   relaunch reuses the recorded loadout= and workflows=. docs/configuration.md
-#   "Worker loadout and workflows" owns the contract; claude_loadout_line below
-#   owns how the line becomes argv.
+#   --loadout <role> and --workflows <on|off> shape a claude ship or scout
+#   launch: docs/configuration.md "Worker loadout and workflows" owns the contract.
 #   --harness <name> is the explicit per-spawn harness/profile adapter. The old
 #   positional harness arg still works for back-compat.
 #   --model <name> and --effort <low|medium|high|xhigh|max|ultra> are concrete profile
@@ -2731,7 +2726,7 @@ claude_loadout_line() {
     return 1
   fi
   rm -f "$err"
-  if CLAUDE_LOADOUT_SETTINGS=$(printf '%s' "$line" | jq -er --argjson off "$([ "$WORKFLOWS" = on ] && echo false || echo true)" \
+  if CLAUDE_LOADOUT_SETTINGS=$(printf '%s' "$line" | jq -er --argjson off "$WORKFLOWS_DISABLE" \
     '.settings | if (try fromjson catch null) | type == "object" then fromjson + {disableWorkflows: $off} | tojson else . end') \
     && CLAUDE_LOADOUT_PERM=$(printf '%s' "$line" | jq -er '.permission_args | map(@sh) | join(" ")') \
     && CLAUDE_LOADOUT_ARGS=$(printf '%s' "$line" | jq -er '
@@ -3160,11 +3155,12 @@ if [ "$CLAUDE_CREW" -eq 1 ]; then
   workflows_src=--workflows
   if [ -z "$WORKFLOWS" ]; then
     workflows_src=config/crew-workflows
-    WORKFLOWS=$(head -n 1 "$CONFIG/crew-workflows" 2>/dev/null | tr -d '[:space:]') || WORKFLOWS=
+    WORKFLOWS=$(head -n 1 "$CONFIG/crew-workflows" 2>/dev/null | tr -d '[:space:]')
     WORKFLOWS=${WORKFLOWS:-off}
   fi
   case "$WORKFLOWS" in
-  on | off) ;;
+  on) WORKFLOWS_DISABLE=false ;;
+  off) WORKFLOWS_DISABLE=true ;;
   *)
     echo "error: $workflows_src must be on or off (got '$WORKFLOWS')" >&2
     exit 1
@@ -3176,6 +3172,7 @@ else
     exit 1
   }
   WORKFLOWS=
+  WORKFLOWS_DISABLE=
 fi
 
 # muse, gemini, devin, commandcode, polytoken, cortex, and kiro are verified as CREWMATE/SCOUT adapters only. A secondmate is
@@ -7249,11 +7246,7 @@ case "$LAUNCH" in
     LAUNCH=${LAUNCH//__CLAUDESETTINGS__/$(shell_quote "$STATE_REAL/$ID.claude-settings.json")}
   else
     claude_settings='{"feedbackDrafts":"off"__CLAUDEATTRIBUTION__}'
-    if [ "$WORKFLOWS" = on ]; then
-      claude_settings=${claude_settings%\}},'"disableWorkflows":false}'
-    else
-      claude_settings=${claude_settings%\}},'"disableWorkflows":true}'
-    fi
+    claude_settings=${claude_settings%\}},"\"disableWorkflows\":$WORKFLOWS_DISABLE}"
     if [ -n "$LOADOUT_CMD" ]; then
       # The loadout's launch string replaces the attribution placeholder's
       # late substitution, so resolve it before handing the base over.
@@ -7270,9 +7263,9 @@ case "$LAUNCH" in
   fi
   ;;
 esac
-case "$WORKFLOWS" in
-on) LAUNCH=${LAUNCH//__CLAUDEWORKFLOWS__/'env -u CLAUDE_CODE_DISABLE_WORKFLOWS '} ;;
-off) LAUNCH=${LAUNCH//__CLAUDEWORKFLOWS__/'CLAUDE_CODE_DISABLE_WORKFLOWS=1 '} ;;
+case "$WORKFLOWS_DISABLE" in
+false) LAUNCH=${LAUNCH//__CLAUDEWORKFLOWS__/'env -u CLAUDE_CODE_DISABLE_WORKFLOWS '} ;;
+true) LAUNCH=${LAUNCH//__CLAUDEWORKFLOWS__/'CLAUDE_CODE_DISABLE_WORKFLOWS=1 '} ;;
 *) LAUNCH=${LAUNCH//__CLAUDEWORKFLOWS__/} ;;
 esac
 LAUNCH=${LAUNCH//__CLAUDELOADOUT__/${CLAUDE_LOADOUT_ARGS:-}}

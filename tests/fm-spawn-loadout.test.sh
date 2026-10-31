@@ -222,7 +222,51 @@ test_workflows_lever() {
   pass "the workflows lever is off by default, on by flag or home default, and wins over a role's setting"
 }
 
+test_more_refusals() {
+  local out status
+  make_case loadout-notjson lo-f1
+  printf '#!/bin/sh\necho not-json\n' > "$CASE_DIR/loadout-line"
+  chmod +x "$CASE_DIR/loadout-line"
+  printf '%s\n' "$CASE_DIR/loadout-line" > "$HOME_DIR/config/loadout-command"
+  out=$(run_spawn lo-f1 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --loadout implement)
+  status=$?
+  expect_code 1 "$status" "a line that is not the --line JSON should refuse the spawn: $out"
+  assert_contains "$out" "not the --line pro forma" "the refusal should say the line is not the pro forma"
+  [ -s "$LAUNCH_LOG" ] && fail "an unreadable line must launch nothing"
+
+  make_case loadout-noexec lo-f2
+  install_loadout_stub
+  chmod -x "$CASE_DIR/loadout-line"
+  out=$(run_spawn lo-f2 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --loadout implement)
+  expect_code 1 "$?" "a non-executable loadout command should be refused: $out"
+  assert_contains "$out" "config/loadout-command" "the refusal should name the config"
+
+  make_case wf-badconfig lo-f3
+  printf 'sometimes\n' > "$HOME_DIR/config/crew-workflows"
+  out=$(run_spawn lo-f3 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude)
+  expect_code 1 "$?" "a bad config/crew-workflows value should be refused: $out"
+  assert_contains "$out" "config/crew-workflows must be on or off" "the refusal should name the config"
+
+  make_case wf-codex lo-f4
+  out=$(run_spawn lo-f4 "$PROJ_DIR" --mode no-mistakes --yolo off --harness codex --workflows on)
+  expect_code 1 "$?" "--workflows on a non-claude harness should be refused: $out"
+  assert_contains "$out" "--workflows applies to a claude crewmate" "the refusal should name the flag"
+
+  make_case wf-secondmate lo-f5
+  out=$(run_spawn lo-f5 "$CASE_DIR" --secondmate --workflows on)
+  expect_code 1 "$?" "--workflows on a secondmate should be refused: $out"
+  assert_contains "$out" "a secondmate takes neither" "the refusal should name the secondmate rule"
+
+  make_case wf-relaunch lo-f6
+  out=$(run_spawn lo-f6 --relaunch --loadout implement)
+  expect_code 1 "$?" "--loadout as a relaunch override should be refused: $out"
+  assert_contains "$out" "cannot override them" "the refusal should say the recorded values stand"
+  [ -s "$LAUNCH_LOG" ] && fail "a refused lever must launch nothing"
+  pass "unreadable lines, a non-executable command, a bad home default, and misplaced levers are refused"
+}
+
 test_spawn_starts_on_the_loadout_launch_string
 test_loadout_model_and_effort_stay_firstmates
 test_loadout_refusals
 test_workflows_lever
+test_more_refusals
