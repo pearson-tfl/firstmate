@@ -11,7 +11,7 @@
 #      classifier, both refuse instead of acting blind.
 #   3. Exact-id scoping: a window label, an explicit endpoint, an unknown id,
 #      and a record bound to another task are all refused.
-#   4. Verb allowlist: no arbitrary text, no raw keys, no resume.
+#   4. Verb allowlist: no arbitrary text, no raw keys; resume needs a recorded session.
 #   5. Lifecycle states: busy interrupts first, idle does not, already-stopped
 #      is idempotent success, and an agent that does not stop fails closed.
 #   6. Marker non-regression: a control command to a kind=secondmate task

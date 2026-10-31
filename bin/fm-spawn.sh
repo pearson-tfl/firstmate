@@ -3522,7 +3522,9 @@ new_agent_session_uuid() {
 #   - --resume-session reuses the recorded id with the adapter's resume form,
 #     and refuses when the record has none.
 #   - A Herdr Pi relaunch that already resumes the pane's bound session
-#     (RESUME_ARGS) keeps the recorded id, because that is the session it runs.
+#     (RESUME_ARGS) passes no second session flag and keeps the recorded id:
+#     the bound session is the one an earlier launch of this task pinned to
+#     that id, and a task spawned before ids were fixed records none.
 #   - Every other launch mints a fresh UUID: a default relaunch restarts from
 #     the brief on a new session.
 agent_session_args() {
