@@ -886,12 +886,14 @@ test_resume_is_refused_with_its_reason() {
   local dir out rc
   dir=$(new_case resume)
   add_task "$dir" t1 claude
+  alive_as "$dir" claude
   out=$(run_control "$dir" t1 resume); rc=$?
-  expect_code 2 "$rc" "resume should be refused"
-  assert_contains "$out" "not deterministic across the verified adapters" \
-    "the refusal should explain why resume is excluded"
-  assert_contains "$out" "relaunch" "the refusal should point at the deterministic alternative"
-  pass "fm-control: resume is refused with the determinism reason and the alternative"
+  expect_code 1 "$rc" "resume of a record with no session id should be refused"
+  assert_contains "$out" "records no agent session id" \
+    "the refusal should explain what resume needs"
+  assert_contains "$out" "relaunch" "the refusal should point at the restart alternative"
+  [ -z "$(literals "$dir")" ] || fail "a refused resume must send nothing"
+  pass "fm-control: resume without a recorded session id is refused with the alternative"
 }
 
 test_relaunch_only_flags_are_rejected_on_other_verbs() {

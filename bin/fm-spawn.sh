@@ -2,6 +2,7 @@
 # Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
 # secondmate in its isolated firstmate home.
 # Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-resume-lock-wait]
+#        fm-spawn.sh <task-id> --relaunch [--harness <name>] [--model <name>] [--effort <level>] [--resume-session <prompt-file>]
 #        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-resume-lock-wait]
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
@@ -522,6 +523,9 @@
 #                  reports (relaunch_resume_args below owns it; it supplies its
 #                  own leading space, and is empty on every fresh spawn and for
 #                  every other harness)
+#     __AGENTSESSION__ the exact agent session flag and id on a Claude Code,
+#                  Pi, or pi-signed launch (agent_session_args below owns it;
+#                  supplies its own trailing space, empty for every other harness)
 #     __TURNEND__  absolute path to state/<task-id>.turn-ended (for harnesses whose
 #                  turn-end signal rides the launch command, e.g. codex -c notify=[...])
 #     __PIEXT__    absolute path to state/<task-id>.pi-ext.ts (pi busy-state extension,
@@ -981,6 +985,10 @@ UPSTREAM_CONSENT=
 UPSTREAM_CONSENT_SET=0
 TRACEPARENT_SET=0
 RELAUNCH=0
+# --resume-session <prompt-file>: relaunch onto the task's recorded agent
+# session instead of a fresh one (bin/fm-control.sh's `resume` verb).
+RESUME_SESSION=0
+RESUME_PROMPT_FILE=
 # Opt-in only: exact-resume presentation-order lock waits instead of refusing.
 # Absent/unset keeps upstream refuse-on-contention. See header.
 HERDR_RESUME_LOCK_WAIT=0
@@ -1035,6 +1043,10 @@ for a in "$@"; do
       TRACEPARENT_ARG=$a
       TRACEPARENT_SET=1
       ;;
+    resume-session)
+      RESUME_PROMPT_FILE=$a
+      RESUME_SESSION=1
+      ;;
     *)
       echo "error: internal parser state for --$want_value" >&2
       exit 1
@@ -1053,6 +1065,7 @@ for a in "$@"; do
     KIND_SET=1
     ;;
   --relaunch) RELAUNCH=1 ;;
+  --resume-session) want_value=resume-session ;;
   --herdr-resume-lock-wait) HERDR_RESUME_LOCK_WAIT=1 ;;
   --harness) want_value=harness ;;
   --harness=*)
@@ -1168,6 +1181,16 @@ esac
 # so every axis this block resolves for a fresh spawn instead comes from that
 # task's own durable record below. Contradicting it on the command line is a
 # refusal rather than a silently-ignored flag.
+if [ "$RESUME_SESSION" -eq 1 ]; then
+  [ "$RELAUNCH" -eq 1 ] || {
+    echo "error: --resume-session applies to --relaunch only; a fresh spawn has no session to resume" >&2
+    exit 1
+  }
+  [ -f "$RESUME_PROMPT_FILE" ] || {
+    echo "error: --resume-session prompt file '$RESUME_PROMPT_FILE' is not a readable file" >&2
+    exit 1
+  }
+fi
 if [ "$RELAUNCH" -eq 1 ]; then
   [ "$BACKEND_SET" -eq 0 ] || {
     echo "error: --relaunch reuses the task's recorded backend; --backend cannot override it" >&2
@@ -2734,7 +2757,7 @@ launch_template() {
     # record-backed doorbell: the full envelope is published into the receiving
     # home's state/operational-inbox before launch and only a printable doorbell
     # naming it is passed. A record that cannot be published stops the spawn.
-    printf '%s' '__MODELFLAG____EFFORTFLAG____BRIEFDOORBELL__'
+    printf '%s' '__AGENTSESSION____MODELFLAG____EFFORTFLAG____BRIEFDOORBELL__'
     ;;
   # --disable hooks (equivalent to -c features.hooks=false) requests that codex
   # turn its whole lifecycle-hook layer off for CREWMATE and SCOUT launches only.
@@ -2779,9 +2802,9 @@ launch_template() {
       # The two primary extensions supervise the mate's own home. __PIEXT__ is
       # the parent-home busy contract, loaded from outside the home so Pi's
       # project-trust gate does not fire on it.
-      printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PITURNEND__ -e __PIWATCH__ -e __PIEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
+      printf '%s' ' __AGENTSESSION____MODELFLAG____EFFORTFLAG__-e __PITURNEND__ -e __PIWATCH__ -e __PIEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     else
-      printf '%s' ' __MODELFLAG____EFFORTFLAG__-e __PIEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
+      printf '%s' ' __AGENTSESSION____MODELFLAG____EFFORTFLAG__-e __PIEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     fi
     ;;
   # omp (Oh My Pi), a Pi fork. Same one-positional-brief, --model, --thinking,
@@ -3472,6 +3495,62 @@ relaunch_resume_args() {  # <harness> <backend> <target>
   flag=$(fm_control_relaunch_resume_flag "$harness" "$agent") || return 0
   [ -n "$flag" ] && [ -n "$ref" ] || return 0
   printf -- ' %s %s' "$flag" "$(shell_quote "$ref")"
+}
+
+# new_agent_session_uuid: a lowercase random UUID, the only id form Claude
+# Code's --session-id accepts.
+new_agent_session_uuid() {
+  local u
+  if command -v uuidgen >/dev/null 2>&1; then
+    u=$(uuidgen)
+  elif [ -r /proc/sys/kernel/random/uuid ]; then
+    u=$(cat /proc/sys/kernel/random/uuid)
+  else
+    u=$(python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null) || u=
+  fi
+  u=$(printf '%s' "$u" | tr 'A-F' 'a-f')
+  [[ "$u" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
+  printf '%s' "$u"
+}
+
+# agent_session_args: fix the exact agent session this launch runs, so a
+# supervisor can later resume that session rather than restart from the brief
+# (bin/fm-control.sh's `resume` verb). Sets AGENT_SESSION_ID, recorded as
+# agent_session_id=, and AGENT_SESSION_FLAG, the `__AGENTSESSION__` value.
+#   - An adapter with no exact-id form (bin/fm-control-lib.sh's
+#     fm_control_agent_session_flag), or a raw launch command, sets neither.
+#   - --resume-session reuses the recorded id with the adapter's resume form,
+#     and refuses when the record has none.
+#   - A Herdr Pi relaunch that already resumes the pane's bound session
+#     (RESUME_ARGS) keeps the recorded id, because that is the session it runs.
+#   - Every other launch mints a fresh UUID: a default relaunch restarts from
+#     the brief on a new session.
+agent_session_args() {
+  local flag prior=
+  [ "$RAW_LAUNCH" = 0 ] || return 0
+  [ "$RELAUNCH" -eq 0 ] || prior=$(fm_meta_get "$RELAUNCH_META" agent_session_id)
+  if [ "$RESUME_SESSION" -eq 1 ]; then
+    flag=$(fm_control_agent_session_flag "$HARNESS" resume) || {
+      echo "error: $HARNESS has no verified resume form for an exact session; relaunch $ID instead" >&2
+      return 1
+    }
+    [ -n "$prior" ] || {
+      echo "error: task $ID records no agent session id to resume; relaunch it instead" >&2
+      return 1
+    }
+    AGENT_SESSION_ID=$prior
+  else
+    flag=$(fm_control_agent_session_flag "$HARNESS" fresh) || return 0
+    if [ -n "$RESUME_ARGS" ]; then
+      AGENT_SESSION_ID=$prior
+      return 0
+    fi
+    AGENT_SESSION_ID=$(new_agent_session_uuid) || {
+      echo "error: could not mint an agent session id for $ID (no uuidgen, /proc uuid, or python3)" >&2
+      return 1
+    }
+  fi
+  AGENT_SESSION_FLAG="$flag $(shell_quote "$AGENT_SESSION_ID") "
 }
 
 model_flag_for_harness() {
@@ -6881,6 +6960,20 @@ else
   fi
 fi
 
+# Relaunch session continuity. Computed here, where the adopted endpoint (T) is
+# known, and substituted only into the Pi-family template's `__PIRESUME__`
+# placeholder; an empty value leaves every other launch byte-identical. A
+# --resume-session relaunch names its session itself, so it skips this.
+RESUME_ARGS=
+if [ "$RELAUNCH" -eq 1 ] && [ "$RESUME_SESSION" -eq 0 ]; then
+  RESUME_ARGS=$(relaunch_resume_args "$HARNESS" "$BACKEND" "$T") || RESUME_ARGS=
+fi
+# The exact agent session this launch runs (agent_session_args below), fixed
+# before the record is written so agent_session_id= names it.
+AGENT_SESSION_ID=
+AGENT_SESSION_FLAG=
+agent_session_args || exit 1
+
 META_WINDOW=$T
 [ "$BACKEND" = orca ] && META_WINDOW=$W
 [ "$BACKEND" = t3code ] && META_WINDOW=$W
@@ -6901,7 +6994,7 @@ SPAWN_META_PATH=$SPAWN_META_TMP
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness kind mode yolo branch tasktmp base_branch upstream_consent forge backup_remote backup_prefix model effort opencode_version account account_provider omp_profile busy_gen spawn_gen approval_mode traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id paseo_terminal_id paseo_workspace_id rex_server rex_session_id rex_window_id rex_block_id t3_thread_id t3_project_id tern_session_id tern_tab_id tern_block_id hc_session hc_terminal home projects control_relaunch_tx polytoken_session polytoken_port polytoken_credential", keys, " ")
+      split("window endpoint_task_id worktree project harness kind mode yolo branch tasktmp base_branch upstream_consent forge backup_remote backup_prefix model effort opencode_version account account_provider omp_profile busy_gen spawn_gen approval_mode traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id paseo_terminal_id paseo_workspace_id rex_server rex_session_id rex_window_id rex_block_id t3_thread_id t3_project_id tern_session_id tern_tab_id tern_block_id hc_session hc_terminal home projects control_relaunch_tx polytoken_session polytoken_port polytoken_credential agent_session_id", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -6943,6 +7036,9 @@ preserve_relaunch_meta() {
   # The per-secondmate omp profile pin, only when one applies, so every other
   # task record stays byte-identical.
   [ -z "$OMP_PROFILE_PIN" ] || echo "omp_profile=$OMP_PROFILE_PIN"
+  # The exact agent session id, only on an adapter that can be pinned to one,
+  # so every other task record stays byte-identical.
+  [ -z "$AGENT_SESSION_ID" ] || echo "agent_session_id=$AGENT_SESSION_ID"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
   # Default-off writes no traceparent= line.
@@ -7094,7 +7190,11 @@ fi
 "$SCRIPT_DIR/fm-home-summary-refresh.sh" --best-effort || true
 [ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0
 
-sq_brief=$(shell_quote "$BRIEF")
+# A resumed session already holds its brief, so its first prompt is the resume
+# prompt instead; every other launch reads the brief.
+LAUNCH_PROMPT_FILE=$BRIEF
+[ "$RESUME_SESSION" -eq 0 ] || LAUNCH_PROMPT_FILE=$RESUME_PROMPT_FILE
+sq_brief=$(shell_quote "$LAUNCH_PROMPT_FILE")
 sq_turnend=$(shell_quote "$TURNEND")
 sq_piext=$(shell_quote "$STATE/$ID.pi-ext.ts")
 sq_piturnend=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-turnend-guard.ts")
@@ -7109,14 +7209,8 @@ MODELFLAG=$(model_flag_for_harness "$HARNESS" "$MODEL" "$OPENCODE_MAJOR")
 EFFORTFLAG=$(effort_flag_for_harness "$HARNESS" "$EFFORT" "$MODEL" "$OPENCODE_MAJOR") || exit 1
 LAUNCH=${LAUNCH//__MODELFLAG__/$MODELFLAG}
 LAUNCH=${LAUNCH//__EFFORTFLAG__/$EFFORTFLAG}
-# Relaunch session continuity. Computed here, where the adopted endpoint (T) is
-# known, and substituted only into the Pi-family template's `__PIRESUME__`
-# placeholder; an empty value leaves every other launch byte-identical.
-RESUME_ARGS=
-if [ "$RELAUNCH" -eq 1 ]; then
-  RESUME_ARGS=$(relaunch_resume_args "$HARNESS" "$BACKEND" "$T") || RESUME_ARGS=
-fi
 LAUNCH=${LAUNCH//__PIRESUME__/$RESUME_ARGS}
+LAUNCH=${LAUNCH//__AGENTSESSION__/$AGENT_SESSION_FLAG}
 LAUNCH=${LAUNCH//__CLAUDEPERMFLAG__/$CLAUDE_PERM_FLAG}
 case "$LAUNCH" in
 *__CLAUDESETTINGS__*)
@@ -7216,7 +7310,7 @@ case "$LAUNCH" in
     secondmate) brief_opstate="$PROJ_ABS/state" ;;
     *) brief_opstate=$STATE ;;
   esac
-  brief_doorbell=$(FM_STATE_OVERRIDE="$brief_opstate" "$FM_ROOT/bin/fm-operational-input.sh" record launch-brief <"$BRIEF") || {
+  brief_doorbell=$(FM_STATE_OVERRIDE="$brief_opstate" "$FM_ROOT/bin/fm-operational-input.sh" record launch-brief <"$LAUNCH_PROMPT_FILE") || {
     echo "error: could not publish the launch brief for $ID as an operational-inbox record under $brief_opstate; $HARNESS strips the typed operational marker, so the worker was not launched" >&2
     exit 1
   }

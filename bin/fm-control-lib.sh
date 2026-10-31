@@ -37,12 +37,15 @@
 #      stopped. A verb whose postcondition cannot be proven on the recorded
 #      backend is refused rather than performed blind.
 #
-# `resume` is deliberately NOT a verb: it is not deterministic across the
-# verified adapters (docs/agent-control.md owns the per-adapter resume facts).
-# `relaunch` uses the brief on disk rather than a harness-private session as
-# its durable instruction. The relaunch-time exception is
-# fm_control_relaunch_resume_flag below: a reference the endpoint's runtime
-# bound as its status authority is returned to a replacement with that adapter.
+# `resume` is a verb only for the adapters fm_control_agent_session_flag below
+# names: their spawn fixes the agent session id and records it, so resuming
+# that exact id is deterministic. Every other adapter refuses it
+# (docs/agent-control.md owns the per-adapter resume facts), and `relaunch`
+# stays the default restart, using the brief on disk rather than a
+# harness-private session as its durable instruction. The relaunch-time
+# exception is fm_control_relaunch_resume_flag below: a reference the
+# endpoint's runtime bound as its status authority is returned to a
+# replacement with that adapter.
 
 # The complete control-plane verb allowlist, one per line.
 fm_control_verbs() {
@@ -50,12 +53,13 @@ fm_control_verbs() {
 interrupt
 exit
 relaunch
+resume
 EOF
 }
 
 fm_control_verb_allowed() {  # <verb>
   case "${1-}" in
-    interrupt|exit|relaunch) return 0 ;;
+    interrupt|exit|relaunch|resume) return 0 ;;
   esac
   return 1
 }
@@ -329,6 +333,27 @@ fm_control_relaunch_resume_flag() {  # <harness> <registered-agent>
       ;;
   esac
   return 0
+}
+
+# fm_control_agent_session_flag: the launch flag that pins a worker to an exact
+# agent session id. Every fresh spawn and default relaunch of these adapters
+# mints a UUID and passes it with the `fresh` form, and bin/fm-spawn.sh records
+# it as agent_session_id= in the task record; the `resume` verb passes the
+# recorded id back with the `resume` form, so it reopens that exact
+# conversation rather than whichever session looks most recent.
+#   claude          fresh: --session-id <uuid>  resume: --resume <uuid>
+#   pi, pi-signed   both:  --session-id <id> (Pi 1.x: "use exact project
+#                   session ID, creating it if missing")
+# Every other adapter has no verified exact-id form and returns nonzero, so its
+# launch line is unchanged and `resume` refuses for it.
+# Prints the flag name only; bin/fm-spawn.sh quotes and appends the id.
+fm_control_agent_session_flag() {  # <harness> <fresh|resume>
+  case "${1-}:${2-}" in
+    claude:fresh) printf -- '--session-id' ;;
+    claude:resume) printf -- '--resume' ;;
+    pi:fresh|pi:resume|pi-signed:fresh|pi-signed:resume) printf -- '--session-id' ;;
+    *) return 1 ;;
+  esac
 }
 
 # Which named keys a backend adapter can deliver. Every session provider

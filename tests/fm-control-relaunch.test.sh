@@ -2682,7 +2682,7 @@ test_herdr_relaunch_resumes_only_the_registered_pi_session() {
       assert_contains "$command" "--session '/tmp/pi-bound-session.jsonl'" \
         "the replacement Pi must resume the session that owns Herdr status authority"
     else
-      assert_not_contains "$command" "--session" \
+      assert_not_contains "$command" "--session '" \
         "a Pi replacement must not resume a foreign adapter's conversation"
     fi
     rc=0
@@ -3060,6 +3060,132 @@ test_promoted_scout_relaunch_receives_the_current_delivery_contract
 test_prefixed_prior_harness_wiring_is_still_retired
 test_muse_session_binding_is_retired_on_a_harness_switch
 test_cursor_session_binding_is_retired_on_a_harness_switch
+
+# --- agent session identity and the resume verb -----------------------------
+
+uuid_in() {  # <text> <flag> -> the quoted value following <flag>
+  printf '%s\n' "$1" | sed -n "s/.*$2 '\([0-9a-f-]*\)'.*/\1/p" | tail -1
+}
+
+test_relaunch_fixes_a_fresh_session_id_in_launch_and_record() {
+  local dir out rc first second id=rl-sid
+  dir=$(new_case sid "$id")
+  add_ship_task "$dir" "$id" claude
+  out=$(run_control "$dir" "$id" relaunch --note "first restart"); rc=$?
+  expect_code 0 "$rc" "a claude relaunch should succeed"$'\n'"$out"
+  first=$(uuid_in "$(cat "$dir/fake/literal")" --session-id)
+  [[ "$first" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+    || fail "the launch must fix a UUID session id, got '$first'"$'\n'"$(cat "$dir/fake/literal")"
+  [ "$(meta_field "$dir" "$id" agent_session_id)" = "$first" ] \
+    || fail "the record must carry the session id the launch fixed"
+  : > "$dir/fake/literal"
+  out=$(run_control "$dir" "$id" relaunch --note "second restart"); rc=$?
+  expect_code 0 "$rc" "a second relaunch should succeed"$'\n'"$out"
+  second=$(uuid_in "$(cat "$dir/fake/literal")" --session-id)
+  [ -n "$second" ] && [ "$second" != "$first" ] \
+    || fail "a default relaunch restarts from the brief on a NEW session, got '$second' after '$first'"
+  assert_not_contains "$(cat "$dir/fake/literal")" "--resume" "a default relaunch must not resume"
+  assert_grep "Firstmate operational input waiting: read" "$dir/fake/literal" \
+    "a default relaunch still launches from the brief"
+  [ "$(meta_field "$dir" "$id" agent_session_id)" = "$second" ] \
+    || fail "the record must follow the new session id"
+  pass "fm-control relaunch: every launch fixes a fresh session id and records it; restart stays the default"
+}
+
+test_pi_relaunch_fixes_a_fresh_session_id() {
+  local dir out rc sid id=rl-pisid
+  dir=$(new_case pisid "$id")
+  add_ship_task "$dir" "$id" pi
+  printf pi > "$dir/fake/command"
+  printf pi > "$dir/fake/becomes"
+  printf '#!/usr/bin/env bash\nprintf "Options:\\n"\n' > "$dir/fakebin/pi"
+  chmod +x "$dir/fakebin/pi"
+  out=$(run_control "$dir" "$id" relaunch --note "pi restart"); rc=$?
+  expect_code 0 "$rc" "a Pi relaunch should succeed"$'\n'"$out"
+  sid=$(uuid_in "$(cat "$dir/fake/literal")" --session-id)
+  [ -n "$sid" ] && [ "$(meta_field "$dir" "$id" agent_session_id)" = "$sid" ] \
+    || fail "a Pi launch must fix and record its session id, got '$sid'"$'\n'"$(cat "$dir/fake/literal")"
+  pass "fm-control relaunch: a Pi launch fixes and records its session id"
+}
+
+test_resume_returns_the_recorded_session() {
+  local dir out rc harness id lit sid=0f9e8d7c-1111-4222-8333-444455556666
+  for harness in claude pi; do
+    id=rs-$harness
+    dir=$(new_case "resume-$harness" "$id")
+    add_ship_task "$dir" "$id" "$harness"
+    printf '%s' "$harness" > "$dir/fake/command"
+    printf '%s' "$harness" > "$dir/fake/becomes"
+    printf '#!/usr/bin/env bash\nprintf "Options:\\n"\n' > "$dir/fakebin/pi"
+    chmod +x "$dir/fakebin/pi"
+    echo "agent_session_id=$sid" >> "$dir/home/state/$id.meta"
+    cp "$dir/home/data/$id/brief.md" "$dir/brief-before"
+    out=$(run_control "$dir" "$id" resume); rc=$?
+    expect_code 0 "$rc" "a $harness resume should succeed"$'\n'"$out"
+    assert_contains "$out" "resumed $id harness=$harness session=$sid" "the outcome should name the session resumed"
+    lit=$(cat "$dir/fake/literal")
+    case "$lit" in
+      */exit*|*/quit*) ;;
+      *) fail "resume must stop the running agent first"$'\n'"$lit" ;;
+    esac
+    if [ "$harness" = claude ]; then
+      assert_contains "$lit" "--resume '$sid'" "claude must resume the recorded session"
+      assert_not_contains "$lit" "--session-id" "a claude resume must not also fix a new id"
+    else
+      assert_contains "$lit" "--session-id '$sid'" "pi must reopen the recorded session id"
+    fi
+    [ "$(meta_field "$dir" "$id" agent_session_id)" = "$sid" ] \
+      || fail "a resume must keep the recorded session id"
+    cmp -s "$dir/brief-before" "$dir/home/data/$id/brief.md" \
+      || fail "a resume must not rewrite the instructions the session already holds"
+    [ "$(journal_field "$dir" "$id" phase)" = complete ] || fail "the resume journal should end complete"
+  done
+  pass "fm-control resume: claude and pi relaunch onto the recorded session, not a fresh one"
+}
+
+test_resume_of_a_stopped_agent_relaunches_its_session() {
+  local dir out rc id=rs-stopped sid=0f9e8d7c-1111-4222-8333-444455557777
+  dir=$(new_case resume-stopped "$id")
+  add_ship_task "$dir" "$id" claude
+  printf zsh > "$dir/fake/command"
+  echo "agent_session_id=$sid" >> "$dir/home/state/$id.meta"
+  out=$(run_control "$dir" "$id" resume --note "you were stopped for a host restart"); rc=$?
+  expect_code 0 "$rc" "resuming an already-stopped agent should succeed"$'\n'"$out"
+  assert_contains "$(cat "$dir/fake/literal")" "--resume '$sid'" "the stopped session must be resumed"
+  assert_contains "$(cat "$dir/home/state/$id.resume-prompt.md")" "you were stopped for a host restart" \
+    "the resume note must reach the resumed session's first prompt"
+  pass "fm-control resume: a stopped agent comes back on its recorded session with the note"
+}
+
+test_resume_refuses_before_stop_without_a_session_or_resume_form() {
+  local dir out rc id
+  id=rs-none
+  dir=$(new_case resume-none "$id")
+  add_ship_task "$dir" "$id" claude
+  cp "$dir/home/state/$id.meta" "$dir/meta-before"
+  out=$(run_control "$dir" "$id" resume); rc=$?
+  expect_code 1 "$rc" "a record with no session id cannot be resumed"
+  assert_contains "$out" "records no agent session id" "the refusal should name the missing id"
+  assert_contains "$out" "relaunch" "the refusal should point at relaunch"
+  assert_not_contains "$(cat "$dir/fake/literal")" "/exit" "a refused resume must not stop the agent"
+  cmp -s "$dir/meta-before" "$dir/home/state/$id.meta" || fail "a refused resume must leave the record untouched"
+
+  id=rs-codex
+  dir=$(new_case resume-codex "$id")
+  add_ship_task "$dir" "$id" codex
+  printf codex > "$dir/fake/command"
+  echo "agent_session_id=0f9e8d7c-1111-4222-8333-444455558888" >> "$dir/home/state/$id.meta"
+  out=$(run_control "$dir" "$id" resume); rc=$?
+  expect_code 1 "$rc" "codex has no verified resume form"
+  assert_contains "$out" "no verified resume" "the refusal should name the missing resume form"
+  assert_not_contains "$(cat "$dir/fake/literal")" "/exit" "a refused resume must not stop the agent"
+
+  out=$(run_control "$dir" "$id" resume --harness claude); rc=$?
+  expect_code 1 "$rc" "resume keeps the recorded profile"
+  assert_contains "$out" "apply to 'relaunch' only" "profile axes belong to relaunch"
+  pass "fm-control resume: refuses before stopping anything without a recorded session or a resume form"
+}
+
 test_missing_worktree_refuses_before_stopping_anything
 test_missing_instructions_refuse_before_stopping_anything
 test_checkpoint_refusal_leaves_the_record_byte_identical
@@ -3100,3 +3226,8 @@ test_herdr_rebind_failure_from_a_plain_shell_names_the_real_cause
 test_relaunch_reverifies_an_already_in_flight_item_instead_of_rewriting_it
 test_relaunch_moves_a_drifted_item_back_in_flight
 test_away_branch_relaunch_accepts_existing_dispatchable_items
+test_relaunch_fixes_a_fresh_session_id_in_launch_and_record
+test_pi_relaunch_fixes_a_fresh_session_id
+test_resume_returns_the_recorded_session
+test_resume_of_a_stopped_agent_relaunches_its_session
+test_resume_refuses_before_stop_without_a_session_or_resume_form
