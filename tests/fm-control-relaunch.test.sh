@@ -2690,6 +2690,9 @@ test_herdr_relaunch_resumes_only_the_registered_pi_session() {
         "a Pi replacement must not resume a foreign adapter's conversation"
       assert_not_contains "$(cat "$dir/home/state/resume-$registered.meta")" "11111111-1111-4111-8111-111111111111" \
         "a fresh replacement must record its own new session id"
+      [[ "$(grep '^agent_session_id=' "$dir/home/state/resume-$registered.meta" | cut -d= -f2-)" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+        || fail "a fresh replacement must record a newly minted session id"
+      assert_contains "$command" "--session-id '" "a fresh replacement must fix its new session id at launch"
     fi
     rc=0
   done
