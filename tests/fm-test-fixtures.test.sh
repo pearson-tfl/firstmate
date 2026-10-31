@@ -390,6 +390,59 @@ SH
   pass "shared helpers and runner keep fixture Git off an inherited repository location"
 )
 
+# fm_pi_package_dir and fm_pi_package_dep resolve the installed Pi SDK the way
+# Node does from Pi's own entrypoint, so real-Pi tests reach the package behind
+# the `pi` on PATH whether its dependencies are nested (npm global install) or
+# hoisted beside it (Pi 1.x managed install, a plain npm project).
+test_pi_package_resolution() (
+  local dir="$TMP_ROOT/pi-package" agent nested hoisted out
+  agent="$dir/home/.pi/agent"
+  hoisted="$agent/install/releases/9.9.9/node_modules"
+  mkdir -p "$agent/bin" "$agent/install" "$hoisted/@earendil-works/pi-coding-agent/dist" \
+    "$hoisted/@earendil-works/pi-tui" "$hoisted/@earendil-works/pi-ai" "$hoisted/typebox" "$hoisted/.bin" "$dir/path"
+  printf '{"name":"@earendil-works/pi-coding-agent","version":"9.9.9"}\n' > "$hoisted/@earendil-works/pi-coding-agent/package.json"
+  printf '9.9.9\n' > "$agent/install/current-version"
+  printf '#!/bin/sh\nexit 0\n' > "$agent/bin/pi"
+  chmod +x "$agent/bin/pi"
+  ln -s ../@earendil-works/pi-coding-agent/dist/cli.js "$hoisted/.bin/pi"
+  ln -s "$agent/bin/pi" "$dir/path/pi"
+
+  out=$(PATH="$dir/path:/usr/bin:/bin" FM_PI_PACKAGE_DIR='' fm_pi_package_dir) \
+    || fail "managed Pi install: package dir not resolved"
+  assert_equals "$out" "$hoisted/@earendil-works/pi-coding-agent" "managed Pi install resolves the current release's package"
+  for dep in @earendil-works/pi-tui @earendil-works/pi-ai typebox; do
+    assert_equals "$(fm_pi_package_dep "$out" "$dep")" "$hoisted/$dep" "hoisted $dep resolves beside the package"
+  done
+
+  nested="$dir/global/lib/node_modules/@earendil-works/pi-coding-agent"
+  mkdir -p "$nested/dist" "$nested/node_modules/@earendil-works/pi-tui" "$nested/node_modules/typebox" \
+    "$dir/global/lib/node_modules/typebox" "$dir/global/bin"
+  printf '{"name":"@earendil-works/pi-coding-agent","version":"0.82.0"}\n' > "$nested/package.json"
+  printf '#!/usr/bin/env node\n' > "$nested/dist/cli.js"
+  ln -s ../lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js "$dir/global/bin/pi"
+  out=$(PATH="$dir/global/bin:/usr/bin:/bin" FM_PI_PACKAGE_DIR='' fm_pi_package_dir) \
+    || fail "npm global Pi install: package dir not resolved"
+  assert_equals "$out" "$nested" "npm global Pi install resolves the package behind its bin link"
+  assert_equals "$(fm_pi_package_dep "$out" typebox)" "$nested/node_modules/typebox" "nested dependency wins over a hoisted one"
+
+  out=$(PATH="$dir/global/bin:/usr/bin:/bin" FM_PI_PACKAGE_DIR="$dir/override" fm_pi_package_dir)
+  assert_equals "$out" "$dir/override" "FM_PI_PACKAGE_DIR overrides discovery"
+
+  printf '#!/bin/sh\nexit 0\n' > "$dir/path/pi-standalone"
+  mkdir -p "$dir/standalone"
+  mv "$dir/path/pi-standalone" "$dir/standalone/pi"
+  chmod +x "$dir/standalone/pi"
+  printf '#!/bin/sh\nexit 1\n' > "$dir/standalone/npm"
+  chmod +x "$dir/standalone/npm"
+  if PATH="$dir/standalone:/usr/bin:/bin" FM_PI_PACKAGE_DIR='' fm_pi_package_dir >/dev/null 2>&1; then
+    fail "a standalone Pi binary with no SDK package must not resolve a package dir"
+  fi
+  if fm_pi_package_dep "$nested" @earendil-works/absent >/dev/null 2>&1; then
+    fail "an absent dependency must not resolve"
+  fi
+  pass "Pi SDK package and dependencies resolve for managed, npm global, and override installs"
+)
+
 test_git_config_isolation || fail "Git fixture config isolation"
 test_inherited_git_location_isolation || fail "Git fixture location isolation"
 test_agent_standin_survives_a_multicall_sleep || fail "agent stand-in multicall case"
@@ -400,3 +453,4 @@ test_fake_gh_and_gh_axi
 test_spawn_tmux_and_fakebin
 test_send_stubs_and_ssh
 test_spawn_home_layout
+test_pi_package_resolution || fail "Pi package resolution"
