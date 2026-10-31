@@ -239,8 +239,10 @@ fm_worker_account_check() {
   return 0
 }
 
-# fm_worker_account_select <harness> <config-dir> <model> <executable> [<raw-command>] [<secondmate-id>]
-# The whole launch-time decision. Prints nothing for an unpinned runner, so
+# fm_worker_account_select <harness> <config-dir> <model> <executable> [<raw-command>] [<secondmate-id>] [<project-name>]
+# The whole launch-time decision. A Claude launch from a home with
+# config/account-rules chooses through cswap (fm_account_rules_resolve) and
+# then passes the same raw-command guard and sign-in check as a pin. Prints nothing for an unpinned runner, so
 # the caller keeps today's launch unchanged. For a pinned one prints
 # "declared<TAB>root<TAB>provider", where provider is the Pi launch model's
 # own (empty for Claude), after the model guard and the sign-in check pass. On
@@ -248,12 +250,17 @@ fm_worker_account_check() {
 # endpoint exists, and bin/fm-control.sh before a relaunch stops the live
 # agent.
 fm_worker_account_select() {
-  local harness=$1 config=$2 model=$3 executable=$4 raw=${5:-} mate=${6:-}
+  local harness=$1 config=$2 model=$3 executable=$4 raw=${5:-} mate=${6:-} project=${7:-}
   local selection declared root providers word provider='' selected_config setting
   selected_config=$(fm_worker_account_config "$harness" "$config" "$mate") || return 1
   setting="config/$(fm_worker_account_file "$harness")"
   [ "$selected_config" = "$config" ] || setting="$selected_config/$(fm_worker_account_file "$harness")"
-  selection=$(fm_worker_account_resolve "$harness" "$selected_config" "$setting") || return 1
+  if [ "$harness" = claude ] && { [ -e "$config/account-rules" ] || [ -L "$config/account-rules" ]; }; then
+    setting=config/account-rules
+    selection=$(fm_account_rules_resolve "$config" "$project" "$executable" "$selected_config") || return 1
+  else
+    selection=$(fm_worker_account_resolve "$harness" "$selected_config" "$setting") || return 1
+  fi
   if [ -z "$selection" ]; then
     [ "$selected_config" = "$config" ] && return 0
     echo "error: secondmate account pin disappeared during selection: $setting" >&2
@@ -308,4 +315,198 @@ fm_worker_account_claude_shed() {
     prefix="$prefix -u $var"
   done
   printf '%s\n' "$prefix"
+}
+
+# --- Rules-based Claude account selection through cswap -------------------
+# docs/configuration.md "Account rules" owns the operator-facing contract.
+#
+# config/account-rules, when present, replaces config/claude-account for every
+# Claude launch from this home: a pin file beside it refuses rather than being
+# used. Each line is blank, a # comment, or one directive, with cswap account
+# numbers as the only account names:
+#   forbid <num>...              never choose these accounts
+#   project <name> <num>...      tasks on project <name> (the project
+#                                directory's own name) choose only from these
+# A project with no line chooses from every cswap account. A forbid always
+# wins over a project line.
+#
+# The file is John's. config/account-rules.approved holds the SHA-256 of the
+# exact bytes he approved through `bin/fm-account-rules.sh approve`, which
+# reads his confirmation from the controlling terminal; a missing or stale
+# fingerprint refuses every Claude launch until he approves the current file.
+#
+# The choice reads `cswap list --json` (schemaVersion 1): among the allowed
+# accounts, the lowest of each account's highest five-hour or seven-day usage
+# percentage wins, ties going to the lower number; an account at 100 percent
+# or more is skipped, and an account whose usage cswap cannot report ranks
+# after every measured one. `cswap run <num>` then prepares that account's own
+# profile root and execs the `claude` on PATH; a probe `claude` placed first on
+# PATH records the root it receives (empty when cswap runs the account that is
+# already the default login) and hands every other claude call cswap makes,
+# such as its own `auth status` profile check, to the real claude. The launch
+# then runs on that root exactly as a pinned one does. Firstmate never runs
+# `cswap switch`, so the global login and every saved token stay as they were.
+#
+# Every account choice a spawn or relaunch makes appends one report line to
+# data/account-switches.log (fm_account_rules_report).
+
+FM_ACCOUNT_RULES_CSWAP_SECONDS=${FM_ACCOUNT_RULES_CSWAP_SECONDS:-60}
+
+# fm_account_rules_fingerprint <file>
+# Prints the SHA-256 hex digest of the file's bytes.
+fm_account_rules_fingerprint() {
+  local digest
+  if command -v shasum >/dev/null 2>&1; then
+    digest=$(shasum -a 256 < "$1") || return 1
+  else
+    digest=$(sha256sum < "$1") || return 1
+  fi
+  printf '%s\n' "${digest%% *}"
+}
+
+# fm_account_rules_parse <file>
+# Validates the rules file and prints its directives, one per line, with
+# comments and blank lines dropped. On a malformed line prints one error
+# naming the line and returns 1.
+fm_account_rules_parse() {
+  perl -e '
+    my $f = shift;
+    open(my $fh, "<", $f) or do { print STDERR "error: cannot read account rules $f: $!\n"; exit 1 };
+    my (%project, $n);
+    while (my $line = <$fh>) {
+      $n++;
+      chomp $line;
+      next if $line =~ /\A\s*(#.*)?\z/;
+      if ($line =~ /\A\s*forbid((?:\s+[1-9][0-9]*)+)\s*\z/) {
+        print "forbid", join(" ", "", split(" ", $1)), "\n";
+      } elsif ($line =~ /\A\s*project\s+([A-Za-z0-9][A-Za-z0-9._-]*)((?:\s+[1-9][0-9]*)+)\s*\z/) {
+        if ($project{$1}++) {
+          print STDERR "error: config/account-rules line $n repeats project $1; give each project one line\n";
+          exit 1;
+        }
+        print "project $1", join(" ", "", split(" ", $2)), "\n";
+      } else {
+        print STDERR "error: config/account-rules line $n is not \"forbid <num>...\" or \"project <name> <num>...\": $line\n";
+        exit 1;
+      }
+    }
+  ' -- "$1"
+}
+
+# fm_account_rules_approved <config-dir>
+# Returns 0 when config/account-rules.approved holds the fingerprint of the
+# current rules file; otherwise prints one error and returns 1.
+fm_account_rules_approved() {
+  local config=$1 want have
+  have=$(fm_account_rules_fingerprint "$config/account-rules") || {
+    echo "error: cannot fingerprint config/account-rules" >&2
+    return 1
+  }
+  want=$(cat "$config/account-rules.approved" 2>/dev/null) || want=
+  if [ "$want" != "$have" ]; then
+    echo "error: config/account-rules has changed since John approved it, so no Claude worker launches until he does; John runs bin/fm-account-rules.sh approve at a terminal" >&2
+    return 1
+  fi
+}
+
+# fm_account_rules_pick <config-dir> <project-name>
+# Prints the cswap account number the approved rules choose for the project.
+# On refusal prints one error and returns 1.
+fm_account_rules_pick() {
+  local config=$1 project=$2 rules forbidden='' allowed='' list picked line
+  rules=$(fm_account_rules_parse "$config/account-rules") || return 1
+  while IFS= read -r line; do
+    case "$line" in
+    "forbid "*) forbidden="$forbidden ${line#forbid }" ;;
+    "project $project "*) allowed=${line#"project $project "} ;;
+    esac
+  done <<<"$rules"
+  list=$(fm_run_timed "$FM_ACCOUNT_RULES_CSWAP_SECONDS" cswap list --json 2>/dev/null </dev/null) || {
+    echo "error: config/account-rules needs cswap's account list, but cswap list --json failed; check that cswap is installed and on PATH" >&2
+    return 1
+  }
+  picked=$(printf '%s\n' "$list" | jq -r \
+    --arg forbidden "$forbidden" --arg allowed "$allowed" '
+    if .schemaVersion != 1 then error("schema") else . end
+    | ($forbidden | split(" ") | map(select(. != "") | tonumber)) as $no
+    | ($allowed | split(" ") | map(select(. != "") | tonumber)) as $only
+    | [ .accounts[]
+        | select((.number | IN($no[])) | not)
+        | select(($only | length) == 0 or (.number | IN($only[])))
+        | { n: .number,
+            u: (if .usageStatus == "ok"
+                then ([.usage.fiveHour.pct?, .usage.sevenDay.pct?] | map(select(type == "number")) | max)
+                else null end) }
+        | .rank = (.u // 1000)
+        | select(.rank < 100 or .u == null) ]
+    | sort_by(.rank, .n) | .[0].n // empty' 2>/dev/null) || {
+    echo "error: config/account-rules needs cswap's account list in schemaVersion 1, and cswap list --json printed something else" >&2
+    return 1
+  }
+  if [ -z "$picked" ]; then
+    echo "error: config/account-rules allows no cswap account with headroom for project '$project' (forbidden:${forbidden:- none}; allowed: ${allowed:-every account})" >&2
+    return 1
+  fi
+  printf '%s\n' "$picked"
+}
+
+# fm_account_rules_profile <num> <claude-executable>
+# Prints the Claude config root `cswap run <num>` launches that account on,
+# empty when it is the default login. On failure prints one error, return 1.
+fm_account_rules_profile() {
+  local num=$1 executable=$2 real probe rc name
+  real=$(command -v "$executable") || {
+    echo "error: config/account-rules launches Claude through cswap, but $executable is not on PATH" >&2
+    return 1
+  }
+  probe=$(mktemp -d "${TMPDIR:-/tmp}/fm-cswap-probe.XXXXXX") || return 1
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'if [ "$#" -gt 0 ]; then exec %q "$@"; fi\n' "$real"
+    printf 'printf %%s "${CLAUDE_CONFIG_DIR-}" > %q\n' "$probe/root"
+  } > "$probe/claude"
+  chmod +x "$probe/claude"
+  local -a clean=(env -i "HOME=${HOME:-}" "PATH=$probe:${PATH:-}")
+  for name in TMPDIR USER LOGNAME; do
+    [ -z "${!name:-}" ] || clean+=("$name=${!name}")
+  done
+  fm_run_timed "$FM_ACCOUNT_RULES_CSWAP_SECONDS" "${clean[@]}" cswap run "$num" \
+    >/dev/null 2>"$probe/err" </dev/null
+  rc=$?
+  if [ "$rc" -ne 0 ] || [ ! -f "$probe/root" ]; then
+    echo "error: config/account-rules chose cswap account $num, but cswap run $num did not launch it (exit $rc): $(tail -n 1 "$probe/err" 2>/dev/null)" >&2
+    rm -rf "$probe"
+    return 1
+  fi
+  cat "$probe/root"
+  rm -rf "$probe"
+}
+
+# fm_account_rules_resolve <config-dir> <project-name> <claude-executable> <pin-config-dir>
+# The rules counterpart of fm_worker_account_resolve: prints
+# "cswap:<num><TAB>root<TAB>" or prints one error and returns 1. Refuses when
+# a Claude pin file is present in <pin-config-dir>, because the rules replace it.
+fm_account_rules_resolve() {
+  local config=$1 project=$2 executable=$3 pin_config=$4 num root
+  if [ -e "$pin_config/claude-account" ] || [ -L "$pin_config/claude-account" ]; then
+    echo "error: config/account-rules replaces the per-home Claude account setting, so $pin_config/claude-account must be removed" >&2
+    return 1
+  fi
+  fm_account_rules_approved "$config" || return 1
+  num=$(fm_account_rules_pick "$config" "$project") || return 1
+  root=$(fm_account_rules_profile "$num" "$executable") || return 1
+  printf 'cswap:%s\t%s\t\n' "$num" "$root"
+}
+
+# fm_account_rules_report <data-dir> <task-id> <from> <to>
+# Appends and prints the one report line for an account choice; from is the
+# task's previous account, or none.
+fm_account_rules_report() {
+  local data=$1 id=$2 from=$3 to=$4 line
+  line="$(date -u +%Y-%m-%dT%H:%M:%SZ) task=$id from=$from to=$to"
+  mkdir -p "$data" && printf '%s\n' "$line" >> "$data/account-switches.log" || {
+    echo "warning: could not append the account report line to $data/account-switches.log: $line" >&2
+    return 0
+  }
+  printf 'account-switch: %s\n' "$line"
 }
