@@ -1466,6 +1466,7 @@ Each relaunch installs a fresh worker extension with the home's current list, so
 ## Worker account pin (config/claude-account, config/pi-account)
 
 A home that mixes accounts for one runner, such as a work login and a personal one, can pin the account its own Claude and Pi workers launch on.
+For Claude, [account rules](#account-rules-configaccount-rules) can instead choose among cswap accounts per launch.
 The pin is opt-in: without a home-wide or per-secondmate pin, pane-backed Claude launches keep receiving firstmate's own `CLAUDE_CONFIG_DIR` when it is set.
 Unpinned Pi launches use the destination pane's ambient account.
 
@@ -1536,6 +1537,27 @@ The relaunch checks the selected pin before stopping the current agent.
 
 Per-secondmate pins stay in the primary home and are not inherited or copied into the secondmate's home.
 A matching primary-side per-secondmate pin for a remote route refuses before remote launch, because its account must be configured on that host instead.
+
+### Account rules (config/account-rules)
+
+A home whose Claude workers spread across several subscriptions held by the `cswap` account switcher can let a rules file choose each worker's account instead of pinning one.
+When `config/account-rules` exists, every Claude spawn and relaunch from that home picks its account from `cswap list --json` and launches on the profile `cswap run <num>` prepares for it.
+The global login is never switched, so other sessions and background jobs that use their own saved tokens are unaffected.
+`config/claude-account`, or a per-secondmate Claude pin, beside the rules file refuses the launch rather than being used.
+Other runners keep their own pins.
+
+Each line is blank, a `#` comment, `forbid <num>...`, or `project <name> <num>...`, where the numbers are cswap account numbers and `<name>` is the project directory's own name.
+For example, `forbid 3` and `project bb-signal-prototype 5 4` keep account 3 out of every launch and keep that project's workers on accounts 5 and 4.
+A project with no line chooses from every account, and a forbid always wins.
+Among the allowed accounts the one with the lowest current usage wins, an account at its limit is skipped, and an account whose usage cswap cannot report ranks last.
+
+The file is the captain's.
+`bin/fm-account-rules.sh approve`, run by the captain at a terminal, shows the file and records its fingerprint in `config/account-rules.approved` after a typed confirmation; it reads that confirmation from the controlling terminal, so a process without one cannot approve.
+A missing or stale fingerprint refuses every Claude launch until the current file is approved, and `bin/fm-account-rules.sh status` shows the file and whether it is approved.
+
+Every account choice appends one line to `data/account-switches.log` naming the task, the account it ran on before (`none` for a first launch), and the account chosen, and the spawn prints the same line.
+The spawn reports the choice as `account=cswap:<num>` and records it in the task record.
+[`bin/fm-worker-account-lib.sh`](../bin/fm-worker-account-lib.sh) owns the format, the ranking, and the cswap integration; [runtime backend verification](verification/runtime-backends.md#account-rules-through-cswap) records the live check against the real cswap and Claude.
 
 ### Per-secondmate omp profile
 

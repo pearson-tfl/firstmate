@@ -493,6 +493,10 @@
 #   Pins are never inherited; remote per-mate overrides refuse locally.
 #   T3 Code refuses a pin because its provider instance owns the account.
 #   bin/fm-worker-account-lib.sh owns parsing, the check, and the shed list.
+# Account rules (config/account-rules): when present, a Claude launch chooses
+#   its cswap account through the same seam instead of config/claude-account,
+#   records account=cswap:<num>, and appends one data/account-switches.log
+#   line per choice; docs/configuration.md "Account rules" owns the contract.
 # Per-secondmate omp profile (config/secondmate-accounts/<id>/omp-profile):
 #   Opt-in, and read only for a local secondmate's own omp agent;
 #   bin/fm-omp-profile-lib.sh owns the file and its refusals. A pinned launch
