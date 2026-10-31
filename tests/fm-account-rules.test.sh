@@ -47,7 +47,7 @@ write_rules() {
 # approve_rules: John's confirmation at a real terminal, driven through a pty.
 approve_rules() {
   local out
-  out=$(HOME="$HOME_DIR/user-home" FM_HOME="$HOME_DIR" python3 -I "$ROOT_DIR/tests/fixtures/pty-answer.py" \
+  out=$(HOME="$HOME_DIR/user-home" FM_HOME="$HOME_DIR" python3 -I "$ROOT_DIR/tests/fixtures/account-rules/pty-answer.py" \
     --answer-from-prompt "$ROOT_DIR/bin/fm-account-rules.sh" approve 2>&1) \
     || fail "approving the rules at a terminal should succeed: $out"
 }
@@ -151,7 +151,7 @@ test_a_rules_change_without_john_approval_refuses() {
   assert_absent "$HOME_DIR/config/account-rules.approved" "a refused approval must not record a fingerprint"
 
   # A wrong confirmation at a terminal is refused too.
-  out=$(FM_HOME="$HOME_DIR" python3 -I "$ROOT_DIR/tests/fixtures/pty-answer.py" \
+  out=$(FM_HOME="$HOME_DIR" python3 -I "$ROOT_DIR/tests/fixtures/account-rules/pty-answer.py" \
     --answer yes "$ROOT_DIR/bin/fm-account-rules.sh" approve 2>&1); rc=$?
   expect_code 1 "$rc" "a wrong confirmation should refuse: $out"
   assert_absent "$HOME_DIR/config/account-rules.approved" "a wrong confirmation must not record a fingerprint"
