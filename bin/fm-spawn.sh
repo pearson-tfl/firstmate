@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
 # secondmate in its isolated firstmate home.
-# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-resume-lock-wait]
-#        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--herdr-resume-lock-wait]
+# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--loadout <role>] [--workflows <on|off>] [--herdr-resume-lock-wait]
+#        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--loadout <role>] [--workflows <on|off>] [--herdr-resume-lock-wait]
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
 #   spawn and refused on --scout and --secondmate spawns. Firstmate resolves both
@@ -99,6 +99,13 @@
 #   cwd check refuses any endpoint that still reports another copy; a Herdr shell
 #   that has drifted out of the recorded worktree is told once to return, and
 #   only a shell that will not go refuses.
+#   --loadout <role> starts a claude ship or scout worker on that loadout role's
+#   launch line, and --workflows <on|off> (default config/crew-workflows, else
+#   off) decides whether it may start a dynamic workflow. Both are refused on
+#   another harness, a raw launch, a secondmate, and as relaunch overrides; a
+#   relaunch reuses the recorded loadout= and workflows=. docs/configuration.md
+#   "Worker loadout and workflows" owns the contract; claude_loadout_line below
+#   owns how the line becomes argv.
 #   --harness <name> is the explicit per-spawn harness/profile adapter. The old
 #   positional harness arg still works for back-compat.
 #   --model <name> and --effort <low|medium|high|xhigh|max|ultra> are concrete profile
@@ -2720,7 +2727,7 @@ claude_loadout_line() {
     return 1
   fi
   rm -f "$err"
-  CLAUDE_LOADOUT_SETTINGS=$(printf '%s' "$line" | jq -er --argjson off "$([ "$WORKFLOWS" = on ] && echo false || echo true)" \
+  if CLAUDE_LOADOUT_SETTINGS=$(printf '%s' "$line" | jq -er --argjson off "$([ "$WORKFLOWS" = on ] && echo false || echo true)" \
     '.settings | if (try fromjson catch null) | type == "object" then fromjson + {disableWorkflows: $off} | tojson else . end') \
     && CLAUDE_LOADOUT_PERM=$(printf '%s' "$line" | jq -er '.permission_args | map(@sh) | join(" ")') \
     && CLAUDE_LOADOUT_ARGS=$(printf '%s' "$line" | jq -er '
@@ -2728,10 +2735,11 @@ claude_loadout_line() {
         + (if .setting_sources == "all" then [] else ["--setting-sources", .setting_sources] end)
         + (.plugin_args // []) + (.design_args // [])
         + ["--mcp-config", .mcp, "--strict-mcp-config"])
-      | map(@sh) | join(" ") + " "') || {
-    echo "error: the loadout command's line for role '$LOADOUT_ROLE' is not the --line pro forma: $line" >&2
-    return 1
-  }
+      | map(@sh) | join(" ") + " "'); then
+    return 0
+  fi
+  echo "error: the loadout command's line for role '$LOADOUT_ROLE' is not the --line pro forma: $line" >&2
+  return 1
 }
 
 # The verified launch command per adapter. The knowledge half of each adapter
