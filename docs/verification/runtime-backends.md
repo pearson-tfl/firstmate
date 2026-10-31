@@ -686,6 +686,27 @@ skip-runner: pi-signed is not installed, so its pin check was not exercised
 
 The guard submits no prompt and spends no tokens, so it runs by default wherever a runner is installed; rerun it after every Claude or Pi upgrade.
 
+## Agent session resume
+
+`bin/fm-control-lib.sh`'s `fm_control_agent_session_flag` names the vendor flags a spawn passes to fix an exact agent session and the `resume` control verb passes to reopen it: Claude Code `--session-id <uuid>` then `--resume <uuid>`, and Pi `--session-id <id>` for both.
+`tests/fm-agent-session-resume-live-e2e.test.sh` asks each real installed runner, in print mode, to answer on a minted id, then to recall that answer on the same id with the resume flag.
+It passes only when the runner's own transcript is the one file named by the id and the resumed answer recalls the first turn, and it asserts the divergence: a new id does not recall the word.
+
+Verified 2026-10-31 on Claude Code 2.1.316 and pi 1.2.0 on macOS; pi-signed was not installed.
+
+```sh
+FM_AGENT_SESSION_LIVE_E2E=1 bash tests/fm-agent-session-resume-live-e2e.test.sh
+```
+
+```
+ok - claude 2.1.316 (Claude Code): --session-id starts the session on the minted id, and --resume reopens that exact conversation
+ok - pi 1.2.0: --session-id starts the session on the minted id, and --session-id reopens that exact conversation
+skip-runner: pi-signed is not installed, so its session flags were not exercised
+# agent session live guard checked: claude pi
+```
+
+The guard submits prompts and spends tokens, so it is opt-in; rerun it after every Claude or Pi upgrade.
+
 ## Secondmate busy contract
 
 Verified 2026-09-22 on this host with Claude Code 2.1.278, OpenCode 1.18.31, Pi 0.86.1, and Grok 1.0.40.
