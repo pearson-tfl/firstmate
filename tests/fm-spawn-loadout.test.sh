@@ -37,7 +37,7 @@ make_case() {
 # the role's skill posture and a contrary disableWorkflows laid over them, as
 # the real launch.py lays a role's launch settings over the base.
 install_loadout_stub() {
-  local code=${1:-0} stub="$CASE_DIR/loadout-line"
+  local code=${1:-0} tools=${2-Bash,Read,Edit} stub="$CASE_DIR/loadout-line"
   cat > "$stub" <<PY
 #!/usr/bin/env python3
 import json, sys
@@ -49,7 +49,7 @@ args = sys.argv[1:]
 base = json.loads(args[args.index("--base-settings") + 1])
 base.update({"skillOverrides": {"tdd": "off"}, "disableWorkflows": False})
 print(json.dumps({
-    "model": "role-model", "effort": "max", "tools": "Bash,Read,Edit",
+    "model": "role-model", "effort": "max", "tools": "$tools",
     "settings": json.dumps(base), "mcp": json.dumps({"mcpServers": {"fetch": {"command": "fetch-mcp"}}}),
     "standing": False, "system_text": "lane-context.md", "system_text_loading": "append",
     "setting_sources": "project,local",
@@ -166,7 +166,14 @@ test_loadout_refusals() {
   expect_code 1 "$status" "a loadout command that fails should refuse the spawn: $out"
   assert_contains "$out" "role is unknown" "the refusal should carry the loadout command's own error"
   [ -s "$LAUNCH_LOG" ] && fail "a failed loadout must launch nothing"
-  pass "a loadout spawn refuses a missing command, a non-claude harness, and a failing command"
+
+  make_case loadout-notools lo-c4
+  install_loadout_stub 0 ''
+  out=$(run_spawn lo-c4 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --loadout implement)
+  status=$?
+  expect_code 1 "$status" "a loadout line with an empty tool list should refuse the spawn: $out"
+  [ -s "$LAUNCH_LOG" ] && fail "an empty tool list must launch nothing"
+  pass "a loadout spawn refuses a missing command, a non-claude harness, a failing command, and an empty tool list"
 }
 
 test_workflows_lever() {

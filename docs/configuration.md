@@ -1476,15 +1476,17 @@ Firstmate runs it as `<command> --line --role <role> --repo <worktree> --base-se
 The worker receives the line's settings, laid over Firstmate's own, its tool list, its permission arguments in place of `config/claude-permission-mode`'s flag, its settings sources, its plugin and design arguments, and its MCP map under `--strict-mcp-config`.
 The line's model and effort pins are not applied: `--model` and `--effort` remain the launch's axes.
 The line's standing text is not applied: the worker's instructions remain its standing text.
-A missing or non-executable command, a command that fails, or a line that is not the expected JSON refuses the spawn with that command's own words.
+A missing or non-executable command, a command that fails, a line with an empty tool list, or a line that is not the expected JSON refuses the spawn with that command's own words.
 The task record keeps the role as `loadout=`, and a relaunch reuses it.
 
 ### Workflows lever
 
-`--workflows on|off` decides whether the claude worker may start a dynamic workflow, such as deep research.
+`--workflows on|off` decides whether the claude worker may start a dynamic workflow.
+On enables every workflow the worker can reach, not deep research alone: Claude Code has no per-workflow allowlist at launch.
 Without the flag, the optional local, gitignored `config/crew-workflows` holds this home's default as `on` or `off` on its first line, and with no file the default is `off`.
 Off launches the worker with `CLAUDE_CODE_DISABLE_WORKFLOWS=1` and `disableWorkflows` true in its launch settings; on clears an inherited `CLAUDE_CODE_DISABLE_WORKFLOWS` and sets `disableWorkflows` false.
-The lever wins over a loadout role's own `disableWorkflows` setting.
+The lever wins over a loadout role's own `disableWorkflows` setting when the role's settings are JSON.
+When the role's settings are a file path, as with the design lever on, only the environment switch carries the lever, so off holds and on cannot undo a `disableWorkflows` true in that file.
 Any other value refuses the spawn.
 The task record keeps the lever as `workflows=`, and a relaunch reuses it.
 

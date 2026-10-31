@@ -1757,6 +1757,8 @@ spawn_abort_cleanup() {
             echo "tasktmp=${TASK_TMP:-}"
             echo "model=${MODEL:-default}"
             echo "effort=${EFFORT:-default}"
+            [ -z "${LOADOUT_ROLE:-}" ] || echo "loadout=$LOADOUT_ROLE"
+            [ -z "${WORKFLOWS:-}" ] || echo "workflows=$WORKFLOWS"
             echo "backend=orca"
             echo "orca_worktree_id=$ORCA_WORKTREE_ID"
             [ -z "${ORCA_TERMINAL:-}" ] || echo "terminal=$ORCA_TERMINAL"
@@ -2714,7 +2716,9 @@ spawn_claude_task_channel_statement() {
 #   CLAUDE_LOADOUT_ARGS      the role's --tools, settings sources, plugin and
 #                            design argv, then --mcp-config and the boolean
 #                            --strict-mcp-config, so the variadic MCP flag can
-#                            never swallow the brief doorbell that follows.
+#                            never swallow the brief doorbell that follows,
+#                            then settings sources, as launch.py orders them.
+# An empty tool list refuses: claude reads it as no built-in tools at all.
 # The line's model and effort pins are not applied: Firstmate's --model and
 # --effort stay the launch's axes. A command that fails, or a line that is not
 # the --line JSON, refuses the spawn with the command's own words.
@@ -2731,10 +2735,11 @@ claude_loadout_line() {
     '.settings | if (try fromjson catch null) | type == "object" then fromjson + {disableWorkflows: $off} | tojson else . end') \
     && CLAUDE_LOADOUT_PERM=$(printf '%s' "$line" | jq -er '.permission_args | map(@sh) | join(" ")') \
     && CLAUDE_LOADOUT_ARGS=$(printf '%s' "$line" | jq -er '
-      (["--tools", .tools]
-        + (if .setting_sources == "all" then [] else ["--setting-sources", .setting_sources] end)
+      if (.tools | length) == 0 then error("empty tool list") else . end
+      | (["--tools", .tools]
         + (.plugin_args // []) + (.design_args // [])
-        + ["--mcp-config", .mcp, "--strict-mcp-config"])
+        + ["--mcp-config", .mcp, "--strict-mcp-config"]
+        + (if .setting_sources == "all" then [] else ["--setting-sources", .setting_sources] end))
       | map(@sh) | join(" ") + " "'); then
     return 0
   fi
