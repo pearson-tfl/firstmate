@@ -1,17 +1,13 @@
 #!/usr/bin/env bash
-# fm-account-rules.sh - John's approval of this home's Claude account rules.
+# fm-account-rules.sh - the captain's approval of this home's Claude account rules.
 #
 # Usage:
 #   fm-account-rules.sh status    show the rules and whether they are approved
 #   fm-account-rules.sh approve   approve the current config/account-rules
 #
-# config/account-rules decides which cswap accounts Claude workers may launch
-# on; bin/fm-worker-account-lib.sh owns its format, the selection, and the
-# refusal of an unapproved file. `approve` validates the file, shows it with
-# its SHA-256 fingerprint, and asks for that fingerprint's first twelve
-# characters on the controlling terminal (/dev/tty), never on stdin, so a
-# process with no terminal, such as an agent's tool shell, cannot approve.
-# On a match it writes the fingerprint to config/account-rules.approved.
+# docs/configuration.md "Account rules (config/account-rules)" owns the
+# contract.
+# `approve` reads its confirmation from /dev/tty, never stdin.
 # Exit status: 0 approved (or status printed), 1 refused or malformed, 2 usage.
 set -u
 
@@ -48,7 +44,7 @@ status)
   ;;
 approve)
   if ! { exec 3<>/dev/tty; } 2>/dev/null; then
-    echo "error: approving account rules needs John at a terminal; this process has none" >&2
+    echo "error: approving account rules needs the captain at a terminal; this process has none" >&2
     exit 1
   fi
   CODE=${FINGERPRINT:0:12}

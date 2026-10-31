@@ -242,7 +242,8 @@ fm_worker_account_check() {
 # fm_worker_account_select <harness> <config-dir> <model> <executable> [<raw-command>] [<secondmate-id>] [<project-name>]
 # The whole launch-time decision. A Claude launch from a home with
 # config/account-rules chooses through cswap (fm_account_rules_resolve) and
-# then passes the same raw-command guard and sign-in check as a pin. Prints nothing for an unpinned runner, so
+# then passes the same raw-command guard and sign-in check as a pin.
+# Prints nothing for an unpinned runner, so
 # the caller keeps today's launch unchanged. For a pinned one prints
 # "declared<TAB>root<TAB>provider", where provider is the Pi launch model's
 # own (empty for Claude), after the model guard and the sign-in check pass. On
@@ -319,40 +320,15 @@ fm_worker_account_claude_shed() {
 }
 
 # --- Rules-based Claude account selection through cswap -------------------
-# docs/configuration.md "Account rules" owns the operator-facing contract.
-#
-# config/account-rules, when present, replaces config/claude-account for every
-# Claude launch from this home: a pin file beside it refuses rather than being
-# used. Each line is blank, a # comment, or one directive, with cswap account
-# numbers as the only account names:
-#   forbid <num>...              never choose these accounts
-#   project <name> <num>...      tasks on project <name> (the project
-#                                directory's own name, compared without
-#                                regard to case) choose only from these
-# A project with no line chooses from every cswap account. A forbid always
-# wins over a project line.
-#
-# The file is John's. config/account-rules.approved holds the SHA-256 of the
-# exact bytes he approved through `bin/fm-account-rules.sh approve`, which
-# reads his confirmation from the controlling terminal; a missing or stale
-# fingerprint refuses every Claude launch until he approves the current file,
-# and so does a rules file removed while its approval remains: retiring the
-# rules means removing config/account-rules.approved as well.
-#
-# The choice reads `cswap list --json` (schemaVersion 1): among the allowed
-# accounts, the lowest of each account's highest five-hour or seven-day usage
-# percentage wins, ties going to the lower number; an account at 100 percent
-# or more is skipped, and an account whose usage cswap cannot report ranks
-# after every measured one. `cswap run <num>` then prepares that account's own
-# profile root and execs the `claude` on PATH; a probe `claude` placed first on
-# PATH records the root it receives (empty when cswap runs the account that is
-# already the default login) and hands every other claude call cswap makes,
-# such as its own `auth status` profile check, to the real claude. The launch
-# then runs on that root exactly as a pinned one does. Firstmate never runs
-# `cswap switch`, so the global login and every saved token stay as they were.
-#
-# Every account choice a spawn or relaunch makes appends one report line to
-# data/account-switches.log (fm_account_rules_report).
+# docs/configuration.md "Account rules (config/account-rules)" owns the rules
+# format, the ranking, the approval, and the report line; this block owns the
+# mechanics. The account list is `cswap list --json` schemaVersion 1. `cswap
+# run <num>` prepares that account's profile root and execs the `claude` on
+# PATH, so a probe `claude` placed first on PATH records the root it receives
+# (empty when cswap runs the account that is already the default login) and
+# hands every other claude call cswap makes, such as its own `auth status`
+# profile check, to the real claude. The launch then runs on that root exactly
+# as a pinned one does. Nothing here runs `cswap switch`.
 
 FM_ACCOUNT_RULES_CSWAP_SECONDS=${FM_ACCOUNT_RULES_CSWAP_SECONDS:-60}
 
@@ -408,7 +384,7 @@ fm_account_rules_approved() {
   }
   want=$(cat "$config/account-rules.approved" 2>/dev/null) || want=
   if [ "$want" != "$have" ]; then
-    echo "error: config/account-rules has changed since John approved it, so no Claude worker launches until he does; John runs bin/fm-account-rules.sh approve at a terminal" >&2
+    echo "error: config/account-rules has changed since the captain approved it, so no Claude worker launches until the captain runs bin/fm-account-rules.sh approve at a terminal" >&2
     return 1
   fi
 }
@@ -485,7 +461,7 @@ fm_account_rules_profile() {
     >/dev/null 2>"$probe/err" </dev/null
   rc=$?
   if [ "$rc" -ne 0 ] || [ ! -f "$probe/root" ]; then
-    echo "error: config/account-rules chose cswap account $num, but cswap run $num did not launch it (exit $rc): $(tail -n 1 "$probe/err" 2>/dev/null)" >&2
+    echo "error: config/account-rules chose cswap account $num, but cswap run $num ($(cswap --version 2>/dev/null | head -n 1)) did not launch $executable ($("$real" --version 2>/dev/null | head -n 1)) (exit $rc): $(tail -n 1 "$probe/err" 2>/dev/null)" >&2
     rm -rf "$probe"
     return 1
   fi
@@ -504,13 +480,20 @@ fm_account_rules_resolve() {
     return 1
   fi
   if [ ! -e "$config/account-rules" ] && [ ! -L "$config/account-rules" ]; then
-    echo "error: config/account-rules was removed while John's approval of it remains, so no Claude worker launches; John retires the rules by removing config/account-rules.approved too" >&2
+    echo "error: config/account-rules was removed while the captain's approval of it remains, so no Claude worker launches; retiring the rules means removing config/account-rules.approved too" >&2
     return 1
   fi
   fm_account_rules_approved "$config" || return 1
   num=$(fm_account_rules_pick "$config" "$project") || return 1
   root=$(fm_account_rules_profile "$num" "$executable") || return 1
   printf 'cswap:%s\t%s\t\n' "$num" "$root"
+}
+
+# fm_worker_account_project <project-path>
+# Prints the project name account rules match: the path's last component.
+fm_worker_account_project() {
+  local path=${1%/}
+  printf '%s\n' "${path##*/}"
 }
 
 # fm_account_rules_report <data-dir> <task-id> <from> <to>

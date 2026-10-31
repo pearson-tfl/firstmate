@@ -142,19 +142,19 @@ test_a_rules_change_without_john_approval_refuses() {
   printf 'forbid 2\n' > "$HOME_DIR/config/account-rules"
   out=$(spawn_ship "$id" 2>&1); rc=$?
   expect_code 1 "$rc" "an edited, unapproved rules file should refuse: $out"
-  assert_refused_before_launch "$id" "$out" "config/account-rules has changed since John approved it"
+  assert_refused_before_launch "$id" "$out" "config/account-rules has changed since the captain approved it"
   assert_absent "$CASE/cswap-runs" "an unapproved rules file must not prepare any account"
 
   rm -f "$HOME_DIR/config/account-rules.approved"
   out=$(spawn_ship "$id" 2>&1); rc=$?
   expect_code 1 "$rc" "a never-approved rules file should refuse: $out"
-  assert_refused_before_launch "$id" "$out" "config/account-rules has changed since John approved it"
+  assert_refused_before_launch "$id" "$out" "config/account-rules has changed since the captain approved it"
 
   # No controlling terminal: the approval cannot be given from a tool shell.
   out=$(FM_HOME="$HOME_DIR" perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' \
     "$ROOT_DIR/bin/fm-account-rules.sh" approve </dev/null 2>&1); rc=$?
   expect_code 1 "$rc" "approval with no terminal should refuse: $out"
-  assert_contains "$out" "needs John at a terminal" "the refusal should say approval needs a terminal"
+  assert_contains "$out" "needs the captain at a terminal" "the refusal should say approval needs a terminal"
   assert_absent "$HOME_DIR/config/account-rules.approved" "a refused approval must not record a fingerprint"
 
   # A wrong confirmation at a terminal is refused too.
@@ -172,7 +172,7 @@ test_a_rules_change_without_john_approval_refuses() {
   rm -f "$HOME_DIR/config/account-rules" "$CASE/cswap-runs"
   out=$(spawn_ship rules-removed 2>&1); rc=$?
   expect_code 1 "$rc" "a removed rules file with its approval left should refuse: $out"
-  assert_refused_before_launch rules-removed "$out" "config/account-rules was removed while John's approval of it remains"
+  assert_refused_before_launch rules-removed "$out" "config/account-rules was removed while the captain's approval of it remains"
   pass "a rules change launches nothing until John approves it at a terminal"
 }
 
