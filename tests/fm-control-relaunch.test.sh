@@ -2675,15 +2675,21 @@ test_herdr_relaunch_resumes_only_the_registered_pi_session() {
     # while process-info proves that its previous agent has exited.
     printf '{"result":{"agent":{"agent":"%s","agent_status":"idle","agent_session":{"kind":"path","value":"/tmp/pi-bound-session.jsonl"}}}}\n' \
       "$registered" > "$dir/fake/herdr-agent-registration"
+    echo "agent_session_id=11111111-1111-4111-8111-111111111111" >> "$dir/home/state/resume-$registered.meta"
     out=$(run_spawn "$dir" "resume-$registered" --relaunch --harness pi) || rc=$?
     expect_code 0 "$rc" "Herdr Pi relaunch should complete ($registered registration)"$'\n'"$out"
     command=$(cat "$dir/fake/launched-command")
     if [ "$registered" = pi ]; then
       assert_contains "$command" "--session '/tmp/pi-bound-session.jsonl'" \
         "the replacement Pi must resume the session that owns Herdr status authority"
+      assert_not_contains "$command" "--session-id" "a bound-session relaunch must not pass a second session flag"
+      assert_not_contains "$(cat "$dir/home/state/resume-$registered.meta")" "agent_session_id=" \
+        "the record must not name a session id the running session does not carry"
     else
       assert_not_contains "$command" "--session '" \
         "a Pi replacement must not resume a foreign adapter's conversation"
+      assert_not_contains "$(cat "$dir/home/state/resume-$registered.meta")" "11111111-1111-4111-8111-111111111111" \
+        "a fresh replacement must record its own new session id"
     fi
     rc=0
   done

@@ -3522,15 +3522,15 @@ new_agent_session_uuid() {
 #   - --resume-session reuses the recorded id with the adapter's resume form,
 #     and refuses when the record has none.
 #   - A Herdr Pi relaunch that already resumes the pane's bound session
-#     (RESUME_ARGS) passes no second session flag and keeps the recorded id:
-#     the bound session is the one an earlier launch of this task pinned to
-#     that id, and a task spawned before ids were fixed records none.
+#     (RESUME_ARGS) passes no second session flag and records no id: the bound
+#     reference is the runtime's, not one this spawn pinned, so `resume`
+#     refuses for the task rather than reopening a session it cannot name.
 #   - Every other launch mints a fresh UUID: a default relaunch restarts from
 #     the brief on a new session.
 agent_session_args() {
   local flag prior=
   [ "$RAW_LAUNCH" = 0 ] || return 0
-  [ "$RELAUNCH" -eq 0 ] || prior=$(fm_meta_get "$RELAUNCH_META" agent_session_id)
+  [ "$RESUME_SESSION" -eq 0 ] || prior=$(fm_meta_get "$RELAUNCH_META" agent_session_id)
   if [ "$RESUME_SESSION" -eq 1 ]; then
     flag=$(fm_control_agent_session_flag "$HARNESS" resume) || {
       echo "error: $HARNESS has no verified resume form for an exact session; relaunch $ID instead" >&2
@@ -3543,10 +3543,7 @@ agent_session_args() {
     AGENT_SESSION_ID=$prior
   else
     flag=$(fm_control_agent_session_flag "$HARNESS" fresh) || return 0
-    if [ -n "$RESUME_ARGS" ]; then
-      AGENT_SESSION_ID=$prior
-      return 0
-    fi
+    [ -z "$RESUME_ARGS" ] || return 0
     AGENT_SESSION_ID=$(new_agent_session_uuid) || {
       echo "error: could not mint an agent session id for $ID (no uuidgen, /proc uuid, or python3)" >&2
       return 1
