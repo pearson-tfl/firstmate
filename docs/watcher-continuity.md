@@ -211,6 +211,7 @@ When the host instead hands the accepted close back to main and leaves that succ
 - Terminal arm-output classification (`started`, `attached`, or `FAILED`) remains defense in depth for the manual recovery path.
 - Codex retains its bounded foreground checkpoint protocol.
 - Grok retains its tracked background-task notification protocol.
+- A home whose main has no harness session keeps its watcher armed through `bin/fm-wake-forwarder.sh`, which forwards each wake to a notify command and re-arms as that wake's handling successor; its header owns the mechanics.
 
 No adapter starts a replacement with a fire-and-forget shell `&` from a model command.
 The Claude hook's detached handling successor is launched by the hook itself, which waits for the successor's status line before it exits.
