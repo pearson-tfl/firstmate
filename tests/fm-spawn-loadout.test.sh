@@ -115,7 +115,7 @@ test_spawn_starts_on_the_loadout_launch_string() {
   assert_equals '{"mcpServers":{"fetch":{"command":"fetch-mcp"}}}' "$(arg_after "$seen" --mcp-config | jq -c .)" \
     "the role's MCP map should reach the agent"
   # --mcp-config is variadic, so the boolean must stand directly after its value.
-  assert_equals "ARG=--strict-mcp-config" "$(printf '%s\n' "$seen" | grep -A1 -x 'ARG=--mcp-config' | sed -n 3p)" \
+  assert_equals "ARG=--strict-mcp-config" "$(printf '%s\n' "$seen" | grep -A2 -x 'ARG=--mcp-config' | sed -n 3p)" \
     "--strict-mcp-config should directly follow the MCP map"
   assert_equals "project,local" "$(arg_after "$seen" --setting-sources)" "the role's settings sources should reach the agent"
   assert_equals "auto" "$(arg_after "$seen" --permission-mode)" "the role's permission mode should reach the agent"
