@@ -460,6 +460,7 @@ fm_account_rules_profile() {
     return 1
   }
   probe=$(mktemp -d "${TMPDIR:-/tmp}/fm-cswap-probe.XXXXXX") || return 1
+  # shellcheck disable=SC2016  # The probe's own expansions run inside it.
   {
     printf '#!/usr/bin/env bash\n'
     printf 'if [ "$#" -gt 0 ]; then exec %q "$@"; fi\n' "$real"
@@ -504,9 +505,9 @@ fm_account_rules_resolve() {
 fm_account_rules_report() {
   local data=$1 id=$2 from=$3 to=$4 line
   line="$(date -u +%Y-%m-%dT%H:%M:%SZ) task=$id from=$from to=$to"
-  mkdir -p "$data" && printf '%s\n' "$line" >> "$data/account-switches.log" || {
+  if ! { mkdir -p "$data" && printf '%s\n' "$line" >> "$data/account-switches.log"; }; then
     echo "warning: could not append the account report line to $data/account-switches.log: $line" >&2
     return 0
-  }
+  fi
   printf 'account-switch: %s\n' "$line"
 }

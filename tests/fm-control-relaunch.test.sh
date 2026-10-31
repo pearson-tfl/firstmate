@@ -19,8 +19,8 @@
 #      agent exited.
 set -u
 
-# shellcheck source=tests/lib.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=tests/fixtures.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-control-lib.sh"
 # shellcheck source=/dev/null
@@ -362,6 +362,30 @@ fi
 exec "$real" "\$@"
 SH
   chmod +x "$dir/fakebin/tasks-axi"
+}
+
+# --- account rules: a relaunch that switches account reports it ---------------
+
+test_relaunch_under_account_rules_reports_the_switch() {
+  local dir out rc log
+  dir=$(new_case acct-rules rla)
+  add_ship_task "$dir" rla claude
+  fm_test_cswap_fakes "$dir/fakebin" "$dir"
+  mkdir -p "$dir/home/config"
+  printf 'forbid 3\n' > "$dir/home/config/account-rules"
+  bash -c '. "$1/bin/fm-worker-account-lib.sh"; fm_account_rules_fingerprint "$2"' _ "$ROOT" \
+    "$dir/home/config/account-rules" > "$dir/home/config/account-rules.approved"
+  printf 'account=cswap:1\n' >> "$dir/home/state/rla.meta"
+  # Account 1 is near its limit and account 3 is forbidden, so 2 is chosen.
+  fm_test_cswap_accounts "$dir" 1 1:99:60 2:50:50 3:0:0
+  out=$(run_control "$dir" rla relaunch --note "account 1 is near its limit"); rc=$?
+  expect_code 0 "$rc" "a relaunch under account rules should succeed"$'\n'"$out"
+  [ "$(meta_field "$dir" rla account)" = cswap:2 ] || fail "the record should carry the new account: $out"
+  log="$dir/home/data/account-switches.log"
+  [ "$(wc -l < "$log" | tr -d ' ')" = 1 ] || fail "one switch should write one report line: $(cat "$log")"
+  assert_grep "task=rla from=cswap:1 to=cswap:2" "$log" "the line should name the account the task left"
+  assert_absent "$dir/cswap-global-switches" "a relaunch must never switch the global login"
+  pass "a relaunch under account rules switches to an allowed account with headroom and reports it once"
 }
 
 # --- 1. same-harness relaunch -----------------------------------------------
@@ -3015,6 +3039,7 @@ test_relaunch_off_opencode_removes_tracked_wiring
 test_exit_and_relaunch_remove_the_dialog_file
 test_exit_removes_the_dialog_file_before_releasing_the_lock
 test_same_harness_relaunch_keeps_identity_and_reuses_the_endpoint
+test_relaunch_under_account_rules_reports_the_switch
 test_relaunch_refuses_before_exit_when_the_composer_holds_pending_text
 test_relaunch_refuses_before_exit_when_the_composer_state_is_unproven
 test_relaunch_from_linked_home_preserves_recorded_worktree

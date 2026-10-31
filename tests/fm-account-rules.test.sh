@@ -21,69 +21,6 @@ unset LAVISH_AXI_HOST ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
-# make_cswap_fakes <fakebin> <case-dir>
-# Log and data paths are written into the fakes because the sign-in check and
-# the account probe run them with a cleared environment.
-make_cswap_fakes() {
-  local fakebin=$1 dir=$2
-  cat > "$fakebin/claude" <<SH
-#!/usr/bin/env bash
-if [ "\${1:-}" = auth ] && [ "\${2:-}" = status ]; then
-  [ -f "\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/.credentials.json" ]
-  exit
-fi
-printf 'CLAUDE_CONFIG_DIR=%s\n' "\${CLAUDE_CONFIG_DIR-unset}" > '$dir/claude-worker'
-SH
-  cat > "$fakebin/cswap" <<SH
-#!/usr/bin/env bash
-case "\${1:-}" in
-  list)
-    [ "\${2:-}" = --json ] || exit 2
-    cat '$dir/cswap-list.json'
-    ;;
-  run)
-    num=\$2
-    shift 2
-    [ "\${1:-}" != -- ] || shift
-    printf '%s\n' "\$num" >> '$dir/cswap-runs'
-    echo "Launching Account-\$num [session mode]"
-    if [ "\$num" = "\$(cat '$dir/cswap-active')" ] && [ -z "\${CLAUDE_CONFIG_DIR:-}" ]; then
-      exec claude "\$@"
-    fi
-    mkdir -p '$dir/sessions/'"\$num"
-    [ ! -f '$dir/signed-out-'"\$num" ] || rm -f '$dir/sessions/'"\$num"/.credentials.json
-    [ -f '$dir/signed-out-'"\$num" ] || printf '{}\n' > '$dir/sessions/'"\$num"/.credentials.json
-    CLAUDE_CONFIG_DIR='$dir/sessions/'"\$num" exec claude "\$@"
-    ;;
-  switch) printf 'switch\n' >> '$dir/cswap-global-switches'; exit 0 ;;
-  *) exit 2 ;;
-esac
-SH
-  chmod +x "$fakebin/claude" "$fakebin/cswap"
-}
-
-# cswap_accounts <active> <num:fiveHour:sevenDay>...
-# Writes the fake account list; a usage field of - is omitted, and a whole
-# spec of <num>:error marks that account's usage unavailable.
-cswap_accounts() {
-  local active=$1 spec num five seven sep='' body=''
-  shift
-  printf '%s\n' "$active" > "$CASE/cswap-active"
-  for spec in "$@"; do
-    IFS=: read -r num five seven <<<"$spec"
-    if [ "$five" = error ]; then
-      body="$body$sep{\"number\":$num,\"email\":\"a$num@example.test\",\"active\":false,\"usageStatus\":\"error\"}"
-    else
-      local usage='' usep=''
-      [ "$five" = - ] || { usage="\"fiveHour\":{\"pct\":$five}"; usep=,; }
-      [ "$seven" = - ] || usage="$usage$usep\"sevenDay\":{\"pct\":$seven}"
-      body="$body$sep{\"number\":$num,\"email\":\"a$num@example.test\",\"active\":$([ "$num" = "$active" ] && echo true || echo false),\"usageStatus\":\"ok\",\"usage\":{$usage}}"
-    fi
-    sep=,
-  done
-  printf '{"schemaVersion":1,"activeAccountNumber":%s,"accounts":[%s]}\n' "$active" "$body" > "$CASE/cswap-list.json"
-}
-
 # new_case <name> -> sets CASE HOME_DIR PROJ WT FAKEBIN
 new_case() {
   CASE="$TMP_ROOT/$1"
@@ -91,7 +28,7 @@ new_case() {
   PROJ="$CASE/projects/${2:-demo}"
   WT="$CASE/wt"
   FAKEBIN=$(fm_test_make_spawn_fakebin "$CASE/fake")
-  make_cswap_fakes "$FAKEBIN" "$CASE"
+  fm_test_cswap_fakes "$FAKEBIN" "$CASE"
   fm_test_spawn_home "$HOME_DIR" claude
   mkdir -p "$CASE/projects"
   fm_git_worktree "$PROJ" "$WT" "wt-$1"
@@ -136,6 +73,8 @@ assert_refused_before_launch() {
   [ ! -s "$CASE/launch.log" ] || fail "a refused spawn must not launch a worker: $(cat "$CASE/launch.log")"
 }
 
+# A relaunch's switch line is covered in tests/fm-control-relaunch.test.sh,
+# whose fake tmux models stopping the running agent.
 switch_lines() {
   if [ -f "$HOME_DIR/data/account-switches.log" ]; then
     wc -l < "$HOME_DIR/data/account-switches.log" | tr -d ' '
@@ -148,7 +87,7 @@ test_rules_pick_the_least_used_allowed_account_and_never_a_forbidden_one() {
   local out rc id=rules-pick
   new_case pick
   # Account 3 is the least used, so only the rule keeps it out.
-  cswap_accounts 1 1:10:40 2:5:30 3:0:0 4:2:16
+  fm_test_cswap_accounts "$CASE" 1 1:10:40 2:5:30 3:0:0 4:2:16
   write_rules '# John owns this file' 'forbid 3'
   out=$(spawn_ship "$id"); rc=$?
   expect_code 0 "$rc" "a spawn under approved rules should succeed: $out"
@@ -165,6 +104,113 @@ test_rules_pick_the_least_used_allowed_account_and_never_a_forbidden_one() {
   pass "rules pick the least-used allowed account, skip a forbidden one, and report the pick"
 }
 
+test_a_project_rule_limits_the_choice_to_its_accounts() {
+  local out rc
+  new_case project bb-signal-prototype
+  fm_test_cswap_accounts "$CASE" 1 1:0:1 2:0:2 4:3:30 5:1:20
+  write_rules 'forbid 3' 'project bb-signal-prototype 5 4' 'project other 1'
+  out=$(spawn_ship rules-project); rc=$?
+  expect_code 0 "$rc" "a project-scoped spawn should succeed: $out"
+  assert_contains "$out" "account=cswap:5" "the project's own accounts should win over less-used others"
+  pass "a project rule limits the choice to that project's accounts"
+}
+
+test_the_per_home_claude_setting_is_refused_under_rules() {
+  local out rc id=rules-pin
+  new_case pin
+  fm_test_cswap_accounts "$CASE" 1 1:0:0 2:0:0
+  write_rules 'forbid 2'
+  printf 'ordinary\n' > "$HOME_DIR/config/claude-account"
+  out=$(spawn_ship "$id" 2>&1); rc=$?
+  expect_code 1 "$rc" "rules plus a per-home Claude setting should refuse: $out"
+  assert_refused_before_launch "$id" "$out" "config/account-rules replaces the per-home Claude account setting"
+  pass "the per-home Claude account setting is refused, not used, when rules exist"
+}
+
+test_a_rules_change_without_john_approval_refuses() {
+  local out rc id=rules-unapproved
+  new_case unapproved
+  fm_test_cswap_accounts "$CASE" 1 1:0:0 2:0:0 3:0:0
+  write_rules 'forbid 3'
+  printf 'forbid 2\n' > "$HOME_DIR/config/account-rules"
+  out=$(spawn_ship "$id" 2>&1); rc=$?
+  expect_code 1 "$rc" "an edited, unapproved rules file should refuse: $out"
+  assert_refused_before_launch "$id" "$out" "config/account-rules has changed since John approved it"
+  assert_absent "$CASE/cswap-runs" "an unapproved rules file must not prepare any account"
+
+  rm -f "$HOME_DIR/config/account-rules.approved"
+  out=$(spawn_ship "$id" 2>&1); rc=$?
+  expect_code 1 "$rc" "a never-approved rules file should refuse: $out"
+  assert_refused_before_launch "$id" "$out" "config/account-rules has changed since John approved it"
+
+  # No controlling terminal: the approval cannot be given from a tool shell.
+  out=$(FM_HOME="$HOME_DIR" perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' \
+    "$ROOT_DIR/bin/fm-account-rules.sh" approve </dev/null 2>&1); rc=$?
+  expect_code 1 "$rc" "approval with no terminal should refuse: $out"
+  assert_contains "$out" "needs John at a terminal" "the refusal should say approval needs a terminal"
+  assert_absent "$HOME_DIR/config/account-rules.approved" "a refused approval must not record a fingerprint"
+
+  # A wrong confirmation at a terminal is refused too.
+  out=$(FM_HOME="$HOME_DIR" python3 -I "$ROOT_DIR/tests/fixtures/pty-answer.py" \
+    --answer yes "$ROOT_DIR/bin/fm-account-rules.sh" approve 2>&1); rc=$?
+  expect_code 1 "$rc" "a wrong confirmation should refuse: $out"
+  assert_absent "$HOME_DIR/config/account-rules.approved" "a wrong confirmation must not record a fingerprint"
+
+  approve_rules
+  out=$(spawn_ship "$id" 2>&1); rc=$?
+  expect_code 0 "$rc" "the same rules should launch once John approves them: $out"
+  assert_contains "$out" "account=cswap:1" "the approved rules should now govern the choice"
+  pass "a rules change launches nothing until John approves it at a terminal"
+}
+
+test_malformed_rules_refuse() {
+  local out rc id=rules-bad
+  new_case malformed
+  fm_test_cswap_accounts "$CASE" 1 1:0:0
+  write_rules 'forbid 3'
+  printf 'forbid three\n' > "$HOME_DIR/config/account-rules"
+  out=$(FM_HOME="$HOME_DIR" "$ROOT_DIR/bin/fm-account-rules.sh" status 2>&1); rc=$?
+  expect_code 1 "$rc" "status should refuse a malformed rules file: $out"
+  assert_contains "$out" "line 1 is not" "the refusal should name the bad line"
+  pass "a malformed rules file is refused with its line"
+}
+
+test_no_headroom_refuses_and_unmeasured_ranks_last() {
+  local out rc id=rules-full
+  new_case headroom
+  fm_test_cswap_accounts "$CASE" 1 1:100:40 2:20:100 3:0:0
+  write_rules 'forbid 3'
+  out=$(spawn_ship "$id" 2>&1); rc=$?
+  expect_code 1 "$rc" "every allowed account at its limit should refuse: $out"
+  assert_refused_before_launch "$id" "$out" "allows no cswap account with headroom"
+
+  fm_test_cswap_accounts "$CASE" 1 1:100:40 2:error 4:80:90
+  out=$(spawn_ship "$id"); rc=$?
+  expect_code 0 "$rc" "a measured account with headroom should launch: $out"
+  assert_contains "$out" "account=cswap:4" "a measured account should rank before an unmeasured one"
+  pass "no headroom refuses, and an account cswap cannot measure ranks last"
+}
+
+test_the_default_login_account_launches_on_the_default_login() {
+  local out rc id=rules-default
+  new_case default-login
+  fm_test_cswap_accounts "$CASE" 2 1:50:50 2:0:1
+  write_rules 'forbid 3'
+  out=$(spawn_ship "$id"); rc=$?
+  expect_code 0 "$rc" "choosing the default login's account should succeed: $out"
+  assert_contains "$out" "account=cswap:2" "the least-used account is the default login"
+  run_pane
+  assert_grep "CLAUDE_CONFIG_DIR=unset" "$CASE/claude-worker" \
+    "cswap runs the default login's account on the default login, so the root must be unset"
+  pass "the default login's account launches with the Claude root unset, as cswap runs it"
+}
+
 test_rules_pick_the_least_used_allowed_account_and_never_a_forbidden_one
+test_a_project_rule_limits_the_choice_to_its_accounts
+test_the_per_home_claude_setting_is_refused_under_rules
+test_a_rules_change_without_john_approval_refuses
+test_malformed_rules_refuse
+test_no_headroom_refuses_and_unmeasured_ranks_last
+test_the_default_login_account_launches_on_the_default_login
 
 echo "# all fm-account-rules tests passed"
