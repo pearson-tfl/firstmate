@@ -1546,14 +1546,15 @@ The global login is never switched, so other sessions and background jobs that u
 `config/claude-account`, or a per-secondmate Claude pin, beside the rules file refuses the launch rather than being used.
 Other runners keep their own pins.
 
-Each line is blank, a `#` comment, `forbid <num>...`, or `project <name> <num>...`, where the numbers are cswap account numbers and `<name>` is the project directory's own name.
+Each line is blank, a `#` comment, `forbid <num>...`, or `project <name> <num>...`, where the numbers are cswap account numbers and `<name>` is the project directory's own name, compared without regard to case.
 For example, `forbid 3` and `project bb-signal-prototype 5 4` keep account 3 out of every launch and keep that project's workers on accounts 5 and 4.
 A project with no line chooses from every account, and a forbid always wins.
 Among the allowed accounts the one with the lowest current usage wins, an account at its limit is skipped, and an account whose usage cswap cannot report ranks last.
 
 The file is the captain's.
 `bin/fm-account-rules.sh approve`, run by the captain at a terminal, shows the file and records its fingerprint in `config/account-rules.approved` after a typed confirmation; it reads that confirmation from the controlling terminal, so a process without one cannot approve.
-A missing or stale fingerprint refuses every Claude launch until the current file is approved, and `bin/fm-account-rules.sh status` shows the file and whether it is approved.
+A missing or stale fingerprint refuses every Claude launch until the current file is approved, and so does a rules file removed while its approval remains; retiring the rules means removing `config/account-rules.approved` too.
+`bin/fm-account-rules.sh status` shows the file and whether it is approved.
 
 Every account choice appends one line to `data/account-switches.log` naming the task, the account it ran on before (`none` for a first launch), and the account chosen, and the spawn prints the same line.
 The spawn reports the choice as `account=cswap:<num>` and records it in the task record.

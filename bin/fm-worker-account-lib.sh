@@ -255,7 +255,8 @@ fm_worker_account_select() {
   selected_config=$(fm_worker_account_config "$harness" "$config" "$mate") || return 1
   setting="config/$(fm_worker_account_file "$harness")"
   [ "$selected_config" = "$config" ] || setting="$selected_config/$(fm_worker_account_file "$harness")"
-  if [ "$harness" = claude ] && { [ -e "$config/account-rules" ] || [ -L "$config/account-rules" ]; }; then
+  if [ "$harness" = claude ] && { [ -e "$config/account-rules" ] || [ -L "$config/account-rules" ] ||
+    [ -e "$config/account-rules.approved" ] || [ -L "$config/account-rules.approved" ]; }; then
     setting=config/account-rules
     selection=$(fm_account_rules_resolve "$config" "$project" "$executable" "$selected_config") || return 1
   else
@@ -326,14 +327,17 @@ fm_worker_account_claude_shed() {
 # numbers as the only account names:
 #   forbid <num>...              never choose these accounts
 #   project <name> <num>...      tasks on project <name> (the project
-#                                directory's own name) choose only from these
+#                                directory's own name, compared without
+#                                regard to case) choose only from these
 # A project with no line chooses from every cswap account. A forbid always
 # wins over a project line.
 #
 # The file is John's. config/account-rules.approved holds the SHA-256 of the
 # exact bytes he approved through `bin/fm-account-rules.sh approve`, which
 # reads his confirmation from the controlling terminal; a missing or stale
-# fingerprint refuses every Claude launch until he approves the current file.
+# fingerprint refuses every Claude launch until he approves the current file,
+# and so does a rules file removed while its approval remains: retiring the
+# rules means removing config/account-rules.approved as well.
 #
 # The choice reads `cswap list --json` (schemaVersion 1): among the allowed
 # accounts, the lowest of each account's highest five-hour or seven-day usage
@@ -380,7 +384,7 @@ fm_account_rules_parse() {
       if ($line =~ /\A\s*forbid((?:\s+[1-9][0-9]*)+)\s*\z/) {
         print "forbid", join(" ", "", split(" ", $1)), "\n";
       } elsif ($line =~ /\A\s*project\s+([A-Za-z0-9][A-Za-z0-9._-]*)((?:\s+[1-9][0-9]*)+)\s*\z/) {
-        if ($project{$1}++) {
+        if ($project{lc $1}++) {
           print STDERR "error: config/account-rules line $n repeats project $1; give each project one line\n";
           exit 1;
         }
@@ -413,12 +417,18 @@ fm_account_rules_approved() {
 # Prints the cswap account number the approved rules choose for the project.
 # On refusal prints one error and returns 1.
 fm_account_rules_pick() {
-  local config=$1 project=$2 rules forbidden='' allowed='' list picked line
+  local config=$1 project=$2 rules forbidden='' allowed='' list picked line name want
   rules=$(fm_account_rules_parse "$config/account-rules") || return 1
+  want=$(printf '%s' "$project" | tr '[:upper:]' '[:lower:]')
   while IFS= read -r line; do
     case "$line" in
     "forbid "*) forbidden="$forbidden ${line#forbid }" ;;
-    "project $project "*) allowed=${line#"project $project "} ;;
+    "project "*)
+      name=${line#project }
+      name=${name%% *}
+      [ "$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')" != "$want" ] ||
+        allowed=${line#"project $name "}
+      ;;
     esac
   done <<<"$rules"
   list=$(fm_run_timed "$FM_ACCOUNT_RULES_CSWAP_SECONDS" cswap list --json 2>/dev/null </dev/null) || {
@@ -491,6 +501,10 @@ fm_account_rules_resolve() {
   local config=$1 project=$2 executable=$3 pin_config=$4 num root
   if [ -e "$pin_config/claude-account" ] || [ -L "$pin_config/claude-account" ]; then
     echo "error: config/account-rules replaces the per-home Claude account setting, so $pin_config/claude-account must be removed" >&2
+    return 1
+  fi
+  if [ ! -e "$config/account-rules" ] && [ ! -L "$config/account-rules" ]; then
+    echo "error: config/account-rules was removed while John's approval of it remains, so no Claude worker launches; John retires the rules by removing config/account-rules.approved too" >&2
     return 1
   fi
   fm_account_rules_approved "$config" || return 1

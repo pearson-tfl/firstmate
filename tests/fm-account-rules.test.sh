@@ -112,6 +112,13 @@ test_a_project_rule_limits_the_choice_to_its_accounts() {
   out=$(spawn_ship rules-project); rc=$?
   expect_code 0 "$rc" "a project-scoped spawn should succeed: $out"
   assert_contains "$out" "account=cswap:5" "the project's own accounts should win over less-used others"
+
+  new_case project-case BB-Signal-Prototype
+  fm_test_cswap_accounts "$CASE" 1 1:0:1 4:3:30 5:1:20
+  write_rules 'project bb-signal-prototype 5 4'
+  out=$(spawn_ship rules-project-case); rc=$?
+  expect_code 0 "$rc" "a project whose directory differs in case should succeed: $out"
+  assert_contains "$out" "account=cswap:5" "the project rule should match its directory without regard to case"
   pass "a project rule limits the choice to that project's accounts"
 }
 
@@ -160,6 +167,12 @@ test_a_rules_change_without_john_approval_refuses() {
   out=$(spawn_ship "$id" 2>&1); rc=$?
   expect_code 0 "$rc" "the same rules should launch once John approves them: $out"
   assert_contains "$out" "account=cswap:1" "the approved rules should now govern the choice"
+
+  # Removing the rules file while its approval remains is a change too.
+  rm -f "$HOME_DIR/config/account-rules" "$CASE/cswap-runs"
+  out=$(spawn_ship rules-removed 2>&1); rc=$?
+  expect_code 1 "$rc" "a removed rules file with its approval left should refuse: $out"
+  assert_refused_before_launch rules-removed "$out" "config/account-rules was removed while John's approval of it remains"
   pass "a rules change launches nothing until John approves it at a terminal"
 }
 
