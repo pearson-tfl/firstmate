@@ -182,6 +182,32 @@ test_omp_launch() {
   pass "omp launch: a worker carries no inherited holder and a secondmate carries its marker's name"
 }
 
+# A raw launch command is the escape hatch for a tool fm-spawn has no template
+# for, so the shared prefix may not reach it. A compound command and an
+# untemplated tool must still start with no inherited holder name.
+test_raw_launch_command() {
+  local raw id rec out status seen
+  for raw in compound untemplated; do
+    id="holder-raw-$raw-a1"
+    rec=$(make_case "raw-$raw" codex "$id")
+    read_case "$rec"
+    install_lock_probe "$FAKEBIN_DIR" holderprobe "$HOME_DIR"
+    case "$raw" in
+      compound) out=$(run_case_spawn "$id" "$PROJ_DIR" --mode no-mistakes --yolo off "cd . && holderprobe --go") ;;
+      untemplated) out=$(run_case_spawn "$id" "$PROJ_DIR" --mode no-mistakes --yolo off "holderprobe --go") ;;
+    esac
+    status=$?
+    expect_code 0 "$status" "raw $raw launch spawn should succeed: $out"
+    seen=$(emitted_launch) || fail "raw $raw launch: the emitted launch failed to run: $seen"
+    assert_contains "$seen" "holder=unset" \
+      "a raw $raw launch with FM_LOCK_HOLDER=$INHERITED inherited must carry no holder name"
+    assert_contains "$seen" "main is held by $INHERITED; read-only" \
+      "a raw $raw launch's claim on main must be refused as read-only"
+  done
+  pass "raw launch command: a compound or untemplated launch carries no inherited holder"
+}
+
 test_shared_prefix_launch
+test_raw_launch_command
 test_cursor_launch
 test_omp_launch

@@ -679,9 +679,10 @@
 # cursor and polytoken templates that carry their own env - and a --secondmate
 # launch is then given its home's .fm-secondmate-home marker name in that same
 # env, after the strip. polytoken's FM_* sweep keeps the name so its env stage
-# decides it. A raw launch command is given the same shared prefix only when
-# its harness uses that prefix. FM_LOCK_HOLDER is never exported from a shell
-# profile; main's own name rides a per-command prefix.
+# decides it. The launch shell also unsets the name, or exports the secondmate's,
+# before anything else runs, so a raw or compound launch command is covered too.
+# FM_LOCK_HOLDER is never exported from a shell profile; main's own name rides a
+# per-command prefix.
 # Unless config/keep-ai-trailers is present, every claude launch carries the
 # attribution-off policy in its per-launch --settings JSON, so a spawned worker
 # never writes a Co-Authored-By trailer, Claude-Session link, or generated-with
@@ -4145,14 +4146,9 @@ if [ "$KIND" = secondmate ]; then
   }
   PROJ_ABS=$(validate_firstmate_home_for_spawn "$ID" "$FIRSTMATE_HOME")
   # The launched secondmate claims its own home under its marker's name
-  # (bin/fm-lock.sh named holder); the launch-holder contract is in the header.
-  IFS= read -r SECONDMATE_LOCK_HOLDER < "$PROJ_ABS/$SUB_HOME_MARKER" || SECONDMATE_LOCK_HOLDER=
-  case "$SECONDMATE_LOCK_HOLDER" in
-    '' | *[!A-Za-z0-9._-]*)
-      echo "error: secondmate home $PROJ_ABS has a marker that is not a valid lock holder name (letters, digits, dot, underscore or dash); refusing to launch it without its own holder name" >&2
-      exit 1
-      ;;
-  esac
+  # (launch-holder contract, header). The home check above already pinned the
+  # marker, read the same way, to this validated task id.
+  SECONDMATE_LOCK_HOLDER=$(cat "$PROJ_ABS/$SUB_HOME_MARKER")
   if [ -e "$DATA/secondmates.md" ] || [ -L "$DATA/secondmates.md" ]; then
     if ! secondmate_registry_validate_bindings "$DATA/secondmates.md" resolve_path "$ID" "$FIRSTMATE_HOME"; then
       echo "error: $SECONDMATE_REGISTRY_ERROR" >&2
@@ -7646,6 +7642,13 @@ fi
 # "$FM_TASK_INBOX" instead of a path that grows with the home's depth. Like the
 # kill switch below it is an export statement, so it survives a compound raw
 # launch and the launch-env-allowlist `env -i` wrapper.
+# Launch-holder backstop (header): the env-level strip and set above reach only
+# templated commands, so a raw or compound launch is covered here, in the shell.
+if [ "$KIND" = secondmate ]; then
+  LAUNCH="export FM_LOCK_HOLDER=$(shell_quote "$SECONDMATE_LOCK_HOLDER"); $LAUNCH"
+else
+  LAUNCH="unset FM_LOCK_HOLDER; $LAUNCH"
+fi
 LAUNCH="export FM_TASK_INBOX=$(shell_quote "$STATE_REAL/$ID.inbox"); $LAUNCH"
 LAUNCH="export COMPACT_ADVISER_DISABLE=1; $LAUNCH"
 # When the live-harness gate has exported DISABLE_AUTOUPDATER into this spawn's
