@@ -1476,7 +1476,7 @@ Firstmate runs it as `<command> --line --role <role> --repo <worktree> --base-se
 The worker receives the line's settings, laid over Firstmate's own, its tool list, its permission arguments in place of `config/claude-permission-mode`'s flag, its settings sources, its plugin and design arguments, and its MCP map under `--strict-mcp-config`.
 The line's model and effort pins are not applied: `--model` and `--effort` remain the launch's axes.
 The line's standing text is not applied: the worker's instructions remain its standing text.
-A missing or non-executable command, a command that fails, a line with an empty tool list, or a line that is not the expected JSON refuses the spawn with that command's own words.
+A missing or non-executable command, a command that fails, a line with an empty tool list, or a line that is not the expected JSON refuses the spawn and names the cause.
 The task record keeps the role as `loadout=`, and a relaunch reuses it.
 
 ### Workflows lever

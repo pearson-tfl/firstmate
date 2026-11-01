@@ -2738,7 +2738,7 @@ claude_loadout_line() {
       | map(@sh) | join(" ") + " "'); then
     return 0
   fi
-  echo "error: the loadout command's line for role '$LOADOUT_ROLE' is not the --line pro forma: $line" >&2
+  echo "error: the loadout command's line for role '$LOADOUT_ROLE' is not a usable --line pro forma (an empty tool list, or not the expected JSON): $line" >&2
   return 1
 }
 
