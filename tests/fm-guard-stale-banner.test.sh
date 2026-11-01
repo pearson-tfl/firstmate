@@ -67,7 +67,8 @@ run_guard_case_read_only() {
 # beacon with no live watcher process is the healthy mid-turn state.
 run_guard_case_autoarm() {
   local dir=$1
-  FM_ROOT_OVERRIDE="$(case_root "$dir")" \
+  FM_LOCK_HOLDER=pocock \
+    FM_ROOT_OVERRIDE="$(case_root "$dir")" \
     FM_HOME="$(case_home "$dir")" \
     FM_GUARD_GRACE=999 \
     FM_SUPERVISION_MODEL=autoarm \
@@ -86,9 +87,9 @@ record_aged_rewake_epoch() {
   touch -t 202001010000 "$home/state/.claude-autoarm-epoch"
 }
 
-record_session_lock_pid() {
-  local home=$1 pid=$2
-  printf '%s\n' "$pid" > "$home/state/.lock"
+record_session_lock_line() {  # <home> <line 1: a pid or holder:<name>>
+  local home=$1 line=$2
+  printf '%s\n' "$line" > "$home/state/.lock"
 }
 
 # The Pi extension model: .pi/extensions/fm-primary-pi-watch.ts tears the watcher
@@ -467,37 +468,42 @@ test_autoarm_stale_episode_is_stable() {
 # The send-time false alarm on a long Claude handling turn: the between-turns
 # watcher has already exited, the beacon is older than grace, and the auto-arm
 # ledger still shows a healthy rewake with no failure markers while the session
-# lock names a live pid. Turn-end will re-arm, so the pull guard must stay silent.
+# lock names main's holder, holder:pocock. Turn-end will re-arm, so the pull
+# guard must stay silent.
 test_autoarm_long_handling_turn_stays_silent() {
-  local dir home out pid
+  local dir home out
   dir=$(make_guard_case autoarm-long-turn)
   home=$(case_home "$dir")
-  sleep 60 &
-  pid=$!
-  record_aged_rewake_epoch "$home" "$pid"
-  record_session_lock_pid "$home" "$pid"
+  record_aged_rewake_epoch "$home" holder:pocock
+  record_session_lock_line "$home" holder:pocock
   out=$(run_guard_case_autoarm "$dir")
-  kill "$pid" 2>/dev/null || true
-  wait "$pid" 2>/dev/null || true
   [ -z "$out" ] \
     || fail "a long auto-arm handling turn past grace must stay silent, got: $out"
   assert_absent "$home/state/.guard-watcher-stale-banner" \
     "a healthy long handling turn must not open a down-episode"
-  pass "fm-guard stale banner: auto-arm long handling turn with a healthy rewake stays silent"
+  pass "fm-guard stale banner: auto-arm long handling turn under holder:pocock with a healthy rewake stays silent"
 }
 
 # Drive the long-turn signals apart on the same stale beacon. Losing any one
 # healthy-generation signal must restore the banner; the stale beacon alone
 # is not enough to stay quiet, and adding a failure marker is not either.
+# Every case binds the rewake to holder:pocock except dead-lock: a named holder
+# never expires, so only a legacy pid line has a liveness signal to lose.
 test_autoarm_long_turn_requires_every_healthy_signal() {
-  local dir home out pid replacement_pid='' case_name
+  local dir home out pid case_name
   for case_name in no-epoch failed-outcome failure-notified failure-alarmed dead-lock missing-lock changed-lock moved-recovery later-beacon; do
     dir=$(make_guard_case "autoarm-long-turn-$case_name")
     home=$(case_home "$dir")
-    sleep 60 &
-    pid=$!
-    record_aged_rewake_epoch "$home" "$pid"
-    record_session_lock_pid "$home" "$pid"
+    pid=
+    if [ "$case_name" = dead-lock ]; then
+      sleep 60 &
+      pid=$!
+      record_aged_rewake_epoch "$home" "$pid"
+      record_session_lock_line "$home" "$pid"
+    else
+      record_aged_rewake_epoch "$home" holder:pocock
+      record_session_lock_line "$home" holder:pocock
+    fi
     case "$case_name" in
       no-epoch)
         rm -f "$home/state/.claude-autoarm-epoch"
@@ -521,9 +527,7 @@ test_autoarm_long_turn_requires_every_healthy_signal() {
         rm -f "$home/state/.lock"
         ;;
       changed-lock)
-        sleep 60 &
-        replacement_pid=$!
-        record_session_lock_pid "$home" "$replacement_pid"
+        record_session_lock_line "$home" holder:other-main
         ;;
       moved-recovery)
         printf 'pending:handling:later-turn-generation\n' > "$home/state/.watcher-down"
@@ -535,9 +539,6 @@ test_autoarm_long_turn_requires_every_healthy_signal() {
     out=$(run_guard_case_autoarm "$dir")
     [ -z "$pid" ] || kill "$pid" 2>/dev/null || true
     [ -z "$pid" ] || wait "$pid" 2>/dev/null || true
-    [ -z "$replacement_pid" ] || kill "$replacement_pid" 2>/dev/null || true
-    [ -z "$replacement_pid" ] || wait "$replacement_pid" 2>/dev/null || true
-    replacement_pid=
     [ "$(count_text "$out" "WATCHER DOWN - SUPERVISION IS OFF")" -eq 1 ] \
       || fail "auto-arm long-turn health must not survive $case_name; guard output: $out"
     assert_contains "$out" "no watcher has a fresh beacon" \
@@ -570,21 +571,17 @@ test_autoarm_open_claim_does_not_explain_stale_beacon() {
 # The long-turn tolerance is a Claude auto-arm carve-out. The same leftover
 # rewake ledger must not silence Pi/extension or persistent primaries.
 test_autoarm_long_turn_does_not_silence_other_models() {
-  local dir home out pid model
+  local dir home out model
   for model in persistent extension; do
     dir=$(make_guard_case "autoarm-carveout-$model")
     home=$(case_home "$dir")
-    sleep 60 &
-    pid=$!
-    record_aged_rewake_epoch "$home" "$pid"
-    record_session_lock_pid "$home" "$pid"
+    record_aged_rewake_epoch "$home" holder:pocock
+    record_session_lock_line "$home" holder:pocock
     if [ "$model" = extension ]; then
       out=$(run_guard_case_extension "$dir")
     else
       out=$(run_guard_case "$dir")
     fi
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
     [ "$(count_text "$out" "WATCHER DOWN - SUPERVISION IS OFF")" -eq 1 ] \
       || fail "a $model primary must still alarm on a stale beacon despite a leftover rewake epoch: $out"
   done
