@@ -2708,11 +2708,11 @@ spawn_claude_task_channel_statement() {
 #                            the base; the workflows lever re-asserted on top)
 #   CLAUDE_LOADOUT_PERM      the role's permission argv, quoted, replacing
 #                            config/claude-permission-mode's flag
-#   CLAUDE_LOADOUT_ARGS      the role's --tools, settings sources, plugin and
-#                            design argv, then --mcp-config and the boolean
-#                            --strict-mcp-config, so the variadic MCP flag can
-#                            never swallow the brief doorbell that follows,
-#                            then settings sources, as launch.py orders them.
+#   CLAUDE_LOADOUT_ARGS      in order: --tools, the plugin and design argv,
+#                            --mcp-config with the boolean --strict-mcp-config
+#                            after it (so the variadic MCP flag never swallows
+#                            the brief doorbell), and --setting-sources last,
+#                            as launch.py orders them.
 # An empty tool list refuses: claude reads it as no built-in tools at all.
 # The line's model and effort pins are not applied: Firstmate's --model and
 # --effort stay the launch's axes. A command that fails, or a line that is not
