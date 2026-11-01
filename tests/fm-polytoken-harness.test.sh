@@ -852,6 +852,7 @@ case "${1:-}" in
           [ -f "$launch" ] || exit 0
           cat "$launch" >>"${PTFAKE_LAUNCH_LINE_LOG:?}"
           AGENT=1 CLAUDECODE=1 ORCA_X=1 FM_FOO=1 FM_TASK_ID=seeded-task FM_TASK_INBOX=seeded-inbox \
+            FM_LOCK_HOLDER=pocock \
             bash -c "$(cat "$launch")" >>"${PTFAKE_LAUNCH_STDOUT:-/dev/null}" 2>&1 || true
           ;;
       esac
@@ -978,6 +979,27 @@ test_polytoken_launch_carries_the_hybrid_contract() {
   assert_contains "$cfg" "default_permission_matcher: bypass" \
     "the mirrored worker config must enforce the unattended posture"
   pass "fm-spawn: the polytoken launch carries the hybrid contract end to end"
+}
+
+# polytoken's FM_* sweep keeps FM_LOCK_HOLDER so its env stage decides the name
+# (bin/fm-spawn.sh header, "Launch holder"). polytoken is crewmate/scout only,
+# so that stage always strips it: a worker started from a pane and a spawn that
+# both carry main's name pocock must launch with no holder name at all.
+test_polytoken_launch_strips_an_inherited_lock_holder() {
+  local id rec out rc envlog
+  id="pt-holder-z1-$$"
+  rec=$(make_polytoken_spawn_case holder "$id")
+  read_polytoken_spawn_record "$rec"
+  out=$(FM_LOCK_HOLDER=pocock run_polytoken_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" \
+    --model zai/glm-5.3-flash --effort low)
+  rc=$?
+  expect_code 0 "$rc" "polytoken spawn with an inherited holder should succeed (output: $out)"
+  envlog="$CASE_DIR/polytoken-env.log"
+  [ -s "$envlog" ] || fail "the fake polytoken must have recorded its launch environment"
+  ! grep -q '^FM_LOCK_HOLDER=' "$envlog" \
+    || fail "a polytoken worker must not inherit main's holder name: $(grep '^FM_LOCK_HOLDER=' "$envlog")"
+  grep -qx 'FM_TASK_ID=seeded-task' "$envlog" || fail "the holder strip must leave the launch-owned FM_TASK_ID"
+  pass "fm-spawn: a polytoken worker launches with no inherited lock holder name"
 }
 
 test_polytoken_effort_maps_to_nearest_listed_level() {
@@ -1211,6 +1233,7 @@ test_polytoken_rest_interrupt_settles_the_turn
 test_polytoken_interrupt_close_spares_a_reopened_turn
 test_polytoken_turn_settled_reads_the_typed_sync_verdict
 test_polytoken_launch_carries_the_hybrid_contract
+test_polytoken_launch_strips_an_inherited_lock_holder
 test_polytoken_effort_maps_to_nearest_listed_level
 test_polytoken_missing_axes_refuse_before_pane_creation
 test_polytoken_unlisted_model_refuses_before_pane_creation
