@@ -618,8 +618,8 @@ EOF
 
 # A hand-over between named holders goes through main's release, which takes the
 # claim lock the mutating sweep holds: while the sweep runs, the release is a
-# wait-and-retry refusal that changes nothing, so the next holder cannot claim
-# underneath the sweep.
+# wait-and-retry refusal that changes nothing, so the lock stays main's (another
+# name is refused outright while it does) until the sweep has finished.
 test_lock_takeover_stays_read_only_while_a_sweep_holds_the_lease() {
   local rec home root log out rc started elapsed waited=0
   rec=$(new_world sweep-lease)

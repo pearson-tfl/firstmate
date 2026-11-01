@@ -46,9 +46,10 @@ make_primary() {
   : > "$dir/AGENTS.md"
 }
 
-run_nudge() {
+run_nudge() {  # <root> [VAR=value...]: extra environment for the hook
   local root=$1
-  FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" FM_HOME="$root" "$NUDGE"
+  shift
+  env "$@" FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" FM_HOME="$root" "$NUDGE"
 }
 
 expect_silent_zero() {
@@ -123,12 +124,19 @@ test_missing_state_is_silent() {
   pass "fm-sessionstart-nudge: a checkout without state is silent"
 }
 
+test_owned_pid_lock_is_silent() {
+  local root="$TMP_ROOT/already-ran-pid"
+  make_primary "$root"
+  printf '%s\n' "$$" > "$root/state/.lock"
+  expect_silent_zero "owned pid lock nudge" run_nudge "$root"
+  pass "fm-sessionstart-nudge: a lock holder in process ancestry is already run"
+}
+
 test_owned_lock_is_silent() {
   local root="$TMP_ROOT/already-ran"
   make_primary "$root"
   printf 'holder:pocock\n' > "$root/state/.lock"
-  expect_silent_zero "owned lock nudge" env FM_LOCK_HOLDER=pocock \
-    FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" FM_HOME="$root" "$NUDGE"
+  expect_silent_zero "owned lock nudge" run_nudge "$root" FM_LOCK_HOLDER=pocock
   pass "fm-sessionstart-nudge: the named holder that carries the lock's name is already run"
 }
 
@@ -139,13 +147,11 @@ test_foreign_named_lock_still_nudges() {
   make_primary "$root"
   printf 'holder:pocock\n' > "$root/state/.lock"
   status=0
-  out=$(env FM_LOCK_HOLDER=claude FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" \
-    FM_HOME="$root" "$NUDGE") || status=$?
+  out=$(run_nudge "$root" FM_LOCK_HOLDER=claude) || status=$?
   expect_code 0 "$status" "another holder's nudge"
   [ "$out" = "$NUDGE_LINE" ] || fail "a session named claude was not nudged under holder:pocock, got: $out"
   status=0
-  out=$(env -u FM_LOCK_HOLDER FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" \
-    FM_HOME="$root" "$NUDGE") || status=$?
+  out=$(run_nudge "$root" -u FM_LOCK_HOLDER) || status=$?
   expect_code 0 "$status" "an unnamed session's nudge"
   [ "$out" = "$NUDGE_LINE" ] || fail "an unnamed session was not nudged under holder:pocock, got: $out"
   pass "fm-sessionstart-nudge: a named lock still nudges a session that does not carry its name"
@@ -1140,6 +1146,7 @@ test_gate_common_dir_is_silent
 test_unmarked_linked_worktree_is_silent
 test_linked_secondmate_primary_nudges
 test_missing_state_is_silent
+test_owned_pid_lock_is_silent
 test_owned_lock_is_silent
 test_foreign_named_lock_still_nudges
 test_namespace_pid1_lock_holder_is_silent

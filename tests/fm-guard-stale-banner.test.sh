@@ -78,10 +78,10 @@ run_guard_case_autoarm() {
 # Age the rewake ledger into the past so a passing long-turn case cannot rest on
 # epoch freshness: a handling turn that has already outrun grace still has this
 # shape, which is the false alarm this suite now pins.
-record_aged_rewake_epoch() {
-  local home=$1 session_pid=$2 recovery=${3:-guard-test-generation}
+record_aged_rewake_epoch() {  # <home> <session lock line 1: a pid or holder:<name>> [recovery]
+  local home=$1 session=$2 recovery=${3:-guard-test-generation}
   printf 'epoch=7 owner_pid=1 outcome=rewake updated_at=1 session_pid=%s recovery_generation=%s\n' \
-    "$session_pid" "$recovery" > "$home/state/.claude-autoarm-epoch"
+    "$session" "$recovery" > "$home/state/.claude-autoarm-epoch"
   printf 'acked:handling:%s\n' "$recovery" > "$home/state/.watcher-down"
   touch -t 201901010000 "$home/state/.last-watcher-beat"
   touch -t 202001010000 "$home/state/.claude-autoarm-epoch"

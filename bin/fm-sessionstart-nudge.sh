@@ -22,7 +22,7 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 fm_is_gate_agent "$FM_ROOT" && exit 0
 fm_primary_scope_matches "$FM_ROOT" "$STATE" || exit 0
 
-lock_is_in_ancestry() {
+session_holds_lock() {
   local lock_pid pid=$$ _
   [ -f "$STATE/.lock" ] || return 1
   IFS= read -r lock_pid < "$STATE/.lock" 2>/dev/null || return 1
@@ -56,7 +56,7 @@ lock_is_in_ancestry() {
   return 1
 }
 
-lock_is_in_ancestry && exit 0
+session_holds_lock && exit 0
 nudge=
 fm_operational_input_encode session-start \
   "Run \`bin/fm-session-start.sh\` now, exactly once, before executing any other instructions." \
