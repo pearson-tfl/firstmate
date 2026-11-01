@@ -827,7 +827,6 @@ test_main_owned_actions_refuse_the_branch_actor() {
 
 test_home_without_branch_is_untouched() {
   local home out status
-  local -x FM_LOCK_HOLDER=test-main
   home="$TMP_ROOT/untouched-home"
   mkdir -p "$home/state"
 
@@ -867,9 +866,10 @@ test_home_without_branch_is_untouched() {
   [ ! -e "$home/state/.lease-task-reused" ] || fail "guard kept a leftover Pi lease without a session lock"
 
   # A leftover lease whose pid is alive but is not the current lock holder - a
-  # session that exited while its pid lives on, here under a named holder - is
-  # stale for a Claude main.
-  printf 'holder:test-main\n' > "$home/state/.lock"
+  # session that exited while its pid lives on - is stale for a Claude main.
+  # This seed stays a pid line: the case pins the lease-pid against lock-pid
+  # mismatch (fm_lease_live), and a holder line would make every lease stale.
+  printf '%s\n' "$$" > "$home/state/.lock"
   printf 'branch\t%s\t123\n' "$PPID" > "$home/state/.lease-task-reused"
   # The positional parameter belongs to the nested shell.
   # shellcheck disable=SC2016

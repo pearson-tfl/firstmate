@@ -2058,8 +2058,9 @@ SH
   fi
   chmod +x "$dir/bin/fm-watch-arm.sh" 2>/dev/null || true
   # Each Stop fires both hooks as children of one fake Claude session process
-  # that holds state/.lock, as the harness does: the guard then recognizes the
-  # lock as its own session's however the test itself is launched.
+  # that claims state/.lock under the named holder (FM_LOCK_HOLDER), as the
+  # harness does: the guard then recognizes the lock as its own session's
+  # however the test itself is launched.
   cat > "$dir/stop-driver.sh" <<'SH'
 i=$1 variant=$2
 printf 'holder:%s\n' "$FM_LOCK_HOLDER" > "$FM_HOME/state/.lock"
