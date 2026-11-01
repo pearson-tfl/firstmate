@@ -409,9 +409,9 @@ test_pi_package_resolution() (
 
   out=$(PATH="$dir/path:/usr/bin:/bin" FM_PI_PACKAGE_DIR='' fm_pi_package_dir) \
     || fail "managed Pi install: package dir not resolved"
-  assert_equals "$out" "$hoisted/@earendil-works/pi-coding-agent" "managed Pi install resolves the current release's package"
+  assert_equals "$hoisted/@earendil-works/pi-coding-agent" "$out" "managed Pi install resolves the current release's package"
   for dep in @earendil-works/pi-tui @earendil-works/pi-ai typebox; do
-    assert_equals "$(fm_pi_package_dep "$out" "$dep")" "$hoisted/$dep" "hoisted $dep resolves beside the package"
+    assert_equals "$hoisted/$dep" "$(fm_pi_package_dep "$out" "$dep")" "hoisted $dep resolves beside the package"
   done
 
   nested="$dir/global/lib/node_modules/@earendil-works/pi-coding-agent"
@@ -422,11 +422,11 @@ test_pi_package_resolution() (
   ln -s ../lib/node_modules/@earendil-works/pi-coding-agent/dist/cli.js "$dir/global/bin/pi"
   out=$(PATH="$dir/global/bin:/usr/bin:/bin" FM_PI_PACKAGE_DIR='' fm_pi_package_dir) \
     || fail "npm global Pi install: package dir not resolved"
-  assert_equals "$out" "$nested" "npm global Pi install resolves the package behind its bin link"
-  assert_equals "$(fm_pi_package_dep "$out" typebox)" "$nested/node_modules/typebox" "nested dependency wins over a hoisted one"
+  assert_equals "$nested" "$out" "npm global Pi install resolves the package behind its bin link"
+  assert_equals "$nested/node_modules/typebox" "$(fm_pi_package_dep "$out" typebox)" "nested dependency wins over a hoisted one"
 
   out=$(PATH="$dir/global/bin:/usr/bin:/bin" FM_PI_PACKAGE_DIR="$dir/override" fm_pi_package_dir)
-  assert_equals "$out" "$dir/override" "FM_PI_PACKAGE_DIR overrides discovery"
+  assert_equals "$dir/override" "$out" "FM_PI_PACKAGE_DIR overrides discovery"
 
   printf '#!/bin/sh\nexit 0\n' > "$dir/path/pi-standalone"
   mkdir -p "$dir/standalone"

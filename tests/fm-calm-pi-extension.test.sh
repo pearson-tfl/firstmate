@@ -18,12 +18,10 @@ WATCH_EXT="$ROOT/.pi/extensions/fm-primary-pi-watch.ts"
 OPERATIONAL_INPUT="$ROOT/bin/fm-operational-input.sh"
 PI_OPERATIONAL_INPUT="$ROOT/.pi/extensions/lib/fm-operational-input.ts"
 PI_PACKAGE_DIR=$(fm_pi_package_dir) || PI_PACKAGE_DIR=''
-# Where Node resolves Pi's own dependencies from the package: nested (npm
-# global install) or hoisted beside it (Pi 1.x managed install).
+# Pi's own dependencies, nested or hoisted (tests/lib.sh fm_pi_package_dep).
 PI_TUI_DIR=$(fm_pi_package_dep "$PI_PACKAGE_DIR" @earendil-works/pi-tui) || PI_TUI_DIR=''
-PI_AI_DIR=$(fm_pi_package_dep "$PI_PACKAGE_DIR" @earendil-works/pi-ai) || PI_AI_DIR=''
 PI_TYPEBOX_DIR=$(fm_pi_package_dep "$PI_PACKAGE_DIR" typebox) || PI_TYPEBOX_DIR=''
-export PI_TUI_DIR PI_AI_DIR PI_TYPEBOX_DIR
+export PI_TUI_DIR
 TMUX_SOCKET="fm-calm-$$"
 TMUX_SESSION="fm-calm-e2e"
 # Verified against Pi 0.81.1 and 0.82.0 (docs/calm-mode-feasibility.md). This is
