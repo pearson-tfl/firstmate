@@ -2014,15 +2014,9 @@ fm_failure_episode_reset() {
 #     whichever id the sidecar carries after lock recovery. An entry written by
 #     a build before these fields existed records neither and falls back to the
 #     descent signal alone.
-#     Under a named holder (state/.lock line 1 holder:<name>, written by
-#     bin/fm-lock.sh for a caller that sets FM_LOCK_HOLDER) there is no pid to
-#     descend from. A claim taken by that holder records owner_holder=<name>
-#     and, when the session publishes CLAUDE_PID, owner_harness_pid=<pid>; it
-#     is reachable while line 1 still names that holder and the recorded pid
-#     is a live harness. Two runs share one name, so the pid is what fails a
-#     dead run's orphan; a claim taken without CLAUDE_PID is bound by the name
-#     alone and cannot tell that orphan apart. A rewake's session_pid is then
-#     the holder line itself.
+#     A named holder (state/.lock line 1 holder:<name>) binds the claim by
+#     owner_holder and owner_harness_pid instead: docs/turnend-guard.md,
+#     "Auto-arm generation claim", owns that rule.
 #   - Every firing DEFERS (exits 0) to an open claim; anything else - a
 #     terminal outcome, a dead or identity-mismatched owner, a stuck owner, an
 #     identityless entry, or no claim at all - lets the next firing take
