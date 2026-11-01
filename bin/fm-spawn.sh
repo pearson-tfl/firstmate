@@ -2706,8 +2706,10 @@ spawn_claude_task_channel_statement() {
 # launch line in this worktree, over Firstmate's own settings, and sets:
 #   CLAUDE_LOADOUT_SETTINGS  the --settings value (the role's posture laid over
 #                            the base; the workflows lever re-asserted on top)
-#   CLAUDE_LOADOUT_PERM      the role's permission argv, quoted, replacing
-#                            config/claude-permission-mode's flag
+#   CLAUDE_LOADOUT_PERM      the role's allow and deny lists, quoted, after
+#                            config/claude-permission-mode's flag; the role's
+#                            own permission mode is dropped, so approval
+#                            failover and the recorded approval_mode hold
 #   CLAUDE_LOADOUT_ARGS      in order: --tools, the plugin and design argv,
 #                            --mcp-config with the boolean --strict-mcp-config
 #                            after it (so the variadic MCP flag never swallows
@@ -2715,8 +2717,11 @@ spawn_claude_task_channel_statement() {
 #                            as launch.py orders them.
 # An empty tool list refuses: claude reads it as no built-in tools at all.
 # The line's model and effort pins are not applied: Firstmate's --model and
-# --effort stay the launch's axes. A command that fails, or a line that is not
-# the --line JSON, refuses the spawn with the command's own words.
+# --effort stay the launch's axes. A line whose settings sources leave out
+# `local`, or whose settings set disableAllHooks, refuses: Firstmate's worker
+# hooks live in the worktree's .claude/settings.local.json. A command that
+# fails, or a line that is not the --line JSON, refuses the spawn; the line
+# itself is never echoed, because its settings and MCP map can carry secrets.
 claude_loadout_line() {
   local base=$1 line err
   err=$(mktemp "${TMPDIR:-/tmp}/fm-loadout-err.XXXXXX") || return 1
@@ -2728,9 +2733,19 @@ claude_loadout_line() {
   rm -f "$err"
   if CLAUDE_LOADOUT_SETTINGS=$(printf '%s' "$line" | jq -er --argjson off "$WORKFLOWS_DISABLE" \
     '.settings | if (try fromjson catch null) | type == "object" then fromjson + {disableWorkflows: $off} | tojson else . end') \
-    && CLAUDE_LOADOUT_PERM=$(printf '%s' "$line" | jq -er '.permission_args | map(@sh) | join(" ")') \
+    && CLAUDE_LOADOUT_PERM=$(printf '%s' "$line" | jq -er --arg own "$CLAUDE_PERM_FLAG" '
+      [foreach .permission_args[] as $a ({skip: false};
+        if .skip then {skip: false, out: null}
+        elif $a == "--permission-mode" then {skip: true, out: null}
+        elif $a == "--dangerously-skip-permissions" or ($a | startswith("--permission-mode=")) then {skip: false, out: null}
+        else {skip: false, out: $a} end; .out) | select(. != null)]
+      | $own + (if length > 0 then " " + (map(@sh) | join(" ")) else "" end)') \
     && CLAUDE_LOADOUT_ARGS=$(printf '%s' "$line" | jq -er '
       if (.tools | length) == 0 then error("empty tool list") else . end
+      | if .setting_sources != "all" and (.setting_sources | split(",") | index("local") | not)
+        then error("settings sources leave out local") else . end
+      | if (.settings | try fromjson catch null | type == "object" and .disableAllHooks == true)
+        then error("disableAllHooks") else . end
       | (["--tools", .tools]
         + (.plugin_args // []) + (.design_args // [])
         + ["--mcp-config", .mcp, "--strict-mcp-config"]
@@ -2738,7 +2753,7 @@ claude_loadout_line() {
       | map(@sh) | join(" ") + " "'); then
     return 0
   fi
-  echo "error: the loadout command's line for role '$LOADOUT_ROLE' is not a usable --line pro forma (an empty tool list, or not the expected JSON): $line" >&2
+  echo "error: the loadout command's line for role '$LOADOUT_ROLE' is not usable here: an empty tool list, settings sources without local or disableAllHooks (either would drop Firstmate's worker hooks), or not the --line JSON" >&2
   return 1
 }
 

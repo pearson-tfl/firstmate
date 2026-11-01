@@ -37,7 +37,7 @@ make_case() {
 # the role's skill posture and a contrary disableWorkflows laid over them, as
 # the real launch.py lays a role's launch settings over the base.
 install_loadout_stub() {
-  local code=${1:-0} tools=${2-Bash,Read,Edit} stub="$CASE_DIR/loadout-line"
+  local code=${1:-0} tools=${2-Bash,Read,Edit} sources=${3:-project,local} perm=${4:-'"--permission-mode", "auto", '} extra=${5:-} stub="$CASE_DIR/loadout-line"
   cat > "$stub" <<PY
 #!/usr/bin/env python3
 import json, sys
@@ -47,13 +47,13 @@ if $code:
     sys.exit($code)
 args = sys.argv[1:]
 base = json.loads(args[args.index("--base-settings") + 1])
-base.update({"skillOverrides": {"tdd": "off"}, "disableWorkflows": False})
+base.update({"skillOverrides": {"tdd": "off"}, "disableWorkflows": False$extra})
 print(json.dumps({
     "model": "role-model", "effort": "max", "tools": "$tools",
     "settings": json.dumps(base), "mcp": json.dumps({"mcpServers": {"fetch": {"command": "fetch-mcp"}}}),
     "standing": False, "system_text": "lane-context.md", "system_text_loading": "append",
-    "setting_sources": "project,local",
-    "permission_args": ["--permission-mode", "auto", "--allowedTools", "Bash(git:*)"],
+    "setting_sources": "$sources",
+    "permission_args": [$perm"--allowedTools", "Bash(git:*)"],
     "plugin_args": ["--plugin-dir", "/plugins/seo"], "design_args": []}))
 PY
   chmod +x "$stub"
@@ -118,11 +118,12 @@ test_spawn_starts_on_the_loadout_launch_string() {
   assert_equals "ARG=--strict-mcp-config" "$(printf '%s\n' "$seen" | grep -A2 -x 'ARG=--mcp-config' | sed -n 3p)" \
     "--strict-mcp-config should directly follow the MCP map"
   assert_equals "project,local" "$(arg_after "$seen" --setting-sources)" "the role's settings sources should reach the agent"
-  assert_equals "auto" "$(arg_after "$seen" --permission-mode)" "the role's permission mode should reach the agent"
   assert_equals "Bash(git:*)" "$(arg_after "$seen" --allowedTools)" "the role's allow list should reach the agent"
   assert_equals "/plugins/seo" "$(arg_after "$seen" --plugin-dir)" "the role's plugin arguments should reach the agent"
   printf '%s\n' "$seen" | grep -qx 'ARG=--dangerously-skip-permissions' \
-    && fail "the role's permission mode should replace Firstmate's own permission flag"
+    || fail "Firstmate's own permission flag should stand"
+  printf '%s\n' "$seen" | grep -qx 'ARG=--permission-mode' \
+    && fail "the role's permission mode should not replace Firstmate's"
   assert_equals '"off"' "$(settings_key "$seen" .feedbackDrafts)" "Firstmate's own settings should survive under the role's"
   assert_equals '{"tdd":"off"}' "$(settings_key "$seen" .skillOverrides)" "the role's skill posture should reach the agent"
   assert_equals "implement" "$(meta_value "$HOME_DIR" loadout lo-a1)" "the task record should name the loadout role"
@@ -222,6 +223,40 @@ test_workflows_lever() {
   pass "the workflows lever is off by default, on by flag or home default, and wins over a role's setting"
 }
 
+# Approval failover writes config/claude-permission-mode=auto; a role that
+# asks for bypass must not bring it back.
+test_loadout_keeps_firstmates_permission_mode() {
+  local out seen
+  make_case loadout-auto lo-g1
+  install_loadout_stub 0 Bash,Read project,local '"--dangerously-skip-permissions", '
+  printf 'auto\n' > "$HOME_DIR/config/claude-permission-mode"
+  out=$(run_spawn lo-g1 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --loadout implement)
+  expect_code 0 "$?" "a loadout spawn under auto should succeed: $out"
+  seen=$(probe_output 0) || fail "the emitted launch failed to run"
+  assert_equals "auto" "$(arg_after "$seen" --permission-mode)" "config/claude-permission-mode should stand over the role"
+  printf '%s\n' "$seen" | grep -qx 'ARG=--dangerously-skip-permissions' \
+    && fail "a role's bypass flag must not return after approval failover"
+  assert_equals "Bash(git:*)" "$(arg_after "$seen" --allowedTools)" "the role's allow list should still reach the agent"
+  assert_equals "auto" "$(meta_value "$HOME_DIR" approval_mode lo-g1)" "the record should report the mode actually launched"
+  pass "a loadout launch keeps config/claude-permission-mode and drops the role's own mode"
+}
+
+test_loadout_refuses_to_drop_worker_hooks() {
+  local out
+  make_case loadout-nolocal lo-h1
+  install_loadout_stub 0 Bash,Read user,project
+  out=$(run_spawn lo-h1 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --loadout implement)
+  expect_code 1 "$?" "settings sources without local should be refused: $out"
+  [ -s "$LAUNCH_LOG" ] && fail "a line that drops local settings must launch nothing"
+  make_case loadout-nohooks lo-h2
+  install_loadout_stub 0 Bash,Read all '' ', "disableAllHooks": True'
+  out=$(run_spawn lo-h2 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --loadout implement)
+  expect_code 1 "$?" "settings with disableAllHooks should be refused: $out"
+  assert_contains "$out" "worker hooks" "the refusal should say the worker hooks would be lost"
+  assert_not_contains "$out" "skillOverrides" "the refusal must not echo the line's settings"
+  pass "a loadout line that would drop Firstmate's worker hooks is refused without echoing it"
+}
+
 test_more_refusals() {
   local out status
   make_case loadout-notjson lo-f1
@@ -231,7 +266,8 @@ test_more_refusals() {
   out=$(run_spawn lo-f1 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --loadout implement)
   status=$?
   expect_code 1 "$status" "a line that is not the --line JSON should refuse the spawn: $out"
-  assert_contains "$out" "not a usable --line pro forma" "the refusal should say the line is not a usable pro forma"
+  assert_contains "$out" "not the --line JSON" "the refusal should name the unreadable line"
+  assert_not_contains "$out" "not-json" "the refusal must not echo the line"
   [ -s "$LAUNCH_LOG" ] && fail "an unreadable line must launch nothing"
 
   make_case loadout-noexec lo-f2
@@ -270,3 +306,5 @@ test_loadout_model_and_effort_stay_firstmates
 test_loadout_refusals
 test_workflows_lever
 test_more_refusals
+test_loadout_keeps_firstmates_permission_mode
+test_loadout_refuses_to_drop_worker_hooks

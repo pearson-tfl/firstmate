@@ -1473,10 +1473,12 @@ Neither setting reaches a secondmate's own agent, another runtime, or a raw laun
 `bin/fm-spawn.sh --harness claude --loadout <role>` asks this home's loadout command for that role's launch line in the task's worktree and starts the worker on it.
 The optional local, gitignored `config/loadout-command` names the loadout command as one absolute path to an executable on its first line.
 Firstmate runs it as `<command> --line --role <role> --repo <worktree> --base-settings <json>`, where the JSON is Firstmate's own claude settings for the launch, and reads the `--line` JSON it prints.
-The worker receives the line's settings, laid over Firstmate's own, its tool list, its permission arguments in place of `config/claude-permission-mode`'s flag, its settings sources, its plugin and design arguments, and its MCP map under `--strict-mcp-config`.
+The worker receives the line's settings, laid over Firstmate's own, its tool list, its allow and deny lists, its settings sources, its plugin and design arguments, and its MCP map under `--strict-mcp-config`.
+The line's own permission mode is dropped: `config/claude-permission-mode` stays the launch's mode, so approval failover holds and the task record reports the mode actually launched.
 The line's model and effort pins are not applied: `--model` and `--effort` remain the launch's axes.
 The line's standing text is not applied: the worker's instructions remain its standing text.
-A missing or non-executable command, a command that fails, a line with an empty tool list, or a line that is not the expected JSON refuses the spawn and names the cause.
+A line whose settings sources leave out `local`, or whose settings set `disableAllHooks`, refuses the spawn, because Firstmate's worker hooks live in the worktree's `.claude/settings.local.json`.
+A missing or non-executable command, a command that fails, a line with an empty tool list, or a line that is not the expected JSON refuses the spawn and names the cause without echoing the line, whose settings and MCP map can carry secrets.
 The task record keeps the role as `loadout=`, and a relaunch reuses it.
 
 ### Workflows lever
