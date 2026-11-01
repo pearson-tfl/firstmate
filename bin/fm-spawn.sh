@@ -681,6 +681,8 @@
 # env, after the strip. polytoken's FM_* sweep keeps the name so its env stage
 # decides it. The launch shell also unsets the name, or exports the secondmate's,
 # before anything else runs, so a raw or compound launch command is covered too.
+# The t3code backend has no launch shell, so it sets the name in the thread's
+# harness config instead: empty for a worker, the marker's name for a secondmate.
 # FM_LOCK_HOLDER is never exported from a shell profile; main's own name rides a
 # per-command prefix.
 # Unless config/keep-ai-trailers is present, every claude launch carries the
@@ -7707,6 +7709,10 @@ if [ "$BACKEND" = t3code ]; then
   if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
     T3CODE_ENV+=("FM_TASK_ID=$ID")
   fi
+  # Launch holder (header): this config can only set, so a worker's empty
+  # name overrides any name the provider instance inherited; fm-lock and the
+  # session-lock library read an empty name as no name.
+  T3CODE_ENV+=("FM_LOCK_HOLDER=$SECONDMATE_LOCK_HOLDER")
   if [ -n "$SPAWN_TRACEPARENT" ] && spawn_record_traceparent; then
     T3CODE_ENV+=("TRACEPARENT=$SPAWN_TRACEPARENT")
   fi
