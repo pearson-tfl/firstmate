@@ -231,7 +231,7 @@ test_more_refusals() {
   out=$(run_spawn lo-f1 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --loadout implement)
   status=$?
   expect_code 1 "$status" "a line that is not the --line JSON should refuse the spawn: $out"
-  assert_contains "$out" "not the --line pro forma" "the refusal should say the line is not the pro forma"
+  assert_contains "$out" "not a usable --line pro forma" "the refusal should say the line is not a usable pro forma"
   [ -s "$LAUNCH_LOG" ] && fail "an unreadable line must launch nothing"
 
   make_case loadout-noexec lo-f2
