@@ -37,10 +37,15 @@ set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
 # shellcheck source=bin/fm-tmux-lib.sh
 . "$ROOT/bin/fm-tmux-lib.sh"
 
 fm_live_gate opt-in FM_SUPERVISION_HOST_ATTENDED_LIVE_E2E claude tmux jq node perl git
+# Past the live gate, skipped by ruling on #5065: the fixture session seeds a pid on lock line 1
+# and relied on the deleted process-ancestry ownership; the supervision host is
+# inert until #5138.
+skip_file_5138
 
 CLAUDE_VERSION=$(claude --version 2>/dev/null | head -n 1)
 MODEL=${FM_SUPERVISION_HOST_ATTENDED_LIVE_MODEL:-haiku}

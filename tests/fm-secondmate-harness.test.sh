@@ -308,7 +308,7 @@ ROWS
 # A/C) pi-signed process identity and shared Pi marker behavior
 # ===========================================================================
 test_pi_signed_detection_and_session_lock_identity() {
-  local dir fakebin got
+  local dir fakebin got state
   dir="$TMP_ROOT/pi-signed-identity"
   fakebin=$(fm_fakebin "$dir")
   cat > "$fakebin/ps" <<'SH'
@@ -355,9 +355,12 @@ SH
   got=$(env -u CLAUDECODE -u GROK_AGENT PATH="$fakebin:$BASE_PATH" PI_CODING_AGENT=true FM_TEST_SIGNED_SHAPE=helper "$ROOT/bin/fm-harness.sh")
   [ "$got" = pi ] || fail "unrelated pi-signed-helper ancestry resolved '$got', expected pi"
 
-  got=$(PATH="$fakebin:$BASE_PATH" bash -c \
-    '. "$0/bin/fm-session-lock-lib.sh"; fm_harness_ancestry_pid' "$ROOT")
-  [ "$got" = 100 ] || fail "session-lock ancestry selected '$got', expected the inner Pi engine pid 100"
+  state="$dir/lock-state"
+  mkdir -p "$state"
+  PATH="$fakebin:$BASE_PATH" FM_STATE_OVERRIDE="$state" FM_LOCK_HOLDER=pi-main \
+    "$ROOT/bin/fm-lock.sh" >/dev/null 2>&1 || fail "the named holder could not acquire under shared signed-wrapper ancestry"
+  [ "$(head -n 1 "$state/.lock")" = holder:pi-main ] \
+    || fail "session lock line 1 was '$(head -n 1 "$state/.lock")', expected holder:pi-main"
   PATH="$fakebin:$BASE_PATH" bash -c \
     '. "$0/bin/fm-session-lock-lib.sh"; kill() { return 0; }; fm_harness_pid_alive 200' "$ROOT" \
     || fail "session-lock liveness rejected exact pi-signed holder"
@@ -370,7 +373,7 @@ SH
 }
 
 test_dash_leading_process_names_are_basename_operands() {
-  local dir fakebin got err status
+  local dir fakebin got err status state
   dir="$TMP_ROOT/dash-leading-process-names"
   fakebin=$(fm_fakebin "$dir")
   cat > "$fakebin/ps" <<'SH'
@@ -405,23 +408,14 @@ SH
   [ "$got" = codex ] || fail "dash-leading shell ancestry resolved '$got', expected codex"
   [ ! -s "$err" ] || fail "fm-harness wrote basename option noise for literal -zsh: $(cat "$err")"
 
-  err="$dir/fm-session-lock-ancestry.err"
-  got=$(PATH="$fakebin:$BASE_PATH" bash -c \
-    '. "$0/bin/fm-session-lock-lib.sh"; fm_harness_ancestry_pid' "$ROOT" 2>"$err")
-  [ "$got" = 4242 ] || fail "session-lock dash-leading ancestry selected '$got', expected pid 4242"
-  [ ! -s "$err" ] || fail "session-lock ancestry wrote basename option noise for literal -zsh: $(cat "$err")"
-
-  # Force the collision: pid 5252 is a real ancestor of the caller. Its
-  # -codex label belongs to the liveness probe only, so the walk must pass
-  # through it as an ordinary shell and still select 4242.
-  err="$dir/fm-session-lock-ancestry-collision.err"
-  collision_log="$dir/fm-session-lock-ancestry-collision.log"
-  got=$(FM_TEST_PS_PARENT=5252 FM_TEST_PS_LOG="$collision_log" PATH="$fakebin:$BASE_PATH" bash -c \
-    '. "$0/bin/fm-session-lock-lib.sh"; fm_harness_ancestry_pid' "$ROOT" 2>"$err")
-  [ "$got" = 4242 ] || fail "session-lock ancestry with pid 5252 as a real ancestor selected '$got', expected pid 4242"
-  assert_contains "$(cat "$collision_log")" "5252:" \
-    "session-lock collision ancestry did not query pid 5252"
-  [ ! -s "$err" ] || fail "session-lock collision ancestry wrote noise: $(cat "$err")"
+  err="$dir/fm-session-lock-holder.err"
+  state="$dir/lock-state"
+  mkdir -p "$state"
+  PATH="$fakebin:$BASE_PATH" FM_STATE_OVERRIDE="$state" FM_LOCK_HOLDER=codex-main \
+    "$ROOT/bin/fm-lock.sh" >/dev/null 2>"$err" || fail "the named holder could not acquire under a -zsh ancestry: $(cat "$err")"
+  [ "$(head -n 1 "$state/.lock")" = holder:codex-main ] \
+    || fail "session lock line 1 was '$(head -n 1 "$state/.lock")', expected holder:codex-main"
+  [ ! -s "$err" ] || fail "fm-lock wrote basename option noise for literal -zsh: $(cat "$err")"
 
   err="$dir/fm-session-lock-alive.err"
   FM_TEST_PS_LIVENESS_PROBE=1 PATH="$fakebin:$BASE_PATH" bash -c \

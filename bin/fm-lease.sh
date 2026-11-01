@@ -122,10 +122,9 @@ case "$CMD" in
     # session-lock holder), else the session-lock holder (state/.lock is the
     # harness pid), else this shell; without a matching session lock the
     # resulting lease is stale.
-    # A pinned holder that is alive but no longer line 1 was moved off by a
-    # same-session re-anchor (bin/fm-lock.sh), since another session takes the
-    # lock only from a holder that is no longer a live harness, so the claim
-    # records the live line 1.
+    # A pinned holder that is alive but no longer line 1 was replaced by a
+    # named holder (holder:<name>, bin/fm-lock.sh), so the claim records the
+    # live line 1.
     # A local pid is checked with kill -0, so only a pid in THIS process table
     # serves that way. Take each value whole and never reduce it to its digits,
     # because those digits would name an unrelated local process. A
