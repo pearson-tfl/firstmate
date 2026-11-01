@@ -438,6 +438,75 @@ if [ "${FM_TEST_SKIP_ORPHAN_REAP:-0}" != 1 ]; then
   fm_test_reap_orphans
 fi
 
+# --- installed Pi SDK package -----------------------------------------------
+#
+# fm_pi_package_dir prints the @earendil-works/pi-coding-agent package behind
+# the `pi` on PATH, so a real-Pi test exercises the Pi that actually runs:
+# FM_PI_PACKAGE_DIR when set (as an absolute path; 1 if it names no
+# directory), else the current release of a Pi managed install
+# (<agent>/bin/pi beside <agent>/install/current-version), else the package
+# enclosing the resolved `pi` entrypoint, else the npm global package. It
+# returns 1 when none carries a package.json (a standalone Pi binary has no SDK).
+fm_pi_package_dir() {
+  local name=@earendil-works/pi-coding-agent bin link dir agent version candidate root
+  if [ -n "${FM_PI_PACKAGE_DIR:-}" ]; then
+    (cd "$FM_PI_PACKAGE_DIR" 2>/dev/null && pwd -P)
+    return
+  fi
+  if bin=$(command -v pi 2>/dev/null) && [ -n "$bin" ]; then
+    while [ -L "$bin" ]; do
+      link=$(readlink "$bin") || break
+      case "$link" in
+        /*) bin=$link ;;
+        *) bin=${bin%/*}/$link ;;
+      esac
+    done
+    dir=$(cd "${bin%/*}" 2>/dev/null && pwd -P) || dir=''
+    if [ -n "$dir" ] && [ "${dir##*/}" = bin ]; then
+      agent=${dir%/*}
+      if [ -f "$agent/install/current-version" ] && IFS= read -r version < "$agent/install/current-version"; then
+        candidate="$agent/install/releases/$version/node_modules/$name"
+        if [ -n "$version" ] && [ -f "$candidate/package.json" ]; then
+          printf '%s\n' "$candidate"
+          return 0
+        fi
+      fi
+    fi
+    while [ -n "$dir" ] && [ "$dir" != / ]; do
+      if [ -f "$dir/package.json" ] && grep -q "\"name\": *\"$name\"" "$dir/package.json"; then
+        printf '%s\n' "$dir"
+        return 0
+      fi
+      dir=${dir%/*}
+    done
+  fi
+  root=$(npm root -g 2>/dev/null) || root=''
+  if [ -n "$root" ] && [ -f "$root/$name/package.json" ]; then
+    printf '%s\n' "$root/$name"
+    return 0
+  fi
+  return 1
+}
+
+# fm_pi_package_dep <package-dir> <dependency> prints where Node resolves
+# <dependency> from the Pi package, in Node's own lookup order: the
+# node_modules of the package and then of each ancestor that is not itself a
+# node_modules, so a nested copy (npm global install) wins over one hoisted
+# beside the package (managed install) or further out (plain npm project).
+# It returns 1 when no such directory exists or the package dir does not.
+fm_pi_package_dep() {
+  local dir dep=$2
+  [ -n "$1" ] && dir=$(cd "$1" 2>/dev/null && pwd -P) || return 1
+  while :; do
+    if [ "${dir##*/}" != node_modules ] && [ -d "$dir/node_modules/$dep" ]; then
+      printf '%s\n' "$dir/node_modules/$dep"
+      return 0
+    fi
+    [ -z "$dir" ] && return 1
+    dir=${dir%/*}
+  done
+}
+
 # --- live-capability gate ---------------------------------------------------
 #
 # fm_live_gate <policy> <vars> [tool ...]

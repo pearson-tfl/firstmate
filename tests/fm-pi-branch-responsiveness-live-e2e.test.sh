@@ -183,8 +183,10 @@ run_arm() {
     "FM_HOME='$HOME_DIR' FM_STATE_OVERRIDE='$HOME_DIR/state' FM_CONFIG_OVERRIDE='$HOME_DIR/config' \
      FM_ROOT_OVERRIDE='$ROOT' LAB_PROJECT='$PROJECT' '$LAB/launch.sh' ${pi_args[*]@Q}"
   # The lab project path in Pi's own status line is the readiness signal: it
-  # appears only once the TUI has drawn, unlike any prompt character.
-  wait_for_pane_text "$PROJECT" 240 \
+  # appears only once the TUI has drawn, unlike any prompt character. Pi shows
+  # a path under HOME as ~/..., so match the part after HOME, which both the
+  # full and the abbreviated form contain.
+  wait_for_pane_text "${PROJECT#"$HOME"}" 240 \
     || { "$TMUX" -L "$SOCKET" capture-pane -p -t "$SESSION" >&2; fail "Pi $PI_VERSION never drew its TUI in the $label arm"; }
   sleep 2
 

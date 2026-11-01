@@ -160,6 +160,7 @@ state/               runtime records and signals; gitignored
   .watch-triage.log  watcher's absorbed-wake debug log (size-capped); never relied on, safe to delete
   lane-capacity.json  this home's published lane facts, refreshed only while config/lane-capacity exists; written only by bin/fm-capacity.sh --publish, whose header owns the document
   .last-watcher-beat watcher liveness beacon, touched every poll (including while absorbing benign wakes); guard scripts read it
+  .forwarder.lock .forwarder-beat .forwarder-arm.out   wake-forwarder singleton, beat carrying its current arm pid, and last arm output; written only by bin/fm-wake-forwarder.sh, whose header owns them; never touch
   .subsuper-* .supervise-daemon.*   sub-supervisor internals; never touch
 .no-mistakes/        local validation state and evidence; gitignored
 ```
