@@ -9,7 +9,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | --- | --- |
 | Firstmate's code, private files, or project location | [FM_HOME](#fm_home) and [operational home layout](#operational-home-layout-and-state) |
 | Task windows and worker tools | [Runtime backend](#runtime-backend-configbackend--fm_backend) and [harness support](#harness-support) |
-| Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), and its [Orca environment source](#orca-environment-source-configlaunch-env-tmux-session) |
+| Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker loadout and workflows](#worker-loadout-and-workflows-configloadout-command-configcrew-workflows), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), and its [Orca environment source](#orca-environment-source-configlaunch-env-tmux-session) |
 | Backlog, preferences, and memory | [Backlog backend](#backlog-backend-taskstoml--configbacklog-backend), [captain preferences](#captain-preferences-datacaptainmd--datacaptain-sharedmd), [external memory tiers](#external-memory-tiers-memory-layering-section), [record export](#record-export-configrecord-export-root), and [startup memory budget](#startup-memory-budget-configstartup-memory-budget) |
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), [warm-cache compaction](#warm-cache-compaction-configwarm-compact), and [Calm preference](#calm-preference-configcalm) |
 | Persistent secondmates | [Secondmate routes](#secondmate-routes-datasecondmatesmd) |
@@ -1462,6 +1462,36 @@ Names present in the registry produce no report; unknown or unverified names do 
 Each relaunch installs a fresh worker extension with the home's current list, so the replacement performs the same check.
 
 [`bin/fm-exclude-tools-lib.sh`](../bin/fm-exclude-tools-lib.sh) implements parsing and pre-launch validation for this contract; [`bin/fm-spawn.sh`](../bin/fm-spawn.sh)'s header owns the launch-flag mechanics.
+
+## Worker loadout and workflows (config/loadout-command, config/crew-workflows)
+
+A claude ship or scout worker can start on a loadout role's launch string, and every claude ship or scout worker starts with dynamic workflows off unless its launch turns them on.
+Neither setting reaches a secondmate's own agent, another runtime, or a raw launch command.
+
+### Loadout role
+
+`bin/fm-spawn.sh --harness claude --loadout <role>` asks this home's loadout command for that role's launch line in the task's worktree and starts the worker on it.
+The optional local, gitignored `config/loadout-command` names the loadout command as one absolute path to an executable on its first line.
+Firstmate runs it as `<command> --line --role <role> --repo <worktree> --base-settings <json>`, where the JSON is Firstmate's own claude settings for the launch, and reads the `--line` JSON it prints.
+The worker receives the line's settings, laid over Firstmate's own with Firstmate's `feedbackDrafts` and `attribution` kept on top, its tool list, its allow and deny lists, its settings sources, its plugin and design arguments, and its MCP map under `--strict-mcp-config`.
+The line's own permission mode is dropped, a stricter one included: `config/claude-permission-mode` stays the launch's mode, so approval failover holds and the task record reports the mode actually launched.
+The line's model and effort pins are not applied: `--model` and `--effort` remain the launch's axes.
+The line's standing text is not applied: the worker's instructions remain its standing text.
+A line whose settings sources leave out `local`, or whose inline settings set `disableAllHooks`, refuses the spawn, because Firstmate's worker hooks live in the worktree's `.claude/settings.local.json`.
+A missing or non-executable command, a command that fails, a line with an empty tool list, or a line that is not the expected JSON refuses the spawn and names the cause without echoing the line, whose settings and MCP map can carry secrets.
+Settings given as a file path, as with the design lever on, are not inspected for `disableAllHooks`.
+The task record keeps the role as `loadout=`, and a relaunch reuses it.
+
+### Workflows lever
+
+`--workflows on|off` decides whether the claude worker may start a dynamic workflow.
+On enables every workflow the worker can reach, not deep research alone: Claude Code has no per-workflow allowlist at launch.
+Without the flag, the optional local, gitignored `config/crew-workflows` holds this home's default as `on` or `off` on its first line, and with no file the default is `off`.
+Off launches the worker with `CLAUDE_CODE_DISABLE_WORKFLOWS=1` and `disableWorkflows` true in its launch settings; on clears an inherited `CLAUDE_CODE_DISABLE_WORKFLOWS` and sets `disableWorkflows` false.
+The lever wins over a loadout role's own `disableWorkflows` setting when the role's settings are JSON.
+When the role's settings are a file path, as with the design lever on, only the environment switch carries the lever, so off holds and on cannot undo a `disableWorkflows` true in that file.
+Any other value refuses the spawn.
+The task record keeps the lever as `workflows=`, and a relaunch reuses it.
 
 ## Worker account pin (config/claude-account, config/pi-account)
 
