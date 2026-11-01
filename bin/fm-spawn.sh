@@ -2757,7 +2757,7 @@ launch_template() {
     # record-backed doorbell: the full envelope is published into the receiving
     # home's state/operational-inbox before launch and only a printable doorbell
     # naming it is passed. A record that cannot be published stops the spawn.
-    printf '%s' '__AGENTSESSION____MODELFLAG____EFFORTFLAG____BRIEFDOORBELL__'
+    printf '%s' '__MODELFLAG____EFFORTFLAG____AGENTSESSION____BRIEFDOORBELL__'
     ;;
   # --disable hooks (equivalent to -c features.hooks=false) requests that codex
   # turn its whole lifecycle-hook layer off for CREWMATE and SCOUT launches only.
@@ -2802,9 +2802,9 @@ launch_template() {
       # The two primary extensions supervise the mate's own home. __PIEXT__ is
       # the parent-home busy contract, loaded from outside the home so Pi's
       # project-trust gate does not fire on it.
-      printf '%s' ' __AGENTSESSION____MODELFLAG____EFFORTFLAG__-e __PITURNEND__ -e __PIWATCH__ -e __PIEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
+      printf '%s' ' __MODELFLAG____EFFORTFLAG____AGENTSESSION__-e __PITURNEND__ -e __PIWATCH__ -e __PIEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     else
-      printf '%s' ' __AGENTSESSION____MODELFLAG____EFFORTFLAG__-e __PIEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
+      printf '%s' ' __MODELFLAG____EFFORTFLAG____AGENTSESSION__-e __PIEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     fi
     ;;
   # omp (Oh My Pi), a Pi fork. Same one-positional-brief, --model, --thinking,
