@@ -356,6 +356,9 @@ The session-id signal is the second one the claiming hook's own admission accept
 Pinning that signal to the session-lock identity recorded at claim time is what keeps a resumed session, which carries the same conversation id in a new process, from reading its own dead predecessor's orphan as open - a reused pid number or reissued Windows pid is a different identity, so it does not match.
 An orphan fails both signals: it no longer descends from the replacement's lock pid, and its recorded lock-holder identity is the dead session's.
 An entry from a build before these fields existed records neither and falls back to descent alone.
+Under a named holder, where `state/.lock` line 1 is `holder:<name>`, there is no pid to descend from.
+A claim taken by that holder records `owner_holder=<name>` and, when the session publishes `CLAUDE_PID`, `owner_harness_pid=<pid>`; it is reachable while line 1 still names that holder and that pid is a live harness.
+Two runs share one name, so the recorded pid is what fails a dead run's orphan.
 
 Anything else lets the next Stop-owned firing take the next generation and arm.
 That covers a finished outcome, a dead or identity-mismatched owner, an owner orphaned by its session's exit, a stuck owner, an identityless entry, or no entry.

@@ -34,8 +34,8 @@ PROMPT='Run exactly `bin/fm-watch-checkpoint.sh --seconds 1` as one foreground s
 
 (
   cd "$PROJECT" || exit 1
-  printf '%s\n' "$$" > "$HOME_DIR/state/.lock"
-  FM_HOME="$HOME_DIR" FM_ROOT_OVERRIDE="$PROJECT" codex exec \
+  printf 'holder:codex\n' > "$HOME_DIR/state/.lock"
+  FM_HOME="$HOME_DIR" FM_ROOT_OVERRIDE="$PROJECT" FM_LOCK_HOLDER=codex codex exec \
     --dangerously-bypass-hook-trust \
     --dangerously-bypass-approvals-and-sandbox \
     --skip-git-repo-check \

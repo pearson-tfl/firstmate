@@ -93,11 +93,10 @@ EOF
 }
 
 test_fm_lock_recognizes_grok_holder() {
-  local home fakebin out
+  local home fakebin out rc=0
   home="$TMP_ROOT/lock-home"
   fakebin=$(fm_fakebin "$TMP_ROOT/lock-fake")
   mkdir -p "$home/state"
-  printf '%s\n' "$$" > "$home/state/.lock"
   cat > "$fakebin/ps" <<'SH'
 #!/usr/bin/env bash
 case "$*" in
@@ -107,9 +106,18 @@ esac
 exit 1
 SH
   chmod +x "$fakebin/ps"
+  FM_HOME="$home" FM_LOCK_HOLDER=grok PATH="$fakebin:$PATH" "$ROOT/bin/fm-lock.sh" >/dev/null 2>&1 \
+    || fail "a grok session could not claim a free lock by name"
+  [ "$(cat "$home/state/.lock")" = holder:grok ] || fail "the named claim did not record holder:grok"
   out=$(FM_HOME="$home" PATH="$fakebin:$PATH" "$ROOT/bin/fm-lock.sh" status)
-  assert_contains "$out" "lock: held by live harness pid" "fm-lock did not recognize grok as a live holder"
-  pass "fm-lock recognizes grok harness processes"
+  assert_contains "$out" "lock: held by grok" "fm-lock status did not name the grok holder"
+  # A live grok process recorded by a pre-switch build is still a live owner:
+  # another name's claim is refused and changes nothing.
+  printf '%s\n' "$$" > "$home/state/.lock"
+  FM_HOME="$home" FM_LOCK_HOLDER=pocock PATH="$fakebin:$PATH" "$ROOT/bin/fm-lock.sh" >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "a named claim replaced a live grok holder"
+  [ "$(cat "$home/state/.lock")" = "$$" ] || fail "a refused named claim changed the live grok holder's line"
+  pass "fm-lock: grok claims by name and a live grok holder refuses another name"
 }
 
 test_grok_hook_requires_registered_token

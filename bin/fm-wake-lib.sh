@@ -2014,6 +2014,13 @@ fm_failure_episode_reset() {
 #     whichever id the sidecar carries after lock recovery. An entry written by
 #     a build before these fields existed records neither and falls back to the
 #     descent signal alone.
+#     Under a named holder (state/.lock line 1 holder:<name>, written by
+#     bin/fm-lock.sh for a caller that sets FM_LOCK_HOLDER) there is no pid to
+#     descend from. A claim taken by that holder records owner_holder=<name>
+#     and, when the session publishes CLAUDE_PID, owner_harness_pid=<pid>; it
+#     is reachable while line 1 still names that holder and the recorded pid
+#     is a live harness. Two runs share one name, so the pid is what fails a
+#     dead run's orphan. A rewake's session_pid is then the holder line itself.
 #   - Every firing DEFERS (exits 0) to an open claim; anything else - a
 #     terminal outcome, a dead or identity-mismatched owner, a stuck owner, an
 #     identityless entry, or no claim at all - lets the next firing take
@@ -2083,7 +2090,8 @@ _fm_autoarm_epoch_field() {  # <epoch-file> <field>
 
 # Parse the current ledger claim. Sets FM_AUTOARM_GEN, FM_AUTOARM_OWNER,
 # FM_AUTOARM_OUTCOME, FM_AUTOARM_SESSION, FM_AUTOARM_RECOVERY,
-# FM_AUTOARM_OWNER_SESSION_ID, FM_AUTOARM_OWNER_LOCK_IDENTITY (line 3 of the
+# FM_AUTOARM_OWNER_SESSION_ID, FM_AUTOARM_OWNER_HOLDER,
+# FM_AUTOARM_OWNER_HARNESS_PID, FM_AUTOARM_OWNER_LOCK_IDENTITY (line 3 of the
 # entry: the session-lock identity of the holder as the claim was taken), and
 # FM_AUTOARM_IDENTITY (line 2 of the entry, and ONLY
 # line 2 - identity is never substituted from a lock, so a transient

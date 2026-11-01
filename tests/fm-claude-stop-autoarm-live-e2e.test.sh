@@ -74,6 +74,7 @@ mkdir -p "$HOME_DIR/state" "$HOME_DIR/config" "$HOME_DIR/data"
 printf 'project=fixture\nwindow=fixture\nbackend=tmux\n' > "$HOME_DIR/state/task.meta"
 # A numeric pid above the supported OS pid range is a demonstrably dead prior
 # harness owner under fm_harness_pid_alive, matching the reproduced incident.
+# The session claims over it by name (FM_LOCK_HOLDER=claude below).
 printf '9999999\n' > "$HOME_DIR/state/.lock"
 
 # Rapid-death arm fixture: started plus an immediate actionable reason, the
@@ -112,7 +113,7 @@ PROMPT='After reading the complete session-start digest, reply with exactly CYCL
 
 (
   cd "$PROJECT" || exit 1
-  FM_HOME="$HOME_DIR" CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 \
+  FM_HOME="$HOME_DIR" FM_LOCK_HOLDER=claude CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 \
     claude -p "$PROMPT" --dangerously-skip-permissions --settings '{"feedbackDrafts":"off"}' \
     --effort low --output-format stream-json --verbose
 ) > "$TRANSCRIPT" 2>&1 || fail "Claude credentialed auto-arm session failed: $(tail -20 "$TRANSCRIPT")"
@@ -141,14 +142,14 @@ DIGEST_EVENTS=$(jq -c --arg heading "SESSION START - $HOME_DIR" '
 [ "$(printf '%s' "$DIGEST_EVENTS" | jq -s 'length')" = 1 ] \
   || fail "expected exactly one SessionStart hook_response carrying the session-start digest"
 DIGEST=$(printf '%s' "$DIGEST_EVENTS" | jq -r '.stdout')
-printf '%s' "$DIGEST" | grep -q '^lock acquired: harness pid [0-9][0-9]*$' \
-  || fail "SessionStart hook digest lacks the stale-lock reclaim"
+printf '%s' "$DIGEST" | grep -q '^lock acquired: holder claude$' \
+  || fail "SessionStart hook digest lacks the named reclaim of the stale lock"
 ! printf '%s' "$DIGEST" | grep -q '^●  STARTUP TRUNCATED - ' \
   || fail "SessionStart hook digest was truncated"
 printf '%s' "$DIGEST" | grep -q '^The digest above is complete for this session start\.' \
   || fail "SessionStart hook digest lacks its completion marker"
-[ "$(cat "$HOME_DIR/state/.lock" 2>/dev/null)" != 9999999 ] \
-  || fail "session start did not reclaim the stale dead-owner lock"
+[ "$(cat "$HOME_DIR/state/.lock" 2>/dev/null)" = holder:claude ] \
+  || fail "session start did not reclaim the stale dead-owner lock as holder:claude"
 if [ -f "$HOME_DIR/state/tool-calls.log" ]; then
   ! grep -q 'fm-watch-arm.sh' "$HOME_DIR/state/tool-calls.log" \
     || fail "model issued an arm command despite Stop-owned continuity: $(cat "$HOME_DIR/state/tool-calls.log")"
@@ -161,26 +162,23 @@ fi
   || fail "auto-arm epoch ledger must record the rewake outcome"
 [ ! -e "$HOME_DIR/state/.claude-autoarm.lock" ] || fail "auto-arm owner lock was left behind"
 
-# Live-owner negative control: a separate supported-harness process owns a
-# second isolated home while another Stop hook fires from the same primary
+# Other-holder negative control: another named holder owns a second isolated
+# home while a Stop hook under the name claude fires from the same primary
 # project. The competing hook must not replace the session lock, arm, write an
 # epoch, or rewake.
 FAKE_CLAUDE="$LAB/claude"
 ln -s /bin/bash "$FAKE_CLAUDE"
 mkdir -p "$LIVE_OWNER_HOME/state" "$LIVE_OWNER_HOME/config"
 printf 'project=fixture\n' > "$LIVE_OWNER_HOME/state/task.meta"
-"$FAKE_CLAUDE" -c 'sleep 3; :' &
-LIVE_OWNER_PID=$!
-printf '%s\n' "$LIVE_OWNER_PID" > "$LIVE_OWNER_HOME/state/.lock"
+printf 'holder:pocock\n' > "$LIVE_OWNER_HOME/state/.lock"
 LIVE_OWNER_RC=0
 printf '%s\n' '{"session_id":"live-owner-control"}' \
-  | FM_HOME="$LIVE_OWNER_HOME" FM_ROOT_OVERRIDE="$PROJECT" "$FAKE_CLAUDE" -c '"$FM_ROOT_OVERRIDE/bin/fm-claude-stop-autoarm.sh"' \
+  | FM_HOME="$LIVE_OWNER_HOME" FM_ROOT_OVERRIDE="$PROJECT" FM_LOCK_HOLDER=claude "$FAKE_CLAUDE" -c '"$FM_ROOT_OVERRIDE/bin/fm-claude-stop-autoarm.sh"' \
       >"$LAB/live-owner.out" 2>"$LAB/live-owner.err" || LIVE_OWNER_RC=$?
 [ "$LIVE_OWNER_RC" -eq 0 ] || fail "competing Stop hook returned $LIVE_OWNER_RC while another live session owned the home"
-[ "$(cat "$LIVE_OWNER_HOME/state/.lock")" = "$LIVE_OWNER_PID" ] || fail "competing Stop hook replaced the live session owner"
+[ "$(cat "$LIVE_OWNER_HOME/state/.lock")" = holder:pocock ] || fail "competing Stop hook replaced the other named holder"
 [ ! -e "$LIVE_OWNER_HOME/state/arm-ran" ] || fail "competing Stop hook armed while another live session owned the home"
 [ ! -e "$LIVE_OWNER_HOME/state/.claude-autoarm-epoch" ] || fail "competing Stop hook wrote an epoch while another live session owned the home"
 [ ! -s "$LAB/live-owner.out" ] && [ ! -s "$LAB/live-owner.err" ] || fail "competing Stop hook produced a rewake while another live session owned the home"
-wait "$LIVE_OWNER_PID"
 
-printf 'ok - Claude %s live E2E reclaimed a stale session lock through session start, completed two tokenless Stop-owned rewake cycles, and preserved the competing-live-owner boundary\n' "$CLAUDE_VERSION"
+printf 'ok - Claude %s live E2E reclaimed a stale session lock through session start, completed two tokenless Stop-owned rewake cycles, and preserved the other-holder boundary\n' "$CLAUDE_VERSION"
