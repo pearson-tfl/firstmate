@@ -1360,10 +1360,14 @@ EOF
 # cooperates with the Stop-owned auto-arm instead: allow on health, live owner
 # claim, or a fresh rewake epoch; bounded re-block only when none materialize.
 
+# The named holder the integrated auto-arm cases claim main under. The guard
+# runs as that same session, so a holder line it wrote reads as its own.
+INTEGRATED_HOLDER=fm-test-main
+
 run_hook_claude() {
   local dir=$1 stop_active=$2 home
   home=$(cd "$dir" && pwd)
-  printf '{"stop_hook_active":%s,"session_id":"sess-claude-mode"}' "$stop_active" | CLAUDECODE=1 FM_HOME="$home" bash "$dir/bin/fm-turnend-guard.sh" --claude 2>&1
+  printf '{"stop_hook_active":%s,"session_id":"sess-claude-mode"}' "$stop_active" | CLAUDECODE=1 FM_HOME="$home" FM_LOCK_HOLDER="$INTEGRATED_HOLDER" bash "$dir/bin/fm-turnend-guard.sh" --claude 2>&1
 }
 
 seed_claude_failure() {
@@ -1413,8 +1417,8 @@ run_integrated_autoarm() {
   home=$(cd "$dir" && pwd)
   # shellcheck disable=SC2016 # the fake harness expands FM_HOME inside its child shell.
   printf '{"session_id":"sess-claude-mode","stop_hook_active":false}\n' \
-    | FM_HOME="$home" "$dir/fake-claude" -c '
-        printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+    | FM_HOME="$home" FM_LOCK_HOLDER="$INTEGRATED_HOLDER" "$dir/fake-claude" -c '
+        printf "holder:%s\n" "$FM_LOCK_HOLDER" > "$FM_HOME/state/.lock"
         "$FM_HOME/bin/fm-claude-stop-autoarm.sh"
       ' 2>&1
 }
@@ -1846,8 +1850,8 @@ test_hook_claude_mode_frozen_epoch_reaches_bounded_fail_open() {
   expect_code 0 "$guard_status" "the first failed epoch must own its Stop handoff"
   epoch_line=$(sed -n '1p' "$dir/state/.claude-autoarm-epoch")
 
-  # Remove the dead lock left by the fixture arm so this case isolates the
-  # frozen-ledger accounting path rather than the live foreign-owner escape.
+  # Remove the holder line left by the fixture arm so this case isolates the
+  # frozen-ledger accounting path rather than any lock-owner path.
   rm -f "$dir/state/.lock"
   for i in 1 2 3 4; do
     out=$(run_integrated_autoarm_unowned "$dir"); status=$?
@@ -2054,11 +2058,12 @@ SH
   fi
   chmod +x "$dir/bin/fm-watch-arm.sh" 2>/dev/null || true
   # Each Stop fires both hooks as children of one fake Claude session process
-  # that holds state/.lock, as the harness does: the guard then recognizes the
-  # lock as its own session's however the test itself is launched.
+  # that claims state/.lock under the named holder (FM_LOCK_HOLDER), as the
+  # harness does: the guard then recognizes the lock as its own session's
+  # however the test itself is launched.
   cat > "$dir/stop-driver.sh" <<'SH'
 i=$1 variant=$2
-printf '%s\n' "$$" > "$FM_HOME/state/.lock"
+printf 'holder:%s\n' "$FM_LOCK_HOLDER" > "$FM_HOME/state/.lock"
 printf '{"session_id":"sess-claude-mode","stop_hook_active":false}\n' \
   | FM_CLAUDE_AUTOARM_ATTEMPTS=1 "$FM_HOME/bin/fm-claude-stop-autoarm.sh" > "$FM_HOME/auto-$i.out" 2>&1 &
 auto_pid=$!
@@ -2080,7 +2085,7 @@ wait "$auto_pid"
 printf '%s' "$?" > "$FM_HOME/auto-$i.status"
 SH
   for i in 1 2 3 4 5 6 7; do
-    FM_HOME="$(cd "$dir" && pwd)" "$dir/fake-claude" "$dir/stop-driver.sh" "$i" "$variant"
+    FM_HOME="$(cd "$dir" && pwd)" FM_LOCK_HOLDER="$INTEGRATED_HOLDER" "$dir/fake-claude" "$dir/stop-driver.sh" "$i" "$variant"
     assert_absent "$dir/noclaim-$i" "the auto-arm never opened its generation claim ($variant, stop $i)"
     assert_absent "$dir/nokill-$i" "could not TERM the auto-arm generation owner ($variant, stop $i)"
     guard_status=$(cat "$dir/guard-$i.status")
