@@ -579,17 +579,13 @@ test_unverified_engine_hands_every_away_wake_to_main() {
 }
 
 test_host_outside_the_lock_owner_stands_down() {
-  local home out rc other
+  local home out rc
   home=$(make_home not-owner attended)
-  "$FAKE_CLAUDE" -c 'sleep 30' &
-  other=$!
-  printf '%s\n' "$other" >> "$home/claude-pids"
-  printf '%s\n' "$other" > "$home/state/.lock"
-  out=$(FM_HOME="$home" PATH="$home/fakebin:$PATH" "$HOST" park 2>&1); rc=$?
+  printf 'holder:someone-else\n' > "$home/state/.lock"
+  out=$(FM_HOME="$home" PATH="$home/fakebin:$PATH" FM_LOCK_HOLDER=test-main "$HOST" park 2>&1); rc=$?
   expect_code 0 "$rc" "a host that does not own supervision exits 0"
   assert_contains "$out" "supervision-host stood down: this session does not own supervision" "the stand-down must say why"
   watcher_live "$home" && fail "a host that does not own supervision started a watcher"
-  kill -TERM "$other" 2>/dev/null || true
   pass "host: a host outside the session-lock owner stands down without arming"
 }
 

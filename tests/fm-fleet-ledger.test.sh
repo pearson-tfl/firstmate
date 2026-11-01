@@ -50,7 +50,9 @@ make_case() {  # <name> <on|off>
   WT_DIR="$dir/wt"
   mkdir -p "$HOME_DIR/data/$TASK" "$HOME_DIR/projects" "$HOME_DIR/state" "$HOME_DIR/config" "$HOME_DIR/user-home"
   printf 'claude\n' > "$HOME_DIR/config/crew-harness"
-  printf '%s\n' "$$" > "$HOME_DIR/state/.lock"
+  # The case home's main is held by name (bin/fm-lock.sh); in_home runs every
+  # producer under that name.
+  printf 'holder:test-main\n' > "$HOME_DIR/state/.lock"
   touch "$HOME_DIR/state/.last-watcher-beat"
   [ "$2" = off ] || : > "$HOME_DIR/config/fleet-ledger"
   fm_git_worktree "$PROJ_DIR" "$WT_DIR" "fm/$TASK"
@@ -71,7 +73,7 @@ in_home() {  # <command...>: run one real script against the case home
     FM_STATE_OVERRIDE="$HOME_DIR/state" FM_DATA_OVERRIDE="$HOME_DIR/data" \
     FM_PROJECTS_OVERRIDE="$HOME_DIR/projects" FM_CONFIG_OVERRIDE="$HOME_DIR/config" \
     FM_SPAWN_NO_GUARD=1 FM_FAKE_PANE_PATH="$WT_DIR" TMUX="fake,1,0" \
-    PATH="$FAKEBIN:$PATH" "$@"
+    FM_LOCK_HOLDER=test-main PATH="$FAKEBIN:$PATH" "$@"
 }
 
 # Spawn, write status lines, poll once, land locally, clean up.
