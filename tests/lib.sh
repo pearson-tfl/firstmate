@@ -115,6 +115,11 @@ pass() {
 skip_5137() {  # <case>
   printf 'ok - %s # SKIP needs a pid on lock line 1, which no session writes since #5065; Pi, omp and Cursor adapters, see #5137\n' "$1"
 }
+# A whole file skipped on the same ruling: a gate skip, so the runner counts it.
+skip_file_5138() {
+  printf 'skip: needs the session ownership #5065 deleted (process ancestry or a pid on lock line 1); supervision host inert, see #5138\n'
+  exit 0
+}
 skip_5138() {  # <case>
   printf 'ok - %s # SKIP needs the session ownership #5065 deleted (process ancestry or a pid on lock line 1); supervision host and task leases inert, see #5138\n' "$1"
 }

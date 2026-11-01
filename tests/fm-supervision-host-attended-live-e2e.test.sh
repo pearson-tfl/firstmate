@@ -37,6 +37,11 @@ set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+# Skipped by ruling on #5065: the fixture session seeds a pid on lock line 1
+# and relied on the deleted process-ancestry ownership; the supervision host is
+# inert until #5138.
+skip_file_5138
 # shellcheck source=bin/fm-tmux-lib.sh
 . "$ROOT/bin/fm-tmux-lib.sh"
 
