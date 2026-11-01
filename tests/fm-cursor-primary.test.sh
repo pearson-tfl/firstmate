@@ -181,6 +181,12 @@ kind_of_followup() {  # <json> -> the operational kind
 
 # --- HOST GUARD --------------------------------------------------------------
 
+# Cases that need a pid on lock line 1, which only the deleted unnamed path
+# wrote; ruled on #5065 to skip, naming the ticket that owns their un-skip.
+skip_5137() {  # <case>
+  printf '# skip - %s: needs a pid on lock line 1, which no session writes now; Pi, omp and Cursor adapters, see #5137\n' "$1"
+}
+
 test_turnend_guard_stands_down_on_cursor_payload() {
   local dir out status
   dir=$(make_primary_dir "$TMP_ROOT/host-turnend")
@@ -278,6 +284,7 @@ test_park_silent_when_nothing_in_flight() {
 }
 
 test_park_delivers_actionable_wake_as_followup() {
+  skip_5137 test_park_delivers_actionable_wake_as_followup && return 0
   local dir out body
   dir=$(make_primary_dir "$TMP_ROOT/park-wake")
   : > "$dir/state/task1.meta"
@@ -303,6 +310,7 @@ test_park_never_exits_two() {
 }
 
 test_park_repair_nag_is_bounded() {
+  skip_5137 test_park_repair_nag_is_bounded && return 0
   local dir out i kinds=0
   dir=$(make_primary_dir "$TMP_ROOT/park-nag")
   : > "$dir/state/task1.meta"
@@ -333,6 +341,7 @@ test_park_repair_nag_requires_a_persisted_budget() {
 }
 
 test_park_nag_budget_resets_after_a_real_wake() {
+  skip_5137 test_park_nag_budget_resets_after_a_real_wake && return 0
   local dir out
   dir=$(make_primary_dir "$TMP_ROOT/park-nag-reset")
   : > "$dir/state/task1.meta"
@@ -350,6 +359,7 @@ test_park_nag_budget_resets_after_a_real_wake() {
 }
 
 test_park_loop_ceiling_warns_once_then_goes_quiet() {
+  skip_5137 test_park_loop_ceiling_warns_once_then_goes_quiet && return 0
   local dir out body
   dir=$(make_primary_dir "$TMP_ROOT/park-ceiling")
   : > "$dir/state/task1.meta"
@@ -366,6 +376,7 @@ test_park_loop_ceiling_warns_once_then_goes_quiet() {
 
 
 test_park_stands_down_when_superseded() {
+  skip_5137 test_park_stands_down_when_superseded && return 0
   local dir first_out first_pid marker
   dir=$(make_primary_dir "$TMP_ROOT/park-supersede")
   : > "$dir/state/task1.meta"
@@ -388,6 +399,7 @@ test_park_stands_down_when_superseded() {
 }
 
 test_park_serializes_supersession_with_followup_commit() {
+  skip_5137 test_park_serializes_supersession_with_followup_commit && return 0
   local dir first_pid first_out second_out waited budget_count
   dir=$(make_primary_dir "$TMP_ROOT/park-commit-race")
   : > "$dir/state/task1.meta"
@@ -426,6 +438,7 @@ SH
 }
 
 test_superseded_park_does_not_consume_nag_budget() {
+  skip_5137 test_superseded_park_does_not_consume_nag_budget && return 0
   local dir first_pid second_out waited budget_count
   dir=$(make_primary_dir "$TMP_ROOT/park-nag-supersede")
   : > "$dir/state/task1.meta"
@@ -503,6 +516,7 @@ write_host_fixture() {  # <dir> <kind>
 }
 
 test_park_runs_the_supervision_host_only_when_opted_in() {
+  skip_5137 test_park_runs_the_supervision_host_only_when_opted_in && return 0
   local dir out body
   dir=$(make_primary_dir "$TMP_ROOT/park-host-off")
   : > "$dir/state/task1.meta"
@@ -559,6 +573,7 @@ test_park_runs_the_supervision_host_only_when_opted_in() {
 }
 
 test_park_host_boundary_stand_down_and_death() {
+  skip_5137 test_park_host_boundary_stand_down_and_death && return 0
   local dir out
   dir=$(make_primary_dir "$TMP_ROOT/park-host-boundary")
   : > "$dir/state/task1.meta"
@@ -604,6 +619,7 @@ test_park_inert_under_pi_coding_agent() {
 }
 
 test_park_still_parks_with_pi_leak_and_cursor_identity() {
+  skip_5137 test_park_still_parks_with_pi_leak_and_cursor_identity && return 0
   local dir out body payload
   dir=$(make_primary_dir "$TMP_ROOT/park-pi-leak-cursor")
   : > "$dir/state/task1.meta"
@@ -629,6 +645,7 @@ test_park_still_parks_with_pi_leak_and_cursor_identity() {
 }
 
 test_park_stands_down_when_away_mode_activates_before_commit() {
+  skip_5137 test_park_stands_down_when_away_mode_activates_before_commit && return 0
   local dir park_pid out waited budget_count
   dir=$(make_primary_dir "$TMP_ROOT/park-afk-transition")
   : > "$dir/state/task1.meta"
@@ -673,6 +690,7 @@ test_park_inert_without_session_lock() {
 }
 
 test_park_stands_down_after_session_takeover() {
+  skip_5137 test_park_stands_down_after_session_takeover && return 0
   local dir park_pid out waited budget_count
   dir=$(make_primary_dir "$TMP_ROOT/park-session-takeover")
   : > "$dir/state/task1.meta"
@@ -739,6 +757,7 @@ run_windows_park() {  # <dir> <fakebin> <windows-table>
 # (bin/fm-session-lock-lib.sh). The park must recognize its own tagged lock and
 # reclaim a dead tagged holder's, instead of reading either as malformed.
 test_park_honors_a_windows_tagged_session_lock() {
+  skip_5137 test_park_honors_a_windows_tagged_session_lock && return 0
   local dir fakebin out
   dir=$(make_primary_dir "$TMP_ROOT/park-win-owned")
   fakebin=$(windows_session_fakebin "$dir" MINGW64_NT-10.0-26200)

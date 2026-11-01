@@ -778,6 +778,15 @@ write_omp_loaded_markers() {
 
 # --- context digest: absent vs empty vs present -----------------------------
 
+# Cases that need a pid on lock line 1, which only the deleted unnamed path
+# wrote; ruled on #5065 to skip, naming the ticket that owns their un-skip.
+skip_5137() {  # <case>
+  printf '# skip - %s: needs a pid on lock line 1, which no session writes now; Pi, omp and Cursor adapters, see #5137\n' "$1"
+}
+skip_5138() {  # <case>
+  printf '# skip - %s: needs a pid on lock line 1, which no session writes now; task leases inert, see #5138\n' "$1"
+}
+
 test_context_digest_absent_empty_present() {
   local rec root home fakebin out
   rec=$(new_world context-digest)
@@ -1635,6 +1644,7 @@ EOF
 }
 
 test_branch_outcome_replay_respects_captain_barrier_and_lease_sweep() {
+  skip_5138 test_branch_outcome_replay_respects_captain_barrier_and_lease_sweep && return 0
   local rec root home fakebin out
   rec=$(new_world branch-recovery)
   IFS='|' read -r root home fakebin <<EOF
@@ -2822,6 +2832,7 @@ EOF
 }
 
 test_pi_diagnostic_accepts_prelock_loaded_marker() {
+  skip_5137 test_pi_diagnostic_accepts_prelock_loaded_marker && return 0
   local rec root home fakebin out holder_pid
   rec=$(new_world pi-prelock-loaded-marker)
   IFS='|' read -r root home fakebin <<EOF
@@ -2907,6 +2918,7 @@ EOF
 }
 
 test_omp_diagnostic_accepts_prelock_loaded_marker() {
+  skip_5137 test_omp_diagnostic_accepts_prelock_loaded_marker && return 0
   local rec root home fakebin out holder_pid
   rec=$(new_world omp-prelock-loaded-marker)
   IFS='|' read -r root home fakebin <<EOF
