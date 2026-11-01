@@ -5348,7 +5348,7 @@ test_real_pi_picker_primitives_stay_bounded_and_searchable() {
     return
   fi
   local package_dir fixture original_dir out status
-  package_dir=${FM_PI_PACKAGE_DIR:-"$(npm root -g 2>/dev/null)/@earendil-works/pi-coding-agent"}
+  package_dir=$(fm_pi_package_dir) || package_dir=''
   if [ ! -f "$package_dir/package.json" ]; then
     echo "skip: installed @earendil-works/pi-coding-agent package not found"
     return
@@ -5357,7 +5357,7 @@ test_real_pi_picker_primitives_stay_bounded_and_searchable() {
   mkdir -p "$fixture/lib" "$fixture/node_modules/@earendil-works"
   cp "$ROOT/.pi/extensions/lib/fm-branch-model-picker.ts" "$fixture/lib/fm-branch-model-picker.ts"
   ln -s "$package_dir" "$fixture/node_modules/@earendil-works/pi-coding-agent"
-  ln -s "$package_dir/node_modules/@earendil-works/pi-tui" "$fixture/node_modules/@earendil-works/pi-tui"
+  ln -s "$(fm_pi_package_dep "$package_dir" @earendil-works/pi-tui)" "$fixture/node_modules/@earendil-works/pi-tui"
   original_dir=$PWD
   cd "$fixture" || fail "could not enter the Pi picker primitives fixture"
   LIB="$fixture/lib/fm-branch-model-picker.ts" PI_VERSION_FILE="$package_dir/package.json" \
@@ -5494,7 +5494,7 @@ test_outcomes_tool_uses_stock_execution_and_export_consumers() {
     return
   fi
   local package_dir package_version fixture out status
-  package_dir=${FM_PI_PACKAGE_DIR:-"$(npm root -g 2>/dev/null)/@earendil-works/pi-coding-agent"}
+  package_dir=$(fm_pi_package_dir) || package_dir=''
   if [ ! -f "$package_dir/package.json" ]; then
     echo "skip: installed @earendil-works/pi-coding-agent package not found"
     return
@@ -5524,9 +5524,9 @@ test_outcomes_tool_uses_stock_execution_and_export_consumers() {
   cp "$ROOT/.pi/extensions/lib/fm-calm-visibility.ts" "$fixture/.pi/extensions/lib/fm-calm-visibility.ts"
   cp "$ROOT/.pi/extensions/lib/fm-operational-input.ts" "$fixture/.pi/extensions/lib/fm-operational-input.ts"
   ln -s "$package_dir" "$fixture/node_modules/@earendil-works/pi-coding-agent"
-  ln -s "$package_dir/node_modules/@earendil-works/pi-tui" "$fixture/node_modules/@earendil-works/pi-tui"
-  ln -s "$package_dir/node_modules/@earendil-works/pi-ai" "$fixture/node_modules/@earendil-works/pi-ai"
-  ln -s "$package_dir/node_modules/typebox" "$fixture/node_modules/typebox"
+  ln -s "$(fm_pi_package_dep "$package_dir" @earendil-works/pi-tui)" "$fixture/node_modules/@earendil-works/pi-tui"
+  ln -s "$(fm_pi_package_dep "$package_dir" @earendil-works/pi-ai)" "$fixture/node_modules/@earendil-works/pi-ai"
+  ln -s "$(fm_pi_package_dep "$package_dir" typebox)" "$fixture/node_modules/typebox"
 
   out=$(cd "$fixture" && EXT="$fixture/.pi/extensions/fm-branch-supervision.ts" PI_PACKAGE_DIR="$package_dir" node --input-type=module 2>&1 <<'JS'
 import { pathToFileURL } from "node:url";

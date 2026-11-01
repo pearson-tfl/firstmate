@@ -577,6 +577,33 @@ ok - unseeded path without --approve still prompts on Trust project folder?
 
 Portable launch-command coverage lives in `tests/fm-spawn-dispatch-profile.test.sh` (`test_pi_seeded_secondmate_preapproves_project_trust`, `test_pi_worker_launch_omits_seeded_home_approve`, `test_pi_approve_probe_omits_unsupported_flag`).
 
+## Pi 1.x installed-package tests
+
+`tests/lib.sh`'s `fm_pi_package_dir` and `fm_pi_package_dep` own how real-Pi tests find the SDK behind the `pi` on PATH, and `tests/fm-test-fixtures.test.sh` pins both layouts.
+A Pi 1.x managed install keeps the SDK under `<agent>/install/releases/<version>/node_modules` with its dependencies hoisted beside it, and has no npm global package.
+A standalone Pi binary carries no SDK, so its real-package cases need `FM_PI_PACKAGE_DIR` pointed at an npm install of the same version.
+A fresh npm install of `@earendil-works/pi-coding-agent@1.0.4` resolves its `^1.0.4` sibling packages to newer releases that fail to import, so pin those siblings to the same version.
+Byte-length assertions on box-drawing rows need a UTF-8 locale; a bare SSH shell on Linux runs in POSIX and counts bytes.
+Pi shows a project under HOME as `~/...` in its status line, so `tests/fm-pi-branch-responsiveness-live-e2e.test.sh` waits for the part of the path after HOME.
+
+Verified 2026-11-01 on macOS with a Pi 1.2.0 managed install, and on Linux with a Pi 1.0.4 standalone binary plus a pinned 1.0.4 npm install as `FM_PI_PACKAGE_DIR`, under a UTF-8 locale:
+
+```sh
+bin/fm-test-run.sh tests/fm-test-fixtures.test.sh tests/fm-pi-branch-extension.test.sh tests/fm-pi-codex-native.test.sh tests/fm-pi-primary-types.test.sh tests/fm-pi-watch-extension.test.sh tests/fm-calm-pi-extension.test.sh tests/fm-spawn-dispatch-profile.test.sh tests/fm-harness-adapter-references.test.sh tests/fm-read-repetition.test.sh
+FM_CALM_PI_QUEUE_RETENTION_LIVE=1 FM_PI_BRANCH_RESPONSIVENESS_E2E=1 FM_PI_SEEDED_HOME_TRUST_LIVE=1 FM_READ_REPETITION_LIVE=1 FM_PI_BRANCH_LIVE_E2E=1 bin/fm-test-run.sh --jobs 1 tests/fm-calm-pi-queue-retention-live-e2e.test.sh tests/fm-pi-branch-responsiveness-live-e2e.test.sh tests/fm-pi-seeded-home-trust-live-e2e.test.sh tests/fm-read-repetition-live.test.sh tests/fm-pi-branch-live-e2e.test.sh
+```
+
+```
+ok - Pi 1.2.0 exposes every queue-retention member Calm preflights before hiding queued Firstmate rows
+ok - supervision outcome delivery keeps the real Pi 1.2.0 TUI echoing keystrokes at its unloaded floor
+ok - real Pi SDK 1.2.0 cancels processing before a second provider request, filters it from a subsequent request, and preserves user/unrelated content and unprocessed outcomes
+ok - Pi 1.0.4 installed RPC read guard: veto, abort, durable latch, operational denial and user reset
+ok - supervision outcome delivery keeps the real Pi 1.0.4 TUI echoing keystrokes at its unloaded floor
+ok - real Pi SDK 1.0.4 preserves applicable user runs and unprocessed outcomes during away posture; newer custom-opening cases are N/A
+```
+
+`tests/fm-pi-branch-live-e2e.test.sh` reads model credentials from the environment, so run it without ambient provider keys such as `GEMINI_API_KEY`.
+
 ## Launch-prompt backstop signatures
 
 `bin/fm-busy-lib.sh`'s launch-prompt backstop (`fm_busy_launch_prompt_parked`) reclassifies a launch whose busy record is still pinned at the fm-spawn seed as `unknown launch-prompt`, rather than `busy fm-spawn`, when the captured pane matches that harness's own recognized trust, sign-in, or first-run dialog.

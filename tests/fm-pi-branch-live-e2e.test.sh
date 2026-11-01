@@ -38,7 +38,12 @@ set -u
 fm_live_gate opt-in FM_PI_BRANCH_LIVE_E2E npm jq node
 export NODE_NO_WARNINGS=1
 
-PI_PACKAGE_DIR=${FM_PI_PACKAGE_DIR:-"$(npm root -g)/@earendil-works/pi-coding-agent"}
+PI_PACKAGE_DIR=$(fm_pi_package_dir) || PI_PACKAGE_DIR=''
+# Pi's own dependencies, nested or hoisted (tests/lib.sh fm_pi_package_dep).
+PI_TUI_DIR=$(fm_pi_package_dep "$PI_PACKAGE_DIR" @earendil-works/pi-tui) || PI_TUI_DIR=''
+PI_AI_DIR=$(fm_pi_package_dep "$PI_PACKAGE_DIR" @earendil-works/pi-ai) || PI_AI_DIR=''
+PI_TYPEBOX_DIR=$(fm_pi_package_dep "$PI_PACKAGE_DIR" typebox) || PI_TYPEBOX_DIR=''
+export PI_AI_DIR
 if [ ! -f "$PI_PACKAGE_DIR/package.json" ]; then
   fail "Pi package absent: the live branch guard needs @earendil-works/pi-coding-agent installed (FM_PI_PACKAGE_DIR to override)"
 fi
@@ -91,9 +96,9 @@ done
 SH
 chmod +x "$repo/bin/fm-operational-input.sh" "$repo/bin/fm-watch-arm.sh"
 ln -s "$PI_PACKAGE_DIR" "$repo/node_modules/@earendil-works/pi-coding-agent"
-ln -s "$PI_PACKAGE_DIR/node_modules/@earendil-works/pi-tui" "$repo/node_modules/@earendil-works/pi-tui"
-ln -s "$PI_PACKAGE_DIR/node_modules/@earendil-works/pi-ai" "$repo/node_modules/@earendil-works/pi-ai"
-ln -s "$PI_PACKAGE_DIR/node_modules/typebox" "$repo/node_modules/typebox"
+ln -s "$PI_TUI_DIR" "$repo/node_modules/@earendil-works/pi-tui"
+ln -s "$PI_AI_DIR" "$repo/node_modules/@earendil-works/pi-ai"
+ln -s "$PI_TYPEBOX_DIR" "$repo/node_modules/typebox"
 
 # Stock macOS Bash 3.2 cannot reliably parse JavaScript template literals in a
 # heredoc nested inside command substitution, so capture through a file.
@@ -613,7 +618,7 @@ const { ModelRegistry, ModelRuntime, SessionManager, createAgentSession } = awai
 // The same specifier the extension imports; Pi's extension loader aliases it
 // to this package's own bundled copy.
 const { clampThinkingLevel, getSupportedThinkingLevels } = await import(
-  pathToFileURL(`${packageRoot}/node_modules/@earendil-works/pi-ai/dist/compat.js`).href
+  pathToFileURL(`${process.env.PI_AI_DIR}/dist/compat.js`).href
 );
 const runtime = await ModelRuntime.create({
   authPath: `${process.env.PI_CODING_AGENT_DIR}/auth.json`,
