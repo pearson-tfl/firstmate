@@ -124,12 +124,16 @@ test_missing_state_is_silent() {
   pass "fm-sessionstart-nudge: a checkout without state is silent"
 }
 
-test_owned_pid_lock_is_silent() {
-  local root="$TMP_ROOT/already-ran-pid"
+# Only a named holder can own the lock. A pid line, even one naming this
+# hook's own parent shell, is a legacy lock no session owns, so it still nudges.
+test_pid_lock_still_nudges() {
+  local root="$TMP_ROOT/legacy-pid" out status=0
   make_primary "$root"
   printf '%s\n' "$$" > "$root/state/.lock"
-  expect_silent_zero "owned pid lock nudge" run_nudge "$root"
-  pass "fm-sessionstart-nudge: a lock holder in process ancestry is already run"
+  out=$(run_nudge "$root") || status=$?
+  expect_code 0 "$status" "legacy pid lock nudge"
+  [ "$out" = "$NUDGE_LINE" ] || fail "a legacy pid lock naming an ancestor was treated as already run, got: $out"
+  pass "fm-sessionstart-nudge: a legacy pid lock is never this session's, so it still nudges"
 }
 
 test_owned_lock_is_silent() {
@@ -155,40 +159,6 @@ test_foreign_named_lock_still_nudges() {
   expect_code 0 "$status" "an unnamed session's nudge"
   [ "$out" = "$NUDGE_LINE" ] || fail "an unnamed session was not nudged under holder:pocock, got: $out"
   pass "fm-sessionstart-nudge: a named lock still nudges a session that does not carry its name"
-}
-
-# A firstmate running inside a PID namespace - a container, or `codex sandbox` -
-# holds its home lock from a harness that IS pid 1, so this hook must recognize
-# that owner. The old walk rejected a lock pid of 1 outright and stopped before
-# comparing pid 1, so the hook nudged a session that had already run.
-# A fake ps cannot reach this path: `kill -0` is a shell builtin gating the lock
-# pid, and on a host `kill -0 1` fails for an unprivileged user, so the case
-# needs a real namespace where pid 1 is this user's own process.
-test_namespace_pid1_lock_holder_is_silent() {
-  local root="$TMP_ROOT/namespace-pid1" out status=0
-  if ! command -v unshare >/dev/null 2>&1 \
-    || ! unshare -rpf --mount-proc true >/dev/null 2>&1; then
-    printf '# skip: unprivileged PID namespaces are unavailable here, so the namespace pid 1 lock owner is unverified\n'
-    return 0
-  fi
-  make_primary "$root"
-
-  # Non-vacuity: inside the same namespace, with no lock at all, the hook must
-  # still produce its nudge, so silence below means the owner was recognized.
-  out=$(unshare -rpf --mount-proc bash -c \
-    "FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE='$root' FM_HOME='$root' '$NUDGE'; exit \$?") || status=$?
-  expect_code 0 "$status" "namespace nudge without a lock"
-  [ "$out" = "$NUDGE_LINE" ] \
-    || fail "the namespace fixture did not nudge without a lock, so its silence proves nothing: $out"
-
-  printf '1\n' > "$root/state/.lock"
-  status=0
-  out=$(unshare -rpf --mount-proc bash -c \
-    "FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE='$root' FM_HOME='$root' '$NUDGE'; exit \$?") || status=$?
-  expect_code 0 "$status" "namespace pid 1 lock nudge"
-  [ -z "$out" ] \
-    || fail "a lock held by the harness at namespace pid 1 was not recognized, got: $out"
-  pass "fm-sessionstart-nudge: a lock holder that is pid 1 of its own namespace is already run"
 }
 
 test_opencode_plugin_delivers_exact_nudge_once() {
@@ -247,10 +217,13 @@ make_run_primary() {
   : > "$dir/AGENTS.md"
 }
 
+# Only a named holder acquires the lock, so the run tier runs as holder pocock
+# unless the caller names another.
 run_hook() {  # <root> [args...]
   local root=$1
   shift
   env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
+    FM_LOCK_HOLDER="${FM_LOCK_HOLDER:-pocock}" \
     FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" FM_HOME="$root" PATH="$RUN_PATH" "$RUN" "$@"
 }
 
@@ -258,6 +231,7 @@ run_hook_pi() {  # <root> [args...]
   local root=$1
   shift
   env -u CLAUDECODE -u GROK_AGENT PI_CODING_AGENT=true FM_PI_HARNESS=pi \
+    FM_LOCK_HOLDER="${FM_LOCK_HOLDER:-pocock}" \
     FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" FM_HOME="$root" PATH="$RUN_PATH" "$RUN" "$@"
 }
 
@@ -273,8 +247,8 @@ test_run_startup_runs_the_full_digest() {
   out=$(run_hook "$root" --source startup </dev/null) || status=$?
   expect_code 0 "$status" "run wrapper startup"
   assert_contains "$out" "$FULL_BANNER$root" "startup did not run the full digest"
-  assert_contains "$out" "lock acquired: harness pid" \
-    "the portable startup fixture did not supply a real harness process"
+  assert_contains "$out" "lock acquired: holder pocock" \
+    "the startup fixture did not claim main by name"
   assert_not_contains "$out" "$REEMIT_BANNER" "startup was misrouted to a context re-emit"
   assert_not_contains "$out" "FIRSTMATE_OP" "a run-tier open also emitted the nudge instruction"
   assert_contains "$out" "NEXT STEP" "the run wrapper did not deliver a complete digest"
@@ -1095,7 +1069,7 @@ test_run_creates_missing_state_on_a_fresh_primary() {
   assert_present "$root/state" "a fresh primary root did not get its state dir created"
   assert_contains "$out" "$FULL_BANNER$root" \
     "creating the state dir did not let a fresh primary's session start run"
-  assert_contains "$out" "lock acquired: harness pid" \
+  assert_contains "$out" "lock acquired: holder pocock" \
     "creating the state dir did not let a fresh primary take the fleet lock"
   assert_not_contains "$out" "$REEMIT_BANNER" \
     "a fresh primary's first session was misrouted to a context re-emit"
@@ -1146,10 +1120,9 @@ test_gate_common_dir_is_silent
 test_unmarked_linked_worktree_is_silent
 test_linked_secondmate_primary_nudges
 test_missing_state_is_silent
-test_owned_pid_lock_is_silent
+test_pid_lock_still_nudges
 test_owned_lock_is_silent
 test_foreign_named_lock_still_nudges
-test_namespace_pid1_lock_holder_is_silent
 test_opencode_plugin_delivers_exact_nudge_once
 test_run_startup_runs_the_full_digest
 test_run_clear_and_compact_reemit

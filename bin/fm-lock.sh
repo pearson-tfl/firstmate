@@ -70,6 +70,9 @@ HOLDER_NAME=${FM_LOCK_HOLDER:-}
 if [ -z "$HOLDER_NAME" ]; then
   if [ "${1:-}" = "release" ]; then
     echo "error: release needs FM_LOCK_HOLDER set to the holder's name; nothing released" >&2
+  elif held=$(fm_session_lock_recorded_holder "$STATE"); then
+    # The two-mains guard, read without the claim lock: nothing is written.
+    echo "error: main is held by $held; read-only" >&2
   else
     echo "error: acquiring the session lock needs FM_LOCK_HOLDER set to this session's holder name; nothing changed; operate read-only until resolved" >&2
   fi
