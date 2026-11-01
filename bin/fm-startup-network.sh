@@ -337,7 +337,9 @@ EOF
 # nobody else has claimed, and the sweeps are idempotent, so finishing it is
 # strictly better than abandoning it. A missing, unreadable, or replaced lock all
 # fail closed to the read-only probe.
-lock_unchanged() {  # <expected-pid>
+# The expected value is line 1 as recorded at launch: a harness pid, or a
+# named holder (holder:<name>) that fm-lock.sh never rewrites while it holds.
+lock_unchanged() {  # <expected line 1>
   local expected=$1 current
   fm_session_lock_identity_valid "$expected" || return 1
   [ -f "$STATE/.lock" ] && [ ! -L "$STATE/.lock" ] || return 1

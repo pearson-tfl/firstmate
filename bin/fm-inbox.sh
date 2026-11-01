@@ -886,7 +886,9 @@ cmd_ready() {
   # this command. An explicit FM_SUPERVISION_MODEL still wins; otherwise
   # classify the lock-holder pid through fm-harness.sh ancestry. No holder,
   # or a walk that names nothing, is honest unknown - never the caller's
-  # own harness, and never a durable per-home model record.
+  # own harness, and never a durable per-home model record. A named holder
+  # (holder:<name>) has no pid to walk, so its model is unknown, and
+  # can_receive with it, unless FM_SUPERVISION_MODEL is set.
   local resolved_model harness anc
   resolved_model=${FM_SUPERVISION_MODEL:-}
   if [ -z "$resolved_model" ] && [ "$lock_state" = held ] && [ -n "$lock_pid" ]; then
