@@ -2020,7 +2020,9 @@ fm_failure_episode_reset() {
 #     and, when the session publishes CLAUDE_PID, owner_harness_pid=<pid>; it
 #     is reachable while line 1 still names that holder and the recorded pid
 #     is a live harness. Two runs share one name, so the pid is what fails a
-#     dead run's orphan. A rewake's session_pid is then the holder line itself.
+#     dead run's orphan; a claim taken without CLAUDE_PID is bound by the name
+#     alone and cannot tell that orphan apart. A rewake's session_pid is then
+#     the holder line itself.
 #   - Every firing DEFERS (exits 0) to an open claim; anything else - a
 #     terminal outcome, a dead or identity-mismatched owner, a stuck owner, an
 #     identityless entry, or no claim at all - lets the next firing take

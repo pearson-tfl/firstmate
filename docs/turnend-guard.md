@@ -359,6 +359,7 @@ An entry from a build before these fields existed records neither and falls back
 Under a named holder, where `state/.lock` line 1 is `holder:<name>`, there is no pid to descend from.
 A claim taken by that holder records `owner_holder=<name>` and, when the session publishes `CLAUDE_PID`, `owner_harness_pid=<pid>`; it is reachable while line 1 still names that holder and that pid is a live harness.
 Two runs share one name, so the recorded pid is what fails a dead run's orphan.
+A claim taken where `CLAUDE_PID` is not published records no pid and is bound by the name alone, so a dead run's orphan under the same name is then not detected; Claude Code publishes `CLAUDE_PID` to every hook.
 
 Anything else lets the next Stop-owned firing take the next generation and arm.
 That covers a finished outcome, a dead or identity-mismatched owner, an owner orphaned by its session's exit, a stuck owner, an identityless entry, or no entry.
