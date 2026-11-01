@@ -2,7 +2,7 @@
 # Behavior tests for Antigravity CLI (agy) as a firstmate PRIMARY and SECONDMATE
 # harness (.agents/hooks.json, bin/fm-sessionstart-agy.sh,
 # bin/fm-turnend-guard-agy.sh, bin/fm-turnend-guard.sh --agy,
-# PreToolUse --agy seatbelts, session-lock agy ancestry, and supervision model).
+# PreToolUse --agy seatbelts, session-lock agy holder name, and supervision model).
 # shellcheck disable=SC2016 # single quotes are deliberate: $FM_HOME expands inside the fake harness child
 set -u
 
@@ -574,23 +574,29 @@ test_subagent_pretool_check_agy() {
   pass "fm-subagent-pretool-check --agy: denies invoke_subagent, allows observe-only tools, inert in worktree"
 }
 
-# --- 5. Session lock agy ancestry & Supervision model ------------------------
+# --- 5. Session lock agy holder & Supervision model ---------------------------
 
-test_session_lock_agy_ancestry_and_supervision_model() {
+test_session_lock_agy_holder_and_supervision_model() {
   local dir out model block repair
-  dir=$(make_primary_dir "$TMP_ROOT/lock-ancestry")
+  dir=$(make_primary_dir "$TMP_ROOT/lock-holder")
 
+  # Under a live agy parent: the named holder acquires and owns the lock, the
+  # agy pid reads as a live harness, and a legacy pid line naming that live agy
+  # process is neither owned nor claimable.
   AGY_CHILD_CMD='
     . "$FM_HOME/bin/fm-session-lock-lib.sh"
-    anc=$(fm_harness_ancestry_pid) || exit 11
-    [ "$anc" = "$PPID" ] || exit 12
-    fm_harness_pid_alive "$anc" || exit 13
-    printf "%s\n" "$anc" > "$FM_HOME/state/.lock"
-    fm_session_lock_owned_by_self "$FM_HOME/state" || exit 14
-    printf "owned:%s\n" "$anc"
+    FM_LOCK_HOLDER=agy-main "$FM_HOME/bin/fm-lock.sh" >/dev/null 2>&1 || exit 11
+    [ "$(head -n 1 "$FM_HOME/state/.lock")" = holder:agy-main ] || exit 12
+    fm_harness_pid_alive "$PPID" || exit 13
+    FM_LOCK_HOLDER=agy-main fm_session_lock_owned_by_self "$FM_HOME/state" || exit 14
+    printf "%s\n" "$PPID" > "$FM_HOME/state/.lock"
+    FM_LOCK_HOLDER=agy-main fm_session_lock_owned_by_self "$FM_HOME/state" && exit 15
+    FM_LOCK_HOLDER=agy-main "$FM_HOME/bin/fm-lock.sh" >/dev/null 2>&1 && exit 16
+    [ "$(head -n 1 "$FM_HOME/state/.lock")" = "$PPID" ] || exit 17
+    printf "owned:holder:agy-main\n"
   '
   out=$(run_under_agy FM_HOME="$dir" 2>/dev/null)
-  assert_contains "$out" "owned:" "session-lock-lib must resolve agy ancestry, liveness, and ownership"
+  assert_contains "$out" "owned:holder:agy-main" "session lock under agy must acquire and own by holder name and refuse a live legacy agy pid line"
 
   AGY_CHILD_CMD='
     . "$FM_HOME/bin/fm-wake-lib.sh"
@@ -611,7 +617,7 @@ test_session_lock_agy_ancestry_and_supervision_model() {
   assert_contains "$repair" "Stop-hook park" \
     "fm-supervision-instructions.sh --harness agy --repair-line must mention Stop-hook park"
 
-  pass "session-lock & supervision model: agy ancestry, autoarm model, and supervision instructions verified"
+  pass "session-lock & supervision model: agy holder name, autoarm model, and supervision instructions verified"
 }
 
 fm_test_run \
@@ -628,4 +634,4 @@ fm_test_run \
   test_arm_pretool_check_agy \
   test_cd_pretool_check_agy \
   test_subagent_pretool_check_agy \
-  test_session_lock_agy_ancestry_and_supervision_model
+  test_session_lock_agy_holder_and_supervision_model

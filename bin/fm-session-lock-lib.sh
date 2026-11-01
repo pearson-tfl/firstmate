@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 # Shared session-lock harness identity.
 #
-# ONE owner of the "which verified-harness process holds this home's session
-# lock, and does the current process run inside that same session?" decision.
+# ONE owner of the "which verified-harness process or named holder holds this
+# home's session lock, and does the current process belong to it?" decision.
 # bin/fm-lock.sh uses it to acquire and inspect state/.lock and its
-# state/.lock-session sidecar; bin/fm-claude-stop-autoarm.sh uses it to prove a
-# Stop hook fires inside the lock-owning primary session before it may arm or
-# rewake. Two signals decide ownership, either one sufficient: the recorded pid
-# is a member of this process's contiguous harness ancestry, or the trusted
-# Claude session id below matches the id recorded beside a live lock. Neither
-# signal ever fails open: no id, no sidecar, an untrusted id, or a different
-# recorded id leaves the ancestry verdict exactly as it was.
+# state/.lock-session sidecar; bin/fm-claude-stop-autoarm.sh and the turn-end
+# guards use it to prove a hook fires inside the lock-owning primary session.
+# Only a named holder (holder:<name> on line 1) is ever owned, and only by the
+# process whose FM_LOCK_HOLDER carries that name; a legacy pid line is never
+# owned, and while its pid is a live harness it is a foreign owner.
 # This file is sourced by scripts and has no side effects on source.
 
 # Cursor process identity is NOT expressible as a command-name pattern and is
@@ -58,10 +56,10 @@ fm_harness_path_name() {  # <path>
 
 # Portable single-pid process introspection.
 #
-# procps/BSD `ps -o comm=/args=/ppid=` custom-format columns are the primary
+# procps/BSD `ps -o comm=/args=` custom-format columns are the primary
 # path and cover Linux and macOS. Cygwin's ps, which Git for Windows ships, has
 # no -o option at all and exits with "unknown option -- o", so the primary path
-# fails outright there and the ancestry walk aborts on its first hop. The
+# fails outright there and every harness check would fail. The
 # fallbacks parse Cygwin's fixed columns instead:
 #   ps -p PID     PID PPID PGID WINPID TTY UID STIME COMMAND   (executable path)
 #   ps -f -p PID  UID PID PPID TTY STIME COMMAND               (full argv)
@@ -83,16 +81,8 @@ fm_ps_args() {  # <pid> -> full command line
   printf '%s' "$out"
 }
 
-fm_ps_ppid() {  # <pid> -> parent pid
-  local pid=$1 out
-  out=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ') && [ -n "$out" ] && { printf '%s' "$out"; return 0; }
-  out=$(ps -f -p "$pid" 2>/dev/null | awk 'NR == 2 { print $3; exit }')
-  [ -n "$out" ] || return 1
-  printf '%s' "$out"
-}
-
 # True when the process described by command name $1 and full argument string $2
-# is a verified harness. Sets FM_HARNESS_IS_CLAUDE for the ancestry walk.
+# is a verified harness. Sets FM_HARNESS_IS_CLAUDE for the trusted-id check.
 #
 # Evidence, in order:
 #   1. the basename of the reported command name, against FM_HARNESS_RE.
@@ -127,9 +117,8 @@ fm_harness_process_matches() {  # <comm> <args>
       ;;
   esac
   # Cursor: its own owner decides, from Cursor's name or versioned install tree
-  # in the command path or argv[0]. Without this a Cursor primary can never
-  # locate its own harness in the ancestry, so every session start refuses the
-  # fleet lock as read-only and the park can never arm.
+  # in the command path or argv[0]. Without this a live Cursor pid would never
+  # read as a harness.
   fm_cursor_process_matches "$comm" "$args" "$argv0" && return 0
   return 1
 }
@@ -138,11 +127,9 @@ fm_harness_process_matches() {  # <comm> <args>
 #
 # On Cygwin (Git for Windows) the harness is a native Windows process, and the
 # parent link from a shell it spawns does NOT cross the Cygwin boundary: Cygwin
-# reports that shell's PPID as 1. So no amount of walking ppid can ever reach the
-# harness, and the contiguous-run model below cannot be satisfied by the Cygwin
-# process table alone. The Windows process table does hold the real parent chain,
-# and `ps -W` lists Windows processes keyed by WINPID, so identity is recovered
-# from there instead.
+# reports that shell's PPID as 1, and its pid is not in the Cygwin process table.
+# `ps -W` lists Windows processes keyed by WINPID, so liveness and identity of a
+# Windows pid are answered from there instead.
 #
 # Windows pids live in a DIFFERENT namespace from Cygwin pids: `kill -0` on a
 # Windows pid reports "No such process" even while that process is running, and a
@@ -197,7 +184,7 @@ fm_session_pid_valid() {  # <value>
 # still name the session that asked for this work?" - the startup sweep's
 # re-check, bootstrap's clone refresh, and the session-start completion marker -
 # take either. fm_session_pid_valid itself still rejects a name, because its
-# other readers kill -0 or walk the value as a pid.
+# other readers kill -0 the value as a pid.
 fm_session_lock_identity_valid() {  # <value>
   fm_session_pid_valid "$1" && return 0
   case "$1" in
@@ -235,141 +222,6 @@ fm_win_command() {  # <winpid>
   out=$(printf '%s\n' "$table" | awk -v w="$winpid" '$4 == w { for (i = 8; i <= NF; i++) printf "%s%s", (i > 8 ? " " : ""), $i; exit }')
   [ -n "$out" ] || return 1
   fm_win_normalize_command "$out"
-}
-
-# Environment variables through which a verified harness publishes the pid of
-# its own session process. Extend only with a variable confirmed to name the
-# session-long harness process on Windows, because the identity check below is
-# only as narrow as this table.
-#
-# Walking the real Windows parent chain is deliberately NOT the fallback here.
-# Two properties of this platform make it unusable for identity:
-#   - MSYS emulates exec by spawning a fresh Windows process and exiting the old
-#     one, so intermediate shells vanish constantly and a child's recorded parent
-#     is routinely a pid that no longer exists. The chain simply breaks.
-#   - Windows never reparents an orphan, so that dangling parent id stays on the
-#     child and Windows is free to reissue it. Following it can therefore land on
-#     an unrelated live process and bind a home's session lock to it, which is
-#     the wrong-process-binding failure this file exists to prevent.
-# A harness that publishes nothing is reported as unresolved instead, which
-# leaves the session read-only exactly as before - the safe direction.
-#
-# CLAUDE_PID is inherited by every process a Claude pane starts, so it is taken
-# only together with the CLAUDE_CODE_SESSION_ID Claude publishes beside it. That
-# id is then trusted and recorded beside the lock, and a /clear re-key under the
-# same pid refreshes it as on POSIX. A non-Claude primary hand-started from a
-# Claude pane inherits both values and still resolves as that Claude session; no
-# environment signal tells the two apart there.
-FM_WIN_HARNESS_PID_VARS=(CLAUDE_PID)
-
-# Print this session's harness as one tagged Windows pid, or return 1.
-#
-# The published pid is a claim, not evidence, so it is never trusted on its own:
-# it is confirmed against the Windows process table, and accepted only when that
-# pid is still live AND its executable independently identifies a verified
-# harness by the same rules every other platform uses. A value that is absent,
-# malformed, stale, or naming a non-harness process is discarded rather than
-# used, so a wrong or recycled pid fails closed instead of binding the lock.
-fm_win_harness_ancestry_pids() {
-  local var winpid comm
-  for var in "${FM_WIN_HARNESS_PID_VARS[@]}"; do
-    winpid=${!var:-}
-    case "$winpid" in
-      ''|*[!0-9]*) continue ;;
-    esac
-    if [ "$var" = CLAUDE_PID ]; then
-      case "${CLAUDE_CODE_SESSION_ID:-}" in ''|*$'\n'*|*$'\r'*) continue ;; esac
-    fi
-    comm=$(fm_win_command "$winpid") || continue
-    fm_harness_process_matches "$comm" "$comm" || continue
-    printf '%s%s\n' "$FM_WIN_PID_PREFIX" "$winpid"
-    return 0
-  done
-  return 1
-}
-
-# Walk the current process ancestry (up to 16 hops) and print this session's
-# contiguous verified-harness ancestry, innermost pid first.
-#
-# The walk climbs freely until the first harness match, because the caller is
-# normally an ordinary shell several levels below its session. After that first
-# match it stops at the first non-harness ancestor, so it can never cross a gap
-# into an unrelated harness further up the real process tree - for example the
-# live session that launched a test as its own subprocess.
-#
-# For every harness except Claude the innermost match is the session, which is
-# where e.g. Pi's shared signed-wrapper ancestry actually holds the lock: a
-# "pi-signed" launcher can be the direct parent of the inner "pi" engine pid that
-# owns the lock, and the wrapper pid above it is not that owner. Claude Code
-# instead runs hooks several levels below the session inside its own nested
-# worker chain (hook shell -> claude bg-spare -> claude bg-pty-host -> claude ->
-# claude), with no non-harness process between them. Which pid in that run is the
-# session cannot be read off the ancestry at all, so the whole contiguous run is
-# reported and the callers below decide what they need from it.
-fm_harness_ancestry_pids() {
-  local pid=$$ comm args extending=0 printed=0
-  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16; do
-    comm=$(fm_ps_comm "$pid") || break
-    args=$(fm_ps_args "$pid")
-    if fm_harness_process_matches "$comm" "$args"; then
-      printf '%s\n' "$pid"
-      printed=1
-      [ "$FM_HARNESS_IS_CLAUDE" -eq 1 ] || break
-      extending=1
-    elif [ "$extending" -eq 1 ]; then
-      break
-    fi
-    pid=$(fm_ps_ppid "$pid")
-    # Examine the top of the chain before stopping. Inside a PID namespace the
-    # harness itself is pid 1, so stopping as soon as the next pid is 1 hides the
-    # very process this walk exists to find. A host's real pid 1 (init, systemd,
-    # launchd) is not harness-shaped, so fm_harness_process_matches rejects it.
-    case "$pid" in '' | *[!0-9]*) break ;; esac
-    [ "$pid" -ge 1 ] || break
-  done
-  # A harness living in the same process table is always preferred, so an
-  # ordinary POSIX ancestry keeps resolving to plain pids and nothing about the
-  # existing platforms changes. The Windows bridge is consulted only after that
-  # walk finds nothing, which on Cygwin is what the severed parent link
-  # guarantees it will do.
-  if [ "$printed" -eq 0 ] && fm_win_boundary_applies; then
-    fm_win_harness_ancestry_pids && return 0
-  fi
-  [ "$printed" -eq 1 ]
-}
-
-# Print the outermost pid of this session's contiguous harness run for callers
-# that need that ancestry identity. This is not necessarily the pid written to
-# the session lock: fm_session_lock_anchor_pid owns that choice and uses a
-# trusted Claude session's model-loop pid instead. Every non-Claude harness
-# reports a single pid, so this remains its innermost match unchanged.
-fm_harness_ancestry_pid() {
-  local pids
-  pids=$(fm_harness_ancestry_pids) || return 1
-  _fm_harness_outermost_pid "$pids"
-}
-
-# Print the last (outermost) pid of ancestry list $1, or return 1 when empty.
-_fm_harness_outermost_pid() {  # <ancestry-pids>
-  local pid outermost=''
-  while IFS= read -r pid; do
-    [ -n "$pid" ] && outermost=$pid
-  done <<EOF
-$1
-EOF
-  [ -n "$outermost" ] || return 1
-  printf '%s\n' "$outermost"
-}
-
-# True when pid $1 is one of the lines of ancestry list $2.
-fm_harness_pid_listed() {  # <pid> <ancestry-pids>
-  local pid
-  while IFS= read -r pid; do
-    [ "$pid" = "$1" ] && return 0
-  done <<EOF
-$2
-EOF
-  return 1
 }
 
 # True if $1 is a live process that looks like a verified harness.
@@ -417,63 +269,30 @@ fm_session_pid_identity() {  # <value>
   fm_pid_identity "$1"
 }
 
-# --- trusted same-session identity -------------------------------------------
+# --- trusted session identity ----------------------------------------------
 # Claude Code hands every hook and tool shell CLAUDE_CODE_SESSION_ID (the
 # session's conversation id) and CLAUDE_PID (the pid of the process running the
-# model loop). A background session runs that model loop in a transient helper
-# bridged to its front-end by a shared daemon, and when that bridge is recycled
-# the contiguous claude-named ancestry from a hook to the recorded lock owner
-# breaks while the owner pid stays alive, so ancestry alone reads the session's
-# own lock as another live session's. The id is the one identity that survives
-# the recycling, so it is accepted as a second ownership signal - but only from
-# an environment proven to belong to the current Claude run.
+# model loop). bin/fm-lock.sh records that id beside a named holder's lock in
+# state/.lock-session, and the Claude auto-arm keys its rewake on it.
 #
-# Trust gate: CLAUDE_PID must be a Claude-shaped member of this process's
-# contiguous harness ancestry. An id merely retained in a helper environment
-# fails that membership and is ignored: a hand-started Pi or codex primary under
-# a Claude pane still carries the pane's CLAUDE_CODE_SESSION_ID and CLAUDE_PID,
-# and must never own a lock with them. On Windows the ancestry is that tagged
-# CLAUDE_PID itself, so this membership is no secondary check there; the
-# FM_WIN_HARNESS_PID_VARS comment owns that limitation. Ids are read from the
-# environment only, never from ps argv, where prompts and briefs are visible.
-#
-# A --fork-session successor mints a new id, so it stays a foreign live owner
-# until the pre-fork process exits; that is the safe direction and a documented
-# non-goal. Two genuinely different live sessions sharing one id is not a
-# supported state (Claude refuses to resume a running session under its id).
+# Trust gate: CLAUDE_PID must be a live verified Claude harness. An id retained
+# in an environment whose Claude process has exited is ignored. On Windows the
+# pid is answered in its tagged form from the Windows process table, because
+# kill -0 cannot see across that boundary. Ids are read from the environment
+# only, never from ps argv, where prompts and briefs are visible.
 
-# Print the Claude session id this process may own with, or return 1. $1 is the
-# ancestry list an earlier walk already produced, so a caller that walked once
-# need not walk again.
-fm_session_lock_trusted_session_id() {  # [<ancestry-pids>]
-  local id=${CLAUDE_CODE_SESSION_ID:-} claude_pid=${CLAUDE_PID:-} pids=${1:-} pid comm args
+# Print the Claude session id this process may record, or return 1.
+fm_session_lock_trusted_session_id() {
+  local id=${CLAUDE_CODE_SESSION_ID:-} claude_pid=${CLAUDE_PID:-}
   [ -n "$id" ] || return 1
   case "$id" in *$'\n'*|*$'\r'*) return 1 ;; esac
   case "$claude_pid" in ''|*[!0-9]*) return 1 ;; esac
-  if [ -z "$pids" ]; then
-    pids=$(fm_harness_ancestry_pids) || return 1
+  if fm_win_boundary_applies; then
+    claude_pid=$FM_WIN_PID_PREFIX$claude_pid
   fi
-  while IFS= read -r pid; do
-    # On Windows the ancestry is the tagged pid the bridge already confirmed
-    # from CLAUDE_PID and this same id, so it is matched in that form.
-    case "$pid" in
-      "$claude_pid")
-        comm=$(ps -o comm= -p "$pid" 2>/dev/null) || return 1
-        args=$(ps -o args= -p "$pid" 2>/dev/null)
-        fm_harness_process_matches "$comm" "$args" || return 1
-        ;;
-      "$FM_WIN_PID_PREFIX$claude_pid")
-        fm_harness_pid_alive "$pid" || return 1
-        ;;
-      *) continue ;;
-    esac
-    [ "$FM_HARNESS_IS_CLAUDE" -eq 1 ] || return 1
-    printf '%s\n' "$id"
-    return 0
-  done <<EOF
-$pids
-EOF
-  return 1
+  fm_harness_pid_alive "$claude_pid" || return 1
+  [ "$FM_HARNESS_IS_CLAUDE" -eq 1 ] || return 1
+  printf '%s\n' "$id"
 }
 
 # Print the session id recorded beside the lock in state dir $1, or return 1.
@@ -487,36 +306,6 @@ fm_session_lock_recorded_session_id() {  # <state>
   [ -n "$recorded" ] || return 1
   case "$recorded" in *$'\n'*|*$'\r'*) return 1 ;; esac
   printf '%s\n' "$recorded"
-}
-
-# True when the lock in state dir $1 was recorded by this same Claude session:
-# the trusted id equals the id recorded beside the lock. No trusted id, no
-# sidecar, or a different recorded id is false.
-fm_session_lock_same_session() {  # <state> [<ancestry-pids>]
-  local state=$1 trusted recorded
-  trusted=$(fm_session_lock_trusted_session_id "${2:-}") || return 1
-  recorded=$(fm_session_lock_recorded_session_id "$state") || return 1
-  [ "$recorded" = "$trusted" ]
-}
-
-# Print the pid bin/fm-lock.sh records on lock line 1 for this session. For a
-# Claude session with a trusted id that is CLAUDE_PID, the model-loop process:
-# never the shared transient daemon and never a front-end that outlives the
-# session, so "recorded pid dead" keeps meaning "session gone" instead of
-# wedging a home behind a live daemon whose session died. A replaced background
-# helper leaves a dead pid that its own session's next hook reclaims, because
-# the sidecar still names that session. Every other session records the
-# outermost pid of its contiguous run, exactly as before; a trusted Windows
-# session's run is its tagged CLAUDE_PID alone, so it records that tagged pid.
-fm_session_lock_anchor_pid() {
-  local pids
-  pids=$(fm_harness_ancestry_pids) || return 1
-  if fm_session_lock_trusted_session_id "$pids" >/dev/null \
-    && fm_harness_pid_listed "$CLAUDE_PID" "$pids"; then
-    printf '%s\n' "$CLAUDE_PID"
-    return 0
-  fi
-  _fm_harness_outermost_pid "$pids"
 }
 
 # Print the named holder recorded in state dir $1, or return 1. A named holder
@@ -534,45 +323,27 @@ fm_session_lock_recorded_holder() {  # <state>
 }
 
 # True when state dir $1 holds a session lock that this process's session owns:
-# a named holder equal to this process's FM_LOCK_HOLDER, or
-# the recorded pid is ANY harness ancestor of the current process, or the lock
-# was recorded by this same trusted Claude session and its recorded pid is still
-# a live harness. Membership is the honest ancestry test, because the lock owner
-# sits at an unknown depth in a contiguous Claude run - it is the outermost pid
-# when the hook fires inside the session's own nested worker chain, and an inner
-# pid when a harness-named daemon parents the session. The same-session path
-# requires the recorded pid alive so that a dead one is reclaimed through
-# bin/fm-lock.sh's ordinary stale-owner path, which refreshes line 1, rather than
-# silently owned with a dead anchor. A missing lock, a malformed lock, a lock
-# held by a harness outside this ancestry under another (or no) session id, or
-# an ancestry that cannot be resolved all fail closed.
+# a named holder equal to this process's FM_LOCK_HOLDER. A pid line, a missing
+# or malformed lock, another name, or no FM_LOCK_HOLDER is never owned, because
+# only a named holder can acquire.
 fm_session_lock_owned_by_self() {
-  local state=$1 lock_pid pids holder
-  if holder=$(fm_session_lock_recorded_holder "$state"); then
-    [ -n "${FM_LOCK_HOLDER:-}" ] && [ "$holder" = "$FM_LOCK_HOLDER" ]
-    return
-  fi
-  lock_pid=$(cat "$state/.lock" 2>/dev/null || true)
-  fm_session_pid_valid "$lock_pid" || return 1
-  pids=$(fm_harness_ancestry_pids) || return 1
-  fm_harness_pid_listed "$lock_pid" "$pids" && return 0
-  fm_session_lock_same_session "$state" "$pids" || return 1
-  fm_harness_pid_alive "$lock_pid"
+  local holder
+  holder=$(fm_session_lock_recorded_holder "$1") || return 1
+  [ -n "${FM_LOCK_HOLDER:-}" ] && [ "$holder" = "$FM_LOCK_HOLDER" ]
 }
 
 # True when state dir $1 records a named holder other than this process's
-# FM_LOCK_HOLDER, or a live verified harness outside this process's
-# contiguous harness ancestry that was not recorded by this same trusted Claude
-# session. Sets FM_SESSION_LOCK_FOREIGN_OWNER_PID for a diagnostic caller (the
-# holder name for a named holder), and FM_SESSION_LOCK_FOREIGN_OWNER_HOLDER to
-# that name, empty for a pid owner. Malformed, missing, dead, and
-# ancestry-uncertain locks are not foreign-owner evidence.
+# FM_LOCK_HOLDER, or a legacy pid line naming a live verified harness, which no
+# session can prove is its own. Sets FM_SESSION_LOCK_FOREIGN_OWNER_PID for a
+# diagnostic caller (the holder name for a named holder), and
+# FM_SESSION_LOCK_FOREIGN_OWNER_HOLDER to that name, empty for a pid owner.
+# Malformed, missing and dead locks are not foreign-owner evidence.
 # shellcheck disable=SC2034 # Output global, read by the sourcing guard caller.
 FM_SESSION_LOCK_FOREIGN_OWNER_PID=
 # shellcheck disable=SC2034 # Output global, read by the sourcing guard caller.
 FM_SESSION_LOCK_FOREIGN_OWNER_HOLDER=
 fm_session_lock_foreign_owner_live() {
-  local state=$1 lock_pid pids holder
+  local state=$1 lock_pid holder
   FM_SESSION_LOCK_FOREIGN_OWNER_PID=
   FM_SESSION_LOCK_FOREIGN_OWNER_HOLDER=
   [ -f "$state/.lock" ] && [ ! -L "$state/.lock" ] || return 1
@@ -587,9 +358,6 @@ fm_session_lock_foreign_owner_live() {
   lock_pid=$(cat "$state/.lock" 2>/dev/null || true)
   fm_session_pid_valid "$lock_pid" || return 1
   fm_harness_pid_alive "$lock_pid" || return 1
-  pids=$(fm_harness_ancestry_pids) || return 1
-  fm_harness_pid_listed "$lock_pid" "$pids" && return 1
-  fm_session_lock_same_session "$state" "$pids" && return 1
   # shellcheck disable=SC2034 # Output global, read by the sourcing guard caller.
   FM_SESSION_LOCK_FOREIGN_OWNER_PID=$lock_pid
   return 0

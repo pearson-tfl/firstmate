@@ -1338,7 +1338,7 @@ test_jobs_admits_a_concurrent_safe_family() {
   # admission and the concurrent scheduler for real.
   set +e
   "$RUNNER" --jobs 2 \
-    tests/fm-supervision-events.test.sh tests/fm-session-lock-ancestry.test.sh \
+    tests/fm-supervision-events.test.sh tests/fm-lock-holder.test.sh \
     >"$tmp/out" 2>"$tmp/err"
   rc=$?
   set -e
@@ -1347,13 +1347,13 @@ test_jobs_admits_a_concurrent_safe_family() {
     || fail "the admitted concurrent run did not report both scripts green: $(cat "$tmp/out")"
 
   set +e
-  "$RUNNER" --jobs 5 tests/fm-session-lock-ancestry.test.sh \
+  "$RUNNER" --jobs 5 tests/fm-lock-holder.test.sh \
     >"$tmp/over-cap.out" 2>"$tmp/over-cap.err"
   rc=$?
   set -e
   [ "$rc" -eq 2 ] || fail "a family run above its proven four-worker cap must be refused, got $rc"
 
-  external="$tmp/fm-session-lock-ancestry.test.sh"
+  external="$tmp/fm-lock-holder.test.sh"
   printf '#!/usr/bin/env bash\necho "ok - colliding external fixture"\n' >"$external"
   chmod +x "$external"
   set +e
@@ -1506,7 +1506,7 @@ test_concurrent_runs_are_ordered_longest_first() {
   # a real concurrent run over scripts whose hints differ by a wide margin.
   set +e
   "$RUNNER" --jobs 2 \
-    tests/fm-session-lock-ancestry.test.sh tests/fm-task-inbox.test.sh \
+    tests/fm-lock-holder.test.sh tests/fm-task-inbox.test.sh \
     >"$tmp/out" 2>"$tmp/err"
   set -e
   first=$(grep -m1 '^FM_TEST_BEGIN' "$tmp/out" | awk '{print $3}')

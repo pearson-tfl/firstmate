@@ -880,11 +880,10 @@ if [ "$PRIMARY_HARNESS" = omp ]; then
     fi
     # Warning only: name the cause when existing facts establish it.
     OMP_MARKER_PID=$(sed -n '2p' "$OMP_WATCH_MARKER" 2>/dev/null || true)
-    # This session's own process, not the lock line: the marker records a pid.
-    OMP_CURRENT_PID=$(fm_harness_ancestry_pid 2>/dev/null || true)
-    [ -n "$OMP_CURRENT_PID" ] || OMP_CURRENT_PID=$(sed -n '1p' "$OMP_LOCK" 2>/dev/null || true)
-    if [ -n "$OMP_MARKER_PID" ] && [ -n "$OMP_CURRENT_PID" ] && [ "$OMP_MARKER_PID" != "$OMP_CURRENT_PID" ]; then
-      printf 'OMP_WATCH_CAUSE: the extension marker %s names pid %s, which is not this session (pid %s)\n' "$OMP_WATCH_MARKER" "$OMP_MARKER_PID" "$OMP_CURRENT_PID"
+    # The marker records the omp process that loaded the extension. A pid that
+    # is no longer a live harness cannot be this session.
+    if [ -n "$OMP_MARKER_PID" ] && ! fm_harness_pid_alive "$OMP_MARKER_PID"; then
+      printf 'OMP_WATCH_CAUSE: the extension marker %s names pid %s, which is not this session (that pid is not a live harness)\n' "$OMP_WATCH_MARKER" "$OMP_MARKER_PID"
     fi
   fi
 fi
