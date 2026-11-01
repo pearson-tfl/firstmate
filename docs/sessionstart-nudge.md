@@ -95,8 +95,9 @@ The full digest updates the completion record in this order:
 
 So `clear` or `compact` cannot skip startup sweeps after a truncated run.
 
-`bin/fm-lock.sh` treats a lock as this session's own when it is owned through either of these:
+`bin/fm-lock.sh` treats a lock as this session's own when it is owned through any of these:
 
+- A named holder equal to this session's `FM_LOCK_HOLDER`.
 - The shared ancestry verdict.
 - A trusted same-session Claude id.
 

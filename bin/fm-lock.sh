@@ -112,17 +112,17 @@ if [ -n "$HOLDER_NAME" ]; then
   esac
   me="holder:$HOLDER_NAME"
 else
-me=$(fm_session_lock_anchor_pid) || {
-  if fm_win_boundary_applies; then
-    # Here the parent link does not reach the harness at all, so "not in the
-    # ancestry" would describe the wrong problem and send the reader hunting a
-    # process tree that can never contain the answer.
-    echo "error: cannot identify this harness session on Windows: it publishes no session pid this build recognizes (see FM_WIN_HARNESS_PID_VARS in bin/fm-session-lock-lib.sh; CLAUDE_PID is taken only together with CLAUDE_CODE_SESSION_ID); operate read-only until resolved" >&2
-  else
-    echo "error: cannot locate harness process in ancestry" >&2
-  fi
-  exit 1
-}
+  me=$(fm_session_lock_anchor_pid) || {
+    if fm_win_boundary_applies; then
+      # Here the parent link does not reach the harness at all, so "not in the
+      # ancestry" would describe the wrong problem and send the reader hunting a
+      # process tree that can never contain the answer.
+      echo "error: cannot identify this harness session on Windows: it publishes no session pid this build recognizes (see FM_WIN_HARNESS_PID_VARS in bin/fm-session-lock-lib.sh; CLAUDE_PID is taken only together with CLAUDE_CODE_SESSION_ID); operate read-only until resolved" >&2
+    else
+      echo "error: cannot locate harness process in ancestry" >&2
+    fi
+    exit 1
+  }
 fi
 probe=$(mktemp "$STATE/.lock-write.XXXXXX" 2>/dev/null) || {
   echo "error: cannot write session lock; operate read-only until resolved" >&2
