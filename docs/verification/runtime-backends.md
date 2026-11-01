@@ -584,6 +584,7 @@ A Pi 1.x managed install keeps the SDK under `<agent>/install/releases/<version>
 A standalone Pi binary carries no SDK, so its real-package cases need `FM_PI_PACKAGE_DIR` pointed at an npm install of the same version.
 A fresh npm install of `@earendil-works/pi-coding-agent@1.0.4` resolves its `^1.0.4` sibling packages to newer releases that fail to import, so pin those siblings to the same version.
 Byte-length assertions on box-drawing rows need a UTF-8 locale; a bare SSH shell on Linux runs in POSIX and counts bytes.
+Pi shows a project under HOME as `~/...` in its status line, so `tests/fm-pi-branch-responsiveness-live-e2e.test.sh` waits for the part of the path after HOME.
 
 Verified 2026-11-01 on macOS with a Pi 1.2.0 managed install, and on Linux with a Pi 1.0.4 standalone binary plus a pinned 1.0.4 npm install as `FM_PI_PACKAGE_DIR`, under a UTF-8 locale:
 
