@@ -496,6 +496,10 @@
 #   Pins are never inherited; remote per-mate overrides refuse locally.
 #   T3 Code refuses a pin because its provider instance owns the account.
 #   bin/fm-worker-account-lib.sh owns parsing, the check, and the shed list.
+# Account rules (config/account-rules): when present, a Claude launch chooses
+#   its cswap account through the same seam instead of config/claude-account,
+#   records account=cswap:<num>, and appends one data/account-switches.log
+#   line per choice; docs/configuration.md "Account rules" owns the contract.
 # Per-secondmate omp profile (config/secondmate-accounts/<id>/omp-profile):
 #   Opt-in, and read only for a local secondmate's own omp agent;
 #   bin/fm-omp-profile-lib.sh owns the file and its refusals. A pinned launch
@@ -3443,7 +3447,10 @@ RAW_COMMAND=
 [ "$RAW_LAUNCH" = 0 ] || RAW_COMMAND=$ARG3
 WORKER_ACCOUNT_MATE=
 [ "$KIND" != secondmate ] || WORKER_ACCOUNT_MATE=$ID
-WORKER_ACCOUNT=$(fm_worker_account_select "$HARNESS" "$CONFIG" "$MODEL" "${PI_BIN:-$HARNESS}" "$RAW_COMMAND" "$WORKER_ACCOUNT_MATE") || exit 1
+WORKER_ACCOUNT_PROJECT=$(fm_worker_account_project "$PROJ")
+WORKER_ACCOUNT=$(fm_worker_account_select "$HARNESS" "$CONFIG" "$MODEL" "${PI_BIN:-$HARNESS}" "$RAW_COMMAND" "$WORKER_ACCOUNT_MATE" "$WORKER_ACCOUNT_PROJECT") || exit 1
+WORKER_ACCOUNT_FROM=
+[ "$RELAUNCH" -eq 0 ] || WORKER_ACCOUNT_FROM=$(fm_meta_get "$RELAUNCH_META" account)
 WORKER_ACCOUNT_DECLARED=${WORKER_ACCOUNT%%$'\t'*}
 WORKER_ACCOUNT_ROOT=${WORKER_ACCOUNT#*$'\t'}
 WORKER_ACCOUNT_PROVIDER=${WORKER_ACCOUNT_ROOT#*$'\t'}
@@ -8057,4 +8064,11 @@ SPAWN_ACCOUNT=
 # Opt-in Herdr project groups (docs/herdr-backend.md "Project groups") tag the
 # new endpoint now rather than at the next watcher poll; off costs one file test.
 [ ! -e "$CONFIG/herdr-project-groups" ] || [ "$BACKEND" != herdr ] || FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE FM_CONFIG_OVERRIDE=$CONFIG "$SCRIPT_DIR/fm-herdr-groups.sh" sync "$ID" || true
+# Rules-chosen accounts (config/account-rules) report every choice, a
+# relaunch naming the account the task ran on before.
+case "$WORKER_ACCOUNT_DECLARED" in
+cswap:*)
+  fm_account_rules_report "$DATA" "$ID" "${WORKER_ACCOUNT_FROM:-none}" "$WORKER_ACCOUNT_DECLARED"
+  ;;
+esac
 echo "spawned $ID harness=$HARNESS kind=$KIND$SPAWN_DELIVERY window=$META_WINDOW worktree=$WT$SPAWN_ACCOUNT"

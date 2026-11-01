@@ -734,6 +734,29 @@ skip-runner: pi-signed is not installed, so its session flags were not exercised
 
 The guard submits prompts and spends tokens, so it is opt-in; rerun it after every Claude or Pi upgrade.
 
+## Account rules through cswap
+
+`bin/fm-worker-account-lib.sh` takes a rules-chosen account's Claude root from what the real `cswap run <num>` hands the `claude` it execs, and the account list from `cswap list --json` schemaVersion 1.
+`tests/fm-account-rules-live-e2e.test.sh` asks the real cswap and Claude under the operator's own `HOME`, where the cswap accounts live.
+For a non-default account the recorded root is signed in and `claude auth status --json` there reports the email cswap lists for that number; for the default login's account cswap runs plain `claude`, so the recorded root is empty and the launch unsets `CLAUDE_CONFIG_DIR`.
+Claude keys its macOS Keychain lookup to `USER`, so a read of the served account with `USER` cleared reports `loggedIn: false` for a root that is signed in.
+
+Verified 2026-10-31 on cswap 0.27.0b1+estate.1 and Claude Code 2.1.316 on macOS.
+
+```sh
+FM_ACCOUNT_RULES_LIVE_E2E=1 FM_ACCOUNT_RULES_LIVE_ACCOUNT=5 bash tests/fm-account-rules-live-e2e.test.sh
+```
+
+```
+ok - cswap cswap 0.27.0b1+estate.1: the real account list parses and the rules pick the one allowed account
+ok - cswap cswap 0.27.0b1+estate.1, claude 2.1.316 (Claude Code): account 5's root serves that account's own login
+ok - cswap cswap 0.27.0b1+estate.1: the default login's account runs on the default login
+ok - the default login stayed on account 1
+# all fm-account-rules live tests passed
+```
+
+The guard submits no prompt, but `cswap run` may refresh the chosen account's stored login and prepares its profile, so it is opt-in; rerun it after every cswap or Claude upgrade.
+
 ## Secondmate busy contract
 
 Verified 2026-09-22 on this host with Claude Code 2.1.278, OpenCode 1.18.31, Pi 0.86.1, and Grok 1.0.40.

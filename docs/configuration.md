@@ -9,7 +9,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | --- | --- |
 | Firstmate's code, private files, or project location | [FM_HOME](#fm_home) and [operational home layout](#operational-home-layout-and-state) |
 | Task windows and worker tools | [Runtime backend](#runtime-backend-configbackend--fm_backend) and [harness support](#harness-support) |
-| Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker loadout and workflows](#worker-loadout-and-workflows-configloadout-command-configcrew-workflows), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), and its [Orca environment source](#orca-environment-source-configlaunch-env-tmux-session) |
+| Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [account rules](#account-rules-configaccount-rules), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker loadout and workflows](#worker-loadout-and-workflows-configloadout-command-configcrew-workflows), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), and its [Orca environment source](#orca-environment-source-configlaunch-env-tmux-session) |
 | Backlog, preferences, and memory | [Backlog backend](#backlog-backend-taskstoml--configbacklog-backend), [captain preferences](#captain-preferences-datacaptainmd--datacaptain-sharedmd), [external memory tiers](#external-memory-tiers-memory-layering-section), [record export](#record-export-configrecord-export-root), and [startup memory budget](#startup-memory-budget-configstartup-memory-budget) |
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), [warm-cache compaction](#warm-cache-compaction-configwarm-compact), and [Calm preference](#calm-preference-configcalm) |
 | Persistent secondmates | [Secondmate routes](#secondmate-routes-datasecondmatesmd) |
@@ -1496,6 +1496,7 @@ The task record keeps the lever as `workflows=`, and a relaunch reuses it.
 ## Worker account pin (config/claude-account, config/pi-account)
 
 A home that mixes accounts for one runner, such as a work login and a personal one, can pin the account its own Claude and Pi workers launch on.
+For Claude, [account rules](#account-rules-configaccount-rules) can instead choose among cswap accounts per launch.
 The pin is opt-in: without a home-wide or per-secondmate pin, pane-backed Claude launches keep receiving firstmate's own `CLAUDE_CONFIG_DIR` when it is set.
 Unpinned Pi launches use the destination pane's ambient account.
 
@@ -1542,6 +1543,7 @@ A malformed file, a root that is not a readable directory, or a signed-out accou
 The spawn prints the pin as `account=` (plus `account_provider=` for Pi) and records the same fields in the task record, so the session-start digest shows which account each worker launched on.
 
 Pins are not inherited into secondmate homes: the secondmate's own workers read that home's `config/claude-account` and `config/pi-account` files independently.
+The same holds for [account rules](#account-rules-configaccount-rules): the primary home's rules choose the account for launching a local secondmate's own agent, and the secondmate's workers read that home's own `config/account-rules`.
 A remote secondmate is launched on its host from its own home's configuration, so create the file in that remote home.
 
 [`bin/fm-worker-account-lib.sh`](../bin/fm-worker-account-lib.sh) owns parsing, the sign-in check, and the full list of credentials a Claude launch unsets; [runtime backend verification](verification/runtime-backends.md#worker-account-pin-sign-in-check) records the check against the real runners.
@@ -1566,6 +1568,29 @@ The relaunch checks the selected pin before stopping the current agent.
 
 Per-secondmate pins stay in the primary home and are not inherited or copied into the secondmate's home.
 A matching primary-side per-secondmate pin for a remote route refuses before remote launch, because its account must be configured on that host instead.
+
+### Account rules (config/account-rules)
+
+A home whose Claude workers spread across several subscriptions held by the `cswap` account switcher can let a rules file choose each worker's account instead of pinning one.
+When `config/account-rules` exists, every Claude spawn and relaunch from that home picks its account from `cswap list --json` and launches on the profile `cswap run <num>` prepares for it.
+The global login is never switched, so other sessions and background jobs that use their own saved tokens are unaffected.
+`config/claude-account`, or a per-secondmate Claude pin, beside the rules file refuses the launch rather than being used.
+Other runners keep their own pins.
+
+Each line is blank, a `#` comment, `forbid <num>...`, or `project <name> <num>...`, where the numbers are cswap account numbers and `<name>` is the project directory's own name, compared without regard to case.
+For example, `forbid 3` and `project bb-signal-prototype 5 4` keep account 3 out of every launch and keep that project's workers on accounts 5 and 4.
+A project with no line chooses from every account, and a forbid always wins.
+Among the allowed accounts the one with the lowest current usage wins, an account at its limit is skipped, and an account whose usage cswap cannot report ranks last.
+
+The file is the captain's.
+`bin/fm-account-rules.sh approve`, run by the captain at a terminal, shows the file and records its fingerprint in `config/account-rules.approved` after a typed confirmation read from the controlling terminal, so a tool shell without one cannot approve.
+The fingerprint is not a secret, so this stops an unattended approval, not a process that writes `config/account-rules.approved` itself or drives an attached terminal.
+A missing or stale fingerprint refuses every Claude launch until the current file is approved, and so does a rules file removed while its approval remains; retiring the rules means removing `config/account-rules.approved` too.
+`bin/fm-account-rules.sh status` shows the file and whether it is approved.
+
+Every account choice appends one line to `data/account-switches.log` naming the task, the account it ran on before (`none` for a first launch), and the account chosen, and the spawn prints the same line.
+The spawn reports the choice as `account=cswap:<num>` and records it in the task record.
+This section owns the format, the ranking, the approval, and the report; [`bin/fm-worker-account-lib.sh`](../bin/fm-worker-account-lib.sh) owns the cswap mechanics, and [runtime backend verification](verification/runtime-backends.md#account-rules-through-cswap) records the live check against the real cswap and Claude.
 
 ### Per-secondmate omp profile
 

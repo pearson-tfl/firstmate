@@ -442,6 +442,79 @@ fm_test_run_spawn() {
     "$ROOT/bin/fm-spawn.sh" "$@" 2>&1
 }
 
+# --- cswap account-rules world ----------------------------------------------
+
+# fm_test_cswap_fakes <fakebin> <case-dir>
+# A fake cswap and claude for config/account-rules selection. `cswap list
+# --json` answers from <case-dir>/cswap-list.json; `cswap run <num>`, like the
+# real one, execs the `claude` on PATH with the environment unchanged when
+# <num> is the active default login and CLAUDE_CONFIG_DIR is unset, otherwise
+# under <case-dir>/sessions/<num> seeded with a stored login (none when
+# <case-dir>/signed-out-<num> exists). The fake claude answers `auth status`
+# from the root's stored login and records a launched worker's root in
+# <case-dir>/claude-worker. `cswap switch` is recorded, never performed.
+# Log and data paths are written into the fakes because the sign-in check and
+# the account probe run them with a cleared environment.
+fm_test_cswap_fakes() {
+  local fakebin=$1 dir=$2
+  cat > "$fakebin/claude" <<SH
+#!/usr/bin/env bash
+if [ "\${1:-}" = auth ] && [ "\${2:-}" = status ]; then
+  [ -f "\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/.credentials.json" ]
+  exit
+fi
+printf 'CLAUDE_CONFIG_DIR=%s\n' "\${CLAUDE_CONFIG_DIR-unset}" > '$dir/claude-worker'
+SH
+  cat > "$fakebin/cswap" <<SH
+#!/usr/bin/env bash
+case "\${1:-}" in
+  list)
+    [ "\${2:-}" = --json ] || exit 2
+    cat '$dir/cswap-list.json'
+    ;;
+  run)
+    num=\$2
+    shift 2
+    [ "\${1:-}" != -- ] || shift
+    printf '%s\n' "\$num" >> '$dir/cswap-runs'
+    echo "Launching Account-\$num [session mode]"
+    if [ "\$num" = "\$(cat '$dir/cswap-active')" ] && [ -z "\${CLAUDE_CONFIG_DIR:-}" ]; then
+      exec claude "\$@"
+    fi
+    mkdir -p '$dir/sessions/'"\$num"
+    [ ! -f '$dir/signed-out-'"\$num" ] || rm -f '$dir/sessions/'"\$num"/.credentials.json
+    [ -f '$dir/signed-out-'"\$num" ] || printf '{}\n' > '$dir/sessions/'"\$num"/.credentials.json
+    CLAUDE_CONFIG_DIR='$dir/sessions/'"\$num" exec claude "\$@"
+    ;;
+  switch) printf 'switch\n' >> '$dir/cswap-global-switches'; exit 0 ;;
+  *) exit 2 ;;
+esac
+SH
+  chmod +x "$fakebin/claude" "$fakebin/cswap"
+}
+
+# fm_test_cswap_accounts <case-dir> <active> <num:fiveHour:sevenDay>...
+# Writes the fake account list; a usage field of - is omitted, and a whole
+# spec of <num>:error marks that account's usage unavailable.
+fm_test_cswap_accounts() {
+  local dir=$1 active=$2 spec num five seven sep='' body=''
+  shift 2
+  printf '%s\n' "$active" > "$dir/cswap-active"
+  for spec in "$@"; do
+    IFS=: read -r num five seven <<<"$spec"
+    if [ "$five" = error ]; then
+      body="$body$sep{\"number\":$num,\"email\":\"a$num@example.test\",\"active\":false,\"usageStatus\":\"error\"}"
+    else
+      local usage='' usep=''
+      [ "$five" = - ] || { usage="\"fiveHour\":{\"pct\":$five}"; usep=,; }
+      [ "$seven" = - ] || usage="$usage$usep\"sevenDay\":{\"pct\":$seven}"
+      body="$body$sep{\"number\":$num,\"email\":\"a$num@example.test\",\"active\":$([ "$num" = "$active" ] && echo true || echo false),\"usageStatus\":\"ok\",\"usage\":{$usage}}"
+    fi
+    sep=,
+  done
+  printf '{"schemaVersion":1,"activeAccountNumber":%s,"accounts":[%s]}\n' "$active" "$body" > "$dir/cswap-list.json"
+}
+
 # --- send-world stubs -------------------------------------------------------
 
 # make_stubs <dir>
