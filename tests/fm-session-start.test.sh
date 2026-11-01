@@ -965,48 +965,15 @@ EOF
   winners="$home/winners"
   mkdir -p "$ready" "$completed"
   : > "$winners"
-  cat > "$fakebin/ps" <<'SH'
-#!/usr/bin/env bash
-set -u
-pid=
-previous=
-for argument in "$@"; do
-  [ "$previous" = -p ] && pid=$argument
-  previous=$argument
-done
-case "$*" in
-  *"comm="*)
-    if [ -f "$FM_FAKE_LOCK_STATE/harness-$pid" ]; then
-      printf '%s\n' /usr/local/bin/claude
-    else
-      printf '%s\n' /bin/bash
-    fi
-    ;;
-  *"args="*)
-    if [ -f "$FM_FAKE_LOCK_STATE/harness-$pid" ]; then
-      printf '%s\n' claude
-    else
-      printf '%s\n' bash
-    fi
-    ;;
-  *"ppid="*) printf '%s\n' "$FM_FAKE_HARNESS_PID" ;;
-  *) exit 1 ;;
-esac
-SH
-  chmod +x "$fakebin/ps"
-
   pids=
   i=1
   while [ "$i" -le 40 ]; do
     (
-      harness_pid=$(sh -c 'printf "%s\n" "$PPID"')
-      : > "$home/state/harness-$harness_pid"
       : > "$ready/$i"
       lock_concurrency_barrier "$ready" 40
-      if FM_HOME="$home" FM_FAKE_LOCK_STATE="$home/state" \
-        FM_FAKE_HARNESS_PID="$harness_pid" PATH="$fakebin:$BASE_PATH" \
+      if FM_HOME="$home" FM_LOCK_HOLDER="racer-$i" PATH="$fakebin:$BASE_PATH" \
         "$ROOT/bin/fm-lock.sh" >/dev/null 2>&1; then
-        printf '%s\n' "$harness_pid" >> "$winners"
+        printf '%s\n' "racer-$i" >> "$winners"
       fi
       : > "$completed/$i"
       lock_concurrency_barrier "$completed" 40
@@ -1019,8 +986,10 @@ SH
   done
   count=$(awk 'NF { count++ } END { print count + 0 }' "$winners")
   [ "$count" -eq 1 ] || fail "concurrent session-lock acquisition produced $count winners"
+  [ "$(head -n 1 "$home/state/.lock")" = "holder:$(head -n 1 "$winners")" ] \
+    || fail "the session lock does not name the one winning holder: $(cat "$home/state/.lock")"
 
-  pass "concurrent session-lock acquisition admits exactly one live harness"
+  pass "concurrent session-lock acquisition admits exactly one named holder"
 }
 
 # --- output ordering ----------------------------------------------------------
@@ -2374,7 +2343,7 @@ EOF
   append_wake "$home/state" signal task-r "done: queued after the re-emit too" || fail "seed second wake failed"
   reemit=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" FM_FAKE_HARNESS_PID=$$ PATH="$fakebin:$BASE_PATH" \
     env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
-    "$SESSION_START" --reemit)
+    FM_LOCK_HOLDER=pocock "$SESSION_START" --reemit)
 
   assert_contains "$reemit" "SESSION START (CONTEXT RE-EMIT) - $home" "--reemit did not label itself"
   assert_not_contains "$reemit" "SECONDMATE_LIVENESS" "--reemit repeated a mutating sweep startup already ran"
@@ -2593,7 +2562,7 @@ EOF
 
   reemit=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$fakebin:$BASE_PATH" \
     env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
-    "$SESSION_START" --reemit)
+    FM_LOCK_HOLDER=pocock "$SESSION_START" --reemit)
 
   # A re-emit skips the sweeps because it ALREADY ran them, not because it lacks
   # the lock, so it must still own repair rather than deferring to a lock holder.

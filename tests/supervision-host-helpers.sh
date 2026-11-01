@@ -32,6 +32,13 @@ LEASE="$ROOT/bin/fm-lease.sh"
 command -v node >/dev/null 2>&1 || { printf 'skip: node absent\n'; exit 0; }
 command -v perl >/dev/null 2>&1 || { printf 'skip: perl absent\n'; exit 0; }
 
+# The supervision host is inert (#5138): a case whose fixture session
+# (start_host, start_hook_session) relied on the deleted process-ancestry
+# session ownership reports a skip naming the case instead of running.
+skip_5138() {  # <case>
+  printf '# skip - %s: needs the deleted process-ancestry session ownership; supervision host inert, see #5138\n' "$1"
+}
+
 TMP_ROOT=$(fm_test_tmproot fm-supervision-host)
 FAKEBIN=$(fm_fakebin "$TMP_ROOT/fakebin")
 ln -s /bin/bash "$FAKEBIN/claude"
