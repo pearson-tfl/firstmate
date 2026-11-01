@@ -8,6 +8,9 @@
 # bin/fm-turnend-guard.sh or bin/fm-inbox.sh against an isolated synthetic home.
 # A second Claude session is a real process whose executable is named claude,
 # with CLAUDE_PID set to it, so the ancestry walk finds a live harness.
+#
+# "test 1", "test 2", "test 5" and "test 22" in the pass lines are the numbered
+# tests of the router option C design (#5057), so a result maps to its row.
 # shellcheck disable=SC2016 # single quotes are deliberate: the fixture child expands them
 set -u
 

@@ -222,8 +222,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 # deferred network stage sets, so an ordinary bootstrap run records nothing.
 # shellcheck source=bin/fm-timing-lib.sh disable=SC1091
 . "$SCRIPT_DIR/fm-timing-lib.sh"
-# Sourced only for fm_session_pid_valid: the lock identity this script compares
-# is not always a local pid.
+# Sourced only for fm_session_lock_identity_valid: the lock identity this script
+# compares is a local pid, a tagged Windows pid, or a holder:<name>.
 # shellcheck source=bin/fm-session-lock-lib.sh disable=SC1091
 . "$SCRIPT_DIR/fm-session-lock-lib.sh"
 

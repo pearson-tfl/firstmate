@@ -229,8 +229,8 @@
 #             fm-sessionstart-run.sh. A genuine `startup` that owns the active
 #             session lock records AGENTS.md's SHA-256 baseline only after the
 #             digest completion record is published, keyed to that lock's
-#             line 1 (a harness pid or a holder:<name>). No resume, clear, reset, compact, or other rebuild
-#             creates or replaces it. Pi and pi-signed compaction are the only
+#             line 1 (a harness pid or a holder:<name>). No resume, clear,
+#             reset, compact, or other rebuild creates or replaces it. Pi and pi-signed compaction are the only
 #             supported stale-cache rebuild pair: a missing baseline, a baseline
 #             for another lock line 1, or a changed hash causes the complete
 #             current AGENTS.md to print before the bulky digest. The baseline
@@ -880,7 +880,9 @@ if [ "$PRIMARY_HARNESS" = omp ]; then
     fi
     # Warning only: name the cause when existing facts establish it.
     OMP_MARKER_PID=$(sed -n '2p' "$OMP_WATCH_MARKER" 2>/dev/null || true)
-    OMP_CURRENT_PID=${REBUILDING_SESSION_PID:-$(sed -n '1p' "$OMP_LOCK" 2>/dev/null || true)}
+    # This session's own process, not the lock line: the marker records a pid.
+    OMP_CURRENT_PID=$(fm_harness_ancestry_pid 2>/dev/null || true)
+    [ -n "$OMP_CURRENT_PID" ] || OMP_CURRENT_PID=$(sed -n '1p' "$OMP_LOCK" 2>/dev/null || true)
     if [ -n "$OMP_MARKER_PID" ] && [ -n "$OMP_CURRENT_PID" ] && [ "$OMP_MARKER_PID" != "$OMP_CURRENT_PID" ]; then
       printf 'OMP_WATCH_CAUSE: the extension marker %s names pid %s, which is not this session (pid %s)\n' "$OMP_WATCH_MARKER" "$OMP_MARKER_PID" "$OMP_CURRENT_PID"
     fi
