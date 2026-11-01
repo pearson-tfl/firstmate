@@ -26,6 +26,14 @@ lock_is_in_ancestry() {
   local lock_pid pid=$$ _
   [ -f "$STATE/.lock" ] || return 1
   IFS= read -r lock_pid < "$STATE/.lock" 2>/dev/null || return 1
+  # A named holder (holder:<name>) has no pid to walk: the session already ran
+  # session start exactly when it carries that name in FM_LOCK_HOLDER.
+  case "$lock_pid" in
+    holder:*)
+      fm_session_lock_owned_by_self "$STATE"
+      return
+      ;;
+  esac
   # A Windows-tagged holder is not in this process table at all, so a local
   # ancestry comparison cannot answer for it. Defer to the owner of harness
   # identity, which is the only thing that can read across that boundary.

@@ -107,7 +107,7 @@ A lock another live session took meanwhile still produces the ordinary read-only
 ### Nudge wrapper on a run-tier harness
 
 On a run-tier harness, only `resume`, `reload`, and `fork` are routed to the nudge wrapper.
-The nudge wrapper has its own separate ancestry-only check, which normally stays silent when this process already holds the lock.
+The nudge wrapper has its own separate lock check (below), which normally stays silent when this process already holds the lock.
 A background Claude helper-chain recycle can break that ancestry.
 The wrapper may then emit a redundant nudge even though the shared same-session verdict still owns the lock.
 The requested session start remains idempotent.
@@ -205,7 +205,9 @@ The Ahoy skill's own step 0 helm check is the fallback that protects a nudge-tie
 
 ### Nudge wrapper lock check
 
-Before printing, the nudge wrapper reads `state/.lock` and walks at most eight parents from its own pid.
+Before printing, the nudge wrapper reads `state/.lock`.
+When line 1 is a named holder, `holder:<name>`, the wrapper stays silent only when this session carries that name in `FM_LOCK_HOLDER`, through the library's `fm_session_lock_owned_by_self`; a session with another name or none is nudged.
+Otherwise it walks at most eight parents from its own pid.
 It does this in its own separate, hard-coded loop, independent of two other ownership checks:
 
 - The shared sixteen-hop ancestry walk in `bin/fm-session-lock-lib.sh` that `bin/fm-lock.sh` uses for anchor selection and ownership.

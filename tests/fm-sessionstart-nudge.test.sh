@@ -126,9 +126,29 @@ test_missing_state_is_silent() {
 test_owned_lock_is_silent() {
   local root="$TMP_ROOT/already-ran"
   make_primary "$root"
-  printf '%s\n' "$$" > "$root/state/.lock"
-  expect_silent_zero "owned lock nudge" run_nudge "$root"
-  pass "fm-sessionstart-nudge: a lock holder in process ancestry is already run"
+  printf 'holder:pocock\n' > "$root/state/.lock"
+  expect_silent_zero "owned lock nudge" env FM_LOCK_HOLDER=pocock \
+    FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" FM_HOME="$root" "$NUDGE"
+  pass "fm-sessionstart-nudge: the named holder that carries the lock's name is already run"
+}
+
+# A named lock is this session's only when the session carries that name: another
+# name, or none, has not run session start and must still be nudged.
+test_foreign_named_lock_still_nudges() {
+  local root="$TMP_ROOT/foreign-holder" out status
+  make_primary "$root"
+  printf 'holder:pocock\n' > "$root/state/.lock"
+  status=0
+  out=$(env FM_LOCK_HOLDER=claude FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" \
+    FM_HOME="$root" "$NUDGE") || status=$?
+  expect_code 0 "$status" "another holder's nudge"
+  [ "$out" = "$NUDGE_LINE" ] || fail "a session named claude was not nudged under holder:pocock, got: $out"
+  status=0
+  out=$(env -u FM_LOCK_HOLDER FM_GATE_REFUSE_BYPASS=0 FM_ROOT_OVERRIDE="$root" \
+    FM_HOME="$root" "$NUDGE") || status=$?
+  expect_code 0 "$status" "an unnamed session's nudge"
+  [ "$out" = "$NUDGE_LINE" ] || fail "an unnamed session was not nudged under holder:pocock, got: $out"
+  pass "fm-sessionstart-nudge: a named lock still nudges a session that does not carry its name"
 }
 
 # A firstmate running inside a PID namespace - a container, or `codex sandbox` -
@@ -977,6 +997,26 @@ test_run_resume_delegates_to_the_nudge() {
   pass "run wrapper: resume delegates to the nudge instead of re-running the digest"
 }
 
+# Under holder:pocock, the run-tier startup claims main by name; a later resume
+# of that session is not a full start - it prints neither the digest nor the
+# nudge - and leaves the lock as it was.
+test_run_resume_under_named_holder_is_not_a_full_start() {
+  local root="$TMP_ROOT/run-resume-holder" out status=0
+  make_run_primary "$root"
+  out=$(FM_LOCK_HOLDER=pocock run_hook "$root" --source startup </dev/null) || status=$?
+  expect_code 0 "$status" "named-holder startup"
+  assert_contains "$out" "$FULL_BANNER$root" "the named-holder startup did not run the digest"
+  [ "$(cat "$root/state/.lock")" = holder:pocock ] \
+    || fail "the named-holder startup did not claim main by name: $(cat "$root/state/.lock")"
+  status=0
+  out=$(FM_LOCK_HOLDER=pocock run_hook "$root" --source resume </dev/null) || status=$?
+  expect_code 0 "$status" "named-holder resume"
+  [ -z "$out" ] || fail "a resume under holder:pocock was told to run session start again, got: $out"
+  [ "$(cat "$root/state/.lock")" = holder:pocock ] \
+    || fail "the named-holder resume changed the lock: $(cat "$root/state/.lock")"
+  pass "run wrapper: resume under holder:pocock is not a full start"
+}
+
 test_run_reads_source_from_the_hook_payload() {
   local root="$TMP_ROOT/run-payload" out status=0
   make_run_primary "$root"
@@ -1101,6 +1141,7 @@ test_unmarked_linked_worktree_is_silent
 test_linked_secondmate_primary_nudges
 test_missing_state_is_silent
 test_owned_lock_is_silent
+test_foreign_named_lock_still_nudges
 test_namespace_pid1_lock_holder_is_silent
 test_opencode_plugin_delivers_exact_nudge_once
 test_run_startup_runs_the_full_digest
@@ -1110,6 +1151,7 @@ test_run_compact_without_completion_refreshes_before_finishing_startup
 test_run_clear_without_completion_finishes_startup
 test_run_clear_rejects_previous_owner_completion
 test_run_resume_delegates_to_the_nudge
+test_run_resume_under_named_holder_is_not_a_full_start
 test_run_reads_source_from_the_hook_payload
 test_run_unknown_source_takes_the_helm
 test_run_gate_and_scope_are_silent
