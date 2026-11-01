@@ -277,6 +277,40 @@ try:
     print("FIXED same-session id re-anchors the lock onto its own process; a different id is still foreign", flush=True)
     stop(same_owner)
 
+    # Named holder: main is held by name (FM_LOCK_HOLDER=pocock), not by a
+    # live pid. A second Claude session without that name is refused by the
+    # two-mains guard and its Stop ends safely as a foreign-owner diagnostic
+    # naming the holder; the holder's own Stop is held to the ordinary guard.
+    named, named_env = make("named-holder")
+    claimed = run(
+        named_env | {"FM_LOCK_HOLDER": "pocock"},
+        '"$FM_ROOT_OVERRIDE/bin/fm-lock.sh"; rc=$?; printf "lock_rc=%s\\n" "$rc"; true',
+    )
+    print("named holder claim", "stdout=" + repr(claimed.stdout), "stderr=" + repr(claimed.stderr), flush=True)
+    require("lock_rc=0" in claimed.stdout, "the named holder could not claim a free lock")
+    named_lock = named / "state/.lock"
+    require(named_lock.read_text().strip() == "holder:pocock", "the named claim did not record holder:pocock")
+    named_beat = named / "state/.last-watcher-beat"
+    named_beat.touch()
+    os.utime(named_beat, (old_time, old_time))
+    second_env = named_env | {"CLAUDE_CODE_SESSION_ID": "synthetic-second-claude"}
+    second = run(
+        second_env,
+        'export CLAUDE_PID=$$; "$FM_ROOT_OVERRIDE/bin/fm-lock.sh"; rc=$?; printf "lock_rc=%s\\n" "$rc"; true',
+    )
+    print("second Claude session acquisition", "stdout=" + repr(second.stdout), "stderr=" + repr(second.stderr), flush=True)
+    require("lock_rc=1" in second.stdout, "a second Claude session acquired a lock held by name")
+    require("main is held by pocock; read-only" in second.stderr, "the second session's refusal was not the two-mains guard")
+    second_stop = guard(second_env, "second Claude session stop", prefix="export CLAUDE_PID=$$; ")
+    require(second_stop.returncode == 0, "a second Claude session's Stop must end safely while main is held by name")
+    require("SUPERVISION IS OWNED BY ANOTHER LIVE SESSION" in second_stop.stdout, "the named-holder Stop lost the owned-by-another-session diagnostic")
+    require("lock held by pocock" in second_stop.stdout, "the named-holder diagnostic did not name the holder")
+    holder_stop = guard(named_env | {"FM_LOCK_HOLDER": "pocock"}, "named holder stop")
+    require(holder_stop.returncode == 2, "the named holder's own Stop must be held to its own guard")
+    require("SUPERVISION IS OWNED BY ANOTHER LIVE SESSION" not in holder_stop.stdout, "the named holder's Stop took the foreign-owner exit")
+    require(named_lock.read_text().strip() == "holder:pocock", "a Stop moved the named holder line")
+    print("FIXED a second Claude session's Stop is allowed while main is held by name", flush=True)
+
     single, single_env = make("single-idle")
     stale = single / "state/.last-watcher-beat"
     stale.touch()

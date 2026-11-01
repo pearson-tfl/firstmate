@@ -849,7 +849,7 @@ cmd_ready() {
   # shellcheck source=bin/fm-session-lock-lib.sh
   . "$SELF_DIR/fm-session-lock-lib.sh"
   load_wake_lib || true
-  local lock_state=unknown lock_pid="" live_harness=unknown
+  local lock_state=unknown lock_pid="" live_harness=unknown lock_holder=""
   local consumer_state=unknown consumer_reason="" beacon_age=""
   local posture=unknown can_receive=unknown observed
   observed=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -857,6 +857,7 @@ cmd_ready() {
   lock_state=$FM_LOCK_INSPECT_STATE
   lock_pid=$FM_LOCK_INSPECT_PID
   live_harness=$FM_LOCK_INSPECT_LIVE_HARNESS
+  lock_holder=$FM_LOCK_INSPECT_HOLDER
 
   if [ -e "$STATE/.afk" ]; then
     if command -v fm_afk_mode >/dev/null 2>&1; then
@@ -932,11 +933,11 @@ cmd_ready() {
 
   python3 - "$lock_state" "$lock_pid" "$live_harness" \
     "$consumer_state" "$consumer_reason" "$beacon_age" \
-    "$posture" "$can_receive" "$observed" "$FM_HOME" <<'PY'
+    "$posture" "$can_receive" "$observed" "$FM_HOME" "$lock_holder" <<'PY'
 import json, sys
 from pathlib import Path
 (lock_state, lock_pid, live_harness, consumer_state, consumer_reason,
- beacon_age, posture, can_receive, observed, home) = sys.argv[1:11]
+ beacon_age, posture, can_receive, observed, home, lock_holder) = sys.argv[1:12]
 live_val = True if live_harness == "true" else False if live_harness == "false" else None
 recv = True if can_receive == "true" else False if can_receive == "false" else "unknown"
 pid_val = int(lock_pid) if lock_pid.isdigit() else None
@@ -950,6 +951,7 @@ json.dump({
         "state": lock_state,
         "pid": pid_val,
         "live_harness": live_val,
+        "holder": lock_holder or None,
     },
     "wake_consumer": {
         "state": consumer_state,

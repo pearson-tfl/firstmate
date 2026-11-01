@@ -503,7 +503,22 @@ fm_session_lock_anchor_pid() {
   _fm_harness_outermost_pid "$pids"
 }
 
+# Print the named holder recorded in state dir $1, or return 1. A named holder
+# is line 1 of state/.lock reading holder:<name>, written by bin/fm-lock.sh for
+# a caller that sets FM_LOCK_HOLDER. Only line 1 is read; a missing, symlinked
+# or unreadable lock, a pid line, or an empty name is no named holder.
+fm_session_lock_recorded_holder() {  # <state>
+  local state=$1 line
+  [ -f "$state/.lock" ] && [ ! -L "$state/.lock" ] || return 1
+  line=$(head -n 1 "$state/.lock" 2>/dev/null) || return 1
+  case "$line" in
+    holder:?*) printf '%s\n' "${line#holder:}" ;;
+    *) return 1 ;;
+  esac
+}
+
 # True when state dir $1 holds a session lock that this process's session owns:
+# a named holder equal to this process's FM_LOCK_HOLDER, or
 # the recorded pid is ANY harness ancestor of the current process, or the lock
 # was recorded by this same trusted Claude session and its recorded pid is still
 # a live harness. Membership is the honest ancestry test, because the lock owner
@@ -516,7 +531,11 @@ fm_session_lock_anchor_pid() {
 # held by a harness outside this ancestry under another (or no) session id, or
 # an ancestry that cannot be resolved all fail closed.
 fm_session_lock_owned_by_self() {
-  local state=$1 lock_pid pids
+  local state=$1 lock_pid pids holder
+  if holder=$(fm_session_lock_recorded_holder "$state"); then
+    [ -n "${FM_LOCK_HOLDER:-}" ] && [ "$holder" = "$FM_LOCK_HOLDER" ]
+    return
+  fi
   lock_pid=$(cat "$state/.lock" 2>/dev/null || true)
   fm_session_pid_valid "$lock_pid" || return 1
   pids=$(fm_harness_ancestry_pids) || return 1
@@ -525,17 +544,30 @@ fm_session_lock_owned_by_self() {
   fm_harness_pid_alive "$lock_pid"
 }
 
-# True when state dir $1 records a live verified harness outside this process's
+# True when state dir $1 records a named holder other than this process's
+# FM_LOCK_HOLDER, or a live verified harness outside this process's
 # contiguous harness ancestry that was not recorded by this same trusted Claude
-# session. Sets FM_SESSION_LOCK_FOREIGN_OWNER_PID for a diagnostic caller.
-# Malformed, missing, dead, and ancestry-uncertain locks are not foreign-owner
-# evidence.
+# session. Sets FM_SESSION_LOCK_FOREIGN_OWNER_PID for a diagnostic caller (the
+# holder name for a named holder), and FM_SESSION_LOCK_FOREIGN_OWNER_HOLDER to
+# that name, empty for a pid owner. Malformed, missing, dead, and
+# ancestry-uncertain locks are not foreign-owner evidence.
 # shellcheck disable=SC2034 # Output global, read by the sourcing guard caller.
 FM_SESSION_LOCK_FOREIGN_OWNER_PID=
+# shellcheck disable=SC2034 # Output global, read by the sourcing guard caller.
+FM_SESSION_LOCK_FOREIGN_OWNER_HOLDER=
 fm_session_lock_foreign_owner_live() {
-  local state=$1 lock_pid pids
+  local state=$1 lock_pid pids holder
   FM_SESSION_LOCK_FOREIGN_OWNER_PID=
+  FM_SESSION_LOCK_FOREIGN_OWNER_HOLDER=
   [ -f "$state/.lock" ] && [ ! -L "$state/.lock" ] || return 1
+  if holder=$(fm_session_lock_recorded_holder "$state"); then
+    [ -n "${FM_LOCK_HOLDER:-}" ] && [ "$holder" = "$FM_LOCK_HOLDER" ] && return 1
+    # shellcheck disable=SC2034 # Output global, read by the sourcing guard caller.
+    FM_SESSION_LOCK_FOREIGN_OWNER_PID=$holder
+    # shellcheck disable=SC2034 # Output global, read by the sourcing guard caller.
+    FM_SESSION_LOCK_FOREIGN_OWNER_HOLDER=$holder
+    return 0
+  fi
   lock_pid=$(cat "$state/.lock" 2>/dev/null || true)
   fm_session_pid_valid "$lock_pid" || return 1
   fm_harness_pid_alive "$lock_pid" || return 1
@@ -555,8 +587,11 @@ fm_session_lock_foreign_owner_live() {
 #   FM_LOCK_INSPECT_STATE         free|held|stale|unreadable|unknown
 #   FM_LOCK_INSPECT_PID           recorded pid, or empty
 #   FM_LOCK_INSPECT_LIVE_HARNESS  true|false|unknown
+#   FM_LOCK_INSPECT_HOLDER        named holder, or empty
 #
-# held: the recorded pid is a live verified harness.
+# held: the recorded pid is a live verified harness, or line 1 names a holder
+# (holder:<name>); a named holder has no pid and its liveness is unknown, since
+# a name never expires.
 # stale: the recorded pid is gone.
 # unknown: the file or pid cannot be classified without guessing, including a
 # live process that is not a verified harness. Existence of a lock file, a
@@ -565,8 +600,11 @@ fm_session_lock_foreign_owner_live() {
 FM_LOCK_INSPECT_STATE=unknown
 FM_LOCK_INSPECT_PID=
 FM_LOCK_INSPECT_LIVE_HARNESS=unknown
+FM_LOCK_INSPECT_HOLDER=
 fm_session_lock_inspect() {  # <state>
   local state=$1 lock pid winpid win_rc
+  # shellcheck disable=SC2034 # Output globals, read by lock status and inbox ready.
+  FM_LOCK_INSPECT_HOLDER=
   # shellcheck disable=SC2034 # Output globals, read by lock status and inbox ready.
   FM_LOCK_INSPECT_STATE=unknown
   # shellcheck disable=SC2034 # Output globals, read by lock status and inbox ready.
@@ -588,6 +626,15 @@ fm_session_lock_inspect() {  # <state>
     return 0
   }
   pid=${pid%%$'\n'*}
+  case "$pid" in
+    holder:?*)
+      # shellcheck disable=SC2034 # Output globals, read by lock status and inbox ready.
+      FM_LOCK_INSPECT_STATE=held
+      # shellcheck disable=SC2034 # Output globals, read by lock status and inbox ready.
+      FM_LOCK_INSPECT_HOLDER=${pid#holder:}
+      return 0
+      ;;
+  esac
   # shellcheck disable=SC2034 # Output global, read by lock status and inbox ready.
   FM_LOCK_INSPECT_PID=$pid
   fm_session_pid_valid "$pid" || return 0

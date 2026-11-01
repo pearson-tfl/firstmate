@@ -36,11 +36,26 @@
 # the sidecar, as for a line 1 in the ancestry, and a later acquisition
 # re-anchors.
 #
+# A named holder: with FM_LOCK_HOLDER=<name> set (letters, digits, dot,
+# underscore, dash), acquisition skips the ancestry anchor and claims line 1 as
+# holder:<name> under the claim lock. A free, emptied or stale line 1, or this
+# same name, is claimed and the sidecar is published or cleared as above; a
+# live harness pid or another name is refused and nothing changes. The
+# two-mains guard refuses every caller that is not the recorded holder, named
+# or not, with "main is held by <name>; read-only". On the named path, a
+# refusal because the prior session's startup sweep holds the claim lock exits
+# 75: wait and retry rather than treating main as taken. A name never expires;
+# only release clears it. Two runs under one name both pass.
+#
 # Usage: fm-lock.sh           acquire; exit 1 unless ownership is verified
 #        fm-lock.sh status    print holder and liveness; always exits 0.
 #                             A held lock is not proof the holder is consuming
 #                             wakes. Machine-readable lock fields live on
 #                             fm-inbox.sh ready, from the same inspect helper.
+#        FM_LOCK_HOLDER=<name> fm-lock.sh release
+#                             under the claim lock, remove state/.lock and
+#                             state/.lock-session only when line 1 is
+#                             holder:<name>; otherwise exit 1, changing nothing.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,12 +80,38 @@ if [ "${1:-}" = "status" ]; then
   case "$FM_LOCK_INSPECT_STATE" in
     free) echo "lock: free" ;;
     unreadable) echo "lock: unreadable" ;;
-    held) echo "lock: held by live harness pid $FM_LOCK_INSPECT_PID" ;;
+    held)
+      if [ -n "$FM_LOCK_INSPECT_HOLDER" ]; then
+        echo "lock: held by $FM_LOCK_INSPECT_HOLDER"
+      else
+        echo "lock: held by live harness pid $FM_LOCK_INSPECT_PID"
+      fi
+      ;;
     *) echo "lock: stale (pid $FM_LOCK_INSPECT_PID dead or not a harness)" ;;
   esac
   exit 0
 fi
 
+# A named holder (FM_LOCK_HOLDER) claims through its own path below and never
+# resolves an ancestry anchor; only an unnamed caller does.
+HOLDER_NAME=${FM_LOCK_HOLDER:-}
+RELEASE=0
+if [ "${1:-}" = "release" ]; then
+  RELEASE=1
+  if [ -z "$HOLDER_NAME" ]; then
+    echo "error: release needs FM_LOCK_HOLDER set to the holder's name; nothing released" >&2
+    exit 1
+  fi
+fi
+if [ -n "$HOLDER_NAME" ]; then
+  case "$HOLDER_NAME" in
+    *[!A-Za-z0-9._-]*)
+      echo "error: FM_LOCK_HOLDER must be letters, digits, dot, underscore or dash; operate read-only until resolved" >&2
+      exit 1
+      ;;
+  esac
+  me="holder:$HOLDER_NAME"
+else
 me=$(fm_session_lock_anchor_pid) || {
   if fm_win_boundary_applies; then
     # Here the parent link does not reach the harness at all, so "not in the
@@ -82,6 +123,7 @@ me=$(fm_session_lock_anchor_pid) || {
   fi
   exit 1
 }
+fi
 probe=$(mktemp "$STATE/.lock-write.XXXXXX" 2>/dev/null) || {
   echo "error: cannot write session lock; operate read-only until resolved" >&2
   exit 1
@@ -238,6 +280,60 @@ confirm_own_lock() {  # <recorded-pid>
   return 1
 }
 
+# Take the claim lock. When the prior session's bounded startup sweep holds it,
+# refuse with exit <rc>; the named path passes SWEEP_RETRY_RC so that refusal
+# reads as wait-and-retry rather than as another owner.
+SWEEP_RETRY_RC=75
+take_claim_lock() {  # <sweep-refusal-rc>
+  local sweep_pid
+  if ! fm_lock_try_acquire "$CLAIM_LOCK"; then
+    sweep_pid=$(sed -n 's/^pid=//p' "$STATE/.startup-network.status" 2>/dev/null | tail -1)
+    if [ -n "${FM_LOCK_HELD_PID:-}" ] && [ "$FM_LOCK_HELD_PID" = "$sweep_pid" ]; then
+      if [ "$1" -eq "$SWEEP_RETRY_RC" ]; then
+        echo "error: the prior session's bounded startup sweep is finishing; wait and retry once it releases the fleet lock" >&2
+      else
+        echo "error: the prior session's bounded startup sweep is finishing; operate read-only until it releases the fleet lock" >&2
+      fi
+      exit "$1"
+    fi
+    fm_lock_acquire_wait "$CLAIM_LOCK"
+  fi
+  CLAIM_LOCK_HELD=1
+}
+
+# The two-mains guard: a lock already held by a named holder refuses every
+# caller that is not that holder. Read under the claim lock by the named path
+# and before each live-owner check on the unnamed path.
+refuse_other_holder() {
+  local held
+  held=$(fm_session_lock_recorded_holder "$STATE") || return 0
+  [ -n "$HOLDER_NAME" ] && [ "$held" = "$HOLDER_NAME" ] && return 0
+  echo "error: main is held by $held; read-only" >&2
+  exit 1
+}
+
+# Named path, under the claim lock: a free lock, a hand-cleared or stale line 1,
+# or this holder's own name is claimed; another name or a live harness pid is
+# refused and nothing changes.
+named_claim_check_or_refuse() {
+  local recorded
+  [ -e "$LOCK" ] || [ -L "$LOCK" ] || return 0
+  if [ ! -f "$LOCK" ] || [ -L "$LOCK" ]; then
+    echo "error: session lock is not a regular file; operate read-only until resolved" >&2
+    exit 1
+  fi
+  recorded=$(head -n 1 "$LOCK" 2>/dev/null) || {
+    echo "error: session lock is unreadable; operate read-only until resolved" >&2
+    exit 1
+  }
+  refuse_other_holder
+  [ "$recorded" = "$me" ] && return 0
+  if fm_harness_pid_alive "$recorded"; then
+    refuse_live_owner "$recorded"
+  fi
+  return 0
+}
+
 refuse_live_owner() {  # <recorded-pid>
   local recorded
   if recorded=$(fm_session_lock_recorded_session_id "$STATE"); then
@@ -248,7 +344,25 @@ refuse_live_owner() {  # <recorded-pid>
   exit 1
 }
 
-if [ -f "$LOCK" ] && [ ! -L "$LOCK" ]; then
+# Release, under the claim lock: only the named holder recorded on line 1 may
+# clear the lock and its sidecar; anything else exits 1 and changes nothing.
+if [ "$RELEASE" -eq 1 ]; then
+  take_claim_lock "$SWEEP_RETRY_RC"
+  if ! held=$(fm_session_lock_recorded_holder "$STATE") || [ "$held" != "$HOLDER_NAME" ]; then
+    echo "error: the session lock is not held by $HOLDER_NAME; nothing released" >&2
+    exit 1
+  fi
+  if ! rm -f "$LOCK_SESSION" 2>/dev/null || ! rm -f "$LOCK" 2>/dev/null; then
+    echo "error: cannot clear the session lock; operate read-only until resolved" >&2
+    exit 1
+  fi
+  release_claim_lock
+  echo "lock released: holder $HOLDER_NAME"
+  exit 0
+fi
+
+if [ -z "$HOLDER_NAME" ] && [ -f "$LOCK" ] && [ ! -L "$LOCK" ]; then
+  refuse_other_holder
   old=$(cat "$LOCK" 2>/dev/null || true)
   if [ "$old" = "$me" ] || fm_session_lock_owned_by_self "$STATE"; then
     confirm_own_lock "$old"
@@ -259,19 +373,16 @@ if [ -f "$LOCK" ] && [ ! -L "$LOCK" ]; then
   fi
 fi
 
-if [ "$CLAIM_LOCK_HELD" -ne 1 ]; then
-  if ! fm_lock_try_acquire "$CLAIM_LOCK"; then
-    sweep_pid=$(sed -n 's/^pid=//p' "$STATE/.startup-network.status" 2>/dev/null | tail -1)
-    if [ -n "${FM_LOCK_HELD_PID:-}" ] && [ "$FM_LOCK_HELD_PID" = "$sweep_pid" ]; then
-      echo "error: the prior session's bounded startup sweep is finishing; operate read-only until it releases the fleet lock" >&2
-      exit 1
-    fi
-    fm_lock_acquire_wait "$CLAIM_LOCK"
+if [ -z "$HOLDER_NAME" ]; then
+  if [ "$CLAIM_LOCK_HELD" -ne 1 ]; then
+    take_claim_lock 1
   fi
-  CLAIM_LOCK_HELD=1
+else
+  take_claim_lock "$SWEEP_RETRY_RC"
+  named_claim_check_or_refuse
 fi
 
-if [ -e "$LOCK" ] || [ -L "$LOCK" ]; then
+if [ -z "$HOLDER_NAME" ] && { [ -e "$LOCK" ] || [ -L "$LOCK" ]; }; then
   if [ ! -f "$LOCK" ] || [ -L "$LOCK" ]; then
     echo "error: session lock is not a regular file; operate read-only until resolved" >&2
     exit 1
@@ -280,6 +391,7 @@ if [ -e "$LOCK" ] || [ -L "$LOCK" ]; then
     echo "error: session lock is unreadable; operate read-only until resolved" >&2
     exit 1
   }
+  refuse_other_holder
   # A re-anchor decided above has held the claim lock since, so line 1 is the
   # pid it recorded and needs no second verdict.
   if [ -z "$REANCHOR" ] && [ "$old" != "$me" ] && fm_harness_pid_alive "$old"; then
@@ -351,4 +463,8 @@ fi
 commit_lock_session
 release_lease_lock
 release_claim_lock
-echo "lock acquired: harness pid $me"
+if [ -n "$HOLDER_NAME" ]; then
+  echo "lock acquired: holder $HOLDER_NAME"
+else
+  echo "lock acquired: harness pid $me"
+fi
