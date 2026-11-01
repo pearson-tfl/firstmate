@@ -190,6 +190,55 @@ SH
   pass "forwarder: a run of failed arm cycles sends one row"
 }
 
+test_failed_notify_is_retried() {
+  local dir state i
+  dir=$(make_forwarder_case notify-retry)
+  state="$dir/state"
+  # The notify fails once, then delivers.
+  cat > "$dir/notify" <<'SH'
+#!/usr/bin/env bash
+if [ ! -e "${FM_TEST_INBOX:?}.failed-once" ]; then
+  : > "$FM_TEST_INBOX.failed-once"
+  exit 1
+fi
+printf '%s\n' "$*" >> "$FM_TEST_INBOX"
+SH
+  start_forwarder "$dir"
+  wait_for_armed "$state" || fail "forwarder never armed: $(cat "$dir/forwarder.err")"
+  append_wake "$state" check startup-network 'check: startup-network retry fixture'
+  i=0
+  while [ "$i" -lt 300 ] && [ "$(row_count "$dir/inbox")" -lt 1 ]; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  [ -e "$dir/inbox.failed-once" ] || fail "the notify was never attempted"
+  [ "$(row_count "$dir/inbox")" -eq 1 ] \
+    || fail "a wake whose first notify failed was not delivered: $(cat "$dir/forwarder.err")"
+  stop_forwarder "$state"
+  pass "forwarder: a wake whose notify failed is delivered on retry"
+}
+
+test_term_stops_the_arm_and_watcher() {
+  local dir state arm watcher i
+  dir=$(make_forwarder_case term-stops)
+  state="$dir/state"
+  start_forwarder "$dir"
+  wait_for_armed "$state" || fail "forwarder never armed: $(cat "$dir/forwarder.err")"
+  arm=$(beat_arm_pid "$state")
+  watcher=$(cat "$state/.watch.lock/pid")
+  kill -TERM "$FWD_PID"
+  i=0
+  while [ "$i" -lt 100 ] && { kill -0 "$FWD_PID" 2>/dev/null || kill -0 "$arm" 2>/dev/null \
+    || kill -0 "$watcher" 2>/dev/null; }; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  wait "$FWD_PID" 2>/dev/null || true
+  ! kill -0 "$arm" 2>/dev/null || fail "arm $arm outlived the forwarder's TERM"
+  ! kill -0 "$watcher" 2>/dev/null || fail "watcher $watcher outlived the forwarder's TERM"
+  pass "forwarder: TERM stops the forwarder, its arm and its watcher"
+}
+
 test_refuses_without_an_explicit_home() {
   local out status
   out=$(env -u FM_HOME "$FORWARDER" --once -- /bin/true 2>&1)
@@ -202,4 +251,6 @@ test_refuses_without_an_explicit_home() {
 test_one_wake_gives_one_row_and_keeps_the_queue_row
 test_second_copy_exits_without_arming
 test_failing_arm_sends_one_row_per_failure_run
+test_failed_notify_is_retried
+test_term_stops_the_arm_and_watcher
 test_refuses_without_an_explicit_home

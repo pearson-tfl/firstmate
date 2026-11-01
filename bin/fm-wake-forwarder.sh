@@ -8,14 +8,16 @@
 #
 # Each loop:
 #   1. Writes state/.forwarder-beat (its mtime is the forwarder's beat).
-#   2. Runs bin/fm-watch-arm.sh as a foreground child, never with a shell `&`.
+#   2. Runs bin/fm-watch-arm.sh as a tracked child it waits on and stops on
+#      TERM or INT (never fired and forgotten).
 #      The child records its own pid as `arm_pid=<N>` in the beat before it
 #      execs the arm, so the pid in the beat is the arm pid that
 #      state/.watch-cycle-exits.log rows begin with.
 #   3. Waits for the arm to end its cycle.
 #   4. When the arm surfaced a wake (exit 0 with a reason line), runs
 #      <notify-command> [args...] "<one-line row text>" once. The row names the
-#      home and the arm's reason line.
+#      home and the arm's reason line. A failed notify is retried: the next
+#      arm is a plain one, which re-announces the still-queued wake.
 #   5. Repeats; --once stops after the first cycle. After a forwarded wake the
 #      next arm runs as that wake's handling successor
 #      (FM_WATCH_PREDECESSOR_ARM_PID, as bin/fm-claude-stop-autoarm.sh starts
@@ -33,8 +35,8 @@
 # forwards no wake and waits FM_FORWARDER_RETRY_SECONDS (default 15) before the
 # next arm, so a failing arm cannot spin. The first such cycle after a healthy
 # one (or at start) sends one "arm failing" row naming the arm's last line;
-# later failures in the same run send none. A failed notify command is reported
-# on stderr and the loop carries on; the durable queue row is not lost.
+# later failures in the same run send none, once that row was delivered. A
+# failed notify command is reported on stderr and retried as above.
 #
 # FM_HOME must be set explicitly; the forwarder refuses to guess a home.
 # FM_FORWARDER_ARM overrides the arm path (default: this checkout's
@@ -86,8 +88,18 @@ if ! fm_lock_try_acquire "$FORWARDER_LOCK"; then
   exit 0
 fi
 trap 'fm_lock_release "$FORWARDER_LOCK"' EXIT
-trap 'exit 143' TERM
-trap 'exit 130' INT
+# A shutdown signal stops the arm too, whose own TERM handler stops its
+# watcher, so neither outlives the forwarder.
+arm_child=
+stop_arm() {  # <exit-code>
+  if [ -n "$arm_child" ]; then
+    kill -TERM "$arm_child" 2>/dev/null || true
+    wait "$arm_child" 2>/dev/null || true
+  fi
+  exit "$1"
+}
+trap 'stop_arm 143' TERM
+trap 'stop_arm 130' INT
 
 notify_row() {  # <row-text> <notify-command> [args...]
   local row=$1
@@ -101,7 +113,8 @@ while :; do
   printf 'arm_pid=\nforwarder_pid=%s\n' "$$" > "$FORWARDER_BEAT.tmp" \
     && mv -f "$FORWARDER_BEAT.tmp" "$FORWARDER_BEAT"
   # The child writes its own pid, then execs the arm in place, so the pid in
-  # the beat is the arm's own pid and the arm runs in the foreground.
+  # the beat is the arm's own pid. The forwarder waits on it and signals it on
+  # shutdown: a tracked child, never fired and forgotten.
   /bin/bash -c '
     printf "arm_pid=%s\nforwarder_pid=%s\n" "$$" "$2" > "$1.tmp" && mv -f "$1.tmp" "$1"
     if [ -n "$4" ]; then
@@ -109,27 +122,36 @@ while :; do
     fi
     unset FM_WATCH_PREDECESSOR_ARM_PID
     exec "$3"
-  ' _ "$FORWARDER_BEAT" "$$" "$ARM" "$predecessor" > "$ARM_OUT" 2>&1 </dev/null
+  ' _ "$FORWARDER_BEAT" "$$" "$ARM" "$predecessor" > "$ARM_OUT" 2>&1 </dev/null &
+  arm_child=$!
+  wait "$arm_child"
   rc=$?
+  arm_child=
   arm_pid=$(sed -n 's/^arm_pid=//p' "$FORWARDER_BEAT" 2>/dev/null | head -n 1)
   predecessor=
   reason=$(grep -v '^watcher: ' "$ARM_OUT" | grep -v '^[[:space:]]*$' | tail -n 1)
   if [ "$rc" -eq 0 ] && [ -n "$reason" ]; then
     failing=0
-    if ! notify_row "firstmate wake in $FM_HOME: $reason" "$@"; then
+    if notify_row "firstmate wake in $FM_HOME: $reason" "$@"; then
+      # The next arm is this wake's handling successor, as the Claude
+      # auto-arm's is, so it does not re-announce the delivered wake while it
+      # stays queued.
+      predecessor=$arm_pid
+    else
+      # Undelivered: a plain re-arm re-announces the still-queued wake, so the
+      # row is retried after the pause.
       echo "forwarder: notify command failed for: $reason" >&2
+      [ "$once" -eq 1 ] || sleep "$RETRY"
     fi
-    # The next arm is this wake's handling successor, as the Claude auto-arm's
-    # is, so it does not re-announce the delivered wake while it stays queued.
-    predecessor=$arm_pid
   else
     last=$(tail -n 1 "$ARM_OUT")
     echo "forwarder: arm cycle forwarded nothing (exit $rc): $last" >&2
     # The beat stays fresh while the arm fails, so no beat-age check can see a
     # failing arm: the first failed cycle of each run of failures sends one row.
     if [ "$failing" -eq 0 ]; then
-      failing=1
-      if ! notify_row "firstmate wake forwarder in $FM_HOME: arm failing (exit $rc): $last" "$@"; then
+      if notify_row "firstmate wake forwarder in $FM_HOME: arm failing (exit $rc): $last" "$@"; then
+        failing=1
+      else
         echo "forwarder: notify command failed for the arm-failure row" >&2
       fi
     fi
