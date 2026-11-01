@@ -96,7 +96,7 @@ printf 'codex\n' > "$PARENT/config/secondmate-harness"
 printf 'tmux\n' > "$PARENT/config/backend"
 printf 'codex\n' > "$PARENT/config/crew-harness"
 printf '## In flight\n\n## Queued\n\n## Done\n' > "$PARENT/data/backlog.md"
-printf '%s\n' "$$" > "$PARENT/state/.lock"
+printf 'holder:%s\n' pocock > "$PARENT/state/.lock"
 
 remote_env() {
   FM_HOME="$PARENT" \

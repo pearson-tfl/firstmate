@@ -673,6 +673,18 @@
 # facts; .agents/skills/harness-adapters/references/harness/polytoken.md owns the
 # knowledge record. polytoken is crewmate/scout only and is refused for
 # --secondmate, like devin.
+# Launch holder: no launch inherits FM_LOCK_HOLDER, the named session-lock
+# holder bin/fm-lock.sh claims under, so a worker can never claim main under
+# main's name. Every launch strips it - the shared env prefix, and the omp,
+# cursor and polytoken templates that carry their own env - and a --secondmate
+# launch is then given its home's .fm-secondmate-home marker name in that same
+# env, after the strip. polytoken's FM_* sweep keeps the name so its env stage
+# decides it. The launch shell also unsets the name, or exports the secondmate's,
+# before anything else runs, so a raw or compound launch command is covered too.
+# The t3code backend has no launch shell, so it sets the name in the thread's
+# harness config instead: empty for a worker, the marker's name for a secondmate.
+# FM_LOCK_HOLDER is never exported from a shell profile; main's own name rides a
+# per-command prefix.
 # Unless config/keep-ai-trailers is present, every claude launch carries the
 # attribution-off policy in its per-launch --settings JSON, so a spawned worker
 # never writes a Co-Authored-By trailer, Claude-Session link, or generated-with
@@ -969,6 +981,7 @@ fm_refuse_if_gate_agent
 # set by the batch loop below), so the guard runs once for the batch, not once per pair.
 [ -n "${FM_SPAWN_NO_GUARD:-}" ] || "$FM_ROOT/bin/fm-guard.sh" || true
 KIND=ship
+SECONDMATE_LOCK_HOLDER=
 KIND_SET=0
 HARNESS_ARG=
 MODEL=
@@ -2925,7 +2938,7 @@ launch_template() {
   # session_stop continuation. The busy extension is the exception: it lives
   # outside the home, so discovery never sees it, and -e is the only load.
   omp)
-    printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS FM_OMP_HARNESS=omp OMP_SKIP_SETUP=1 __OMPBIN____OMPPROFILE__ --config __OMPWORKERCFG__ --auto-approve --cwd __WORKTREE__ __MODELFLAG____EFFORTFLAG__-e __OMPEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
+    printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS __FMLOCKHOLDER__ FM_OMP_HARNESS=omp OMP_SKIP_SETUP=1 __OMPBIN____OMPPROFILE__ --config __OMPWORKERCFG__ --auto-approve --cwd __WORKTREE__ __MODELFLAG____EFFORTFLAG__-e __OMPEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     ;;
   # agy (Antigravity CLI): --prompt-interactive "<brief>" starts the supervised
   # interactive session and auto-submits it, so the brief rides the launch
@@ -2989,7 +3002,7 @@ launch_template() {
   # inherited CLAUDECODE cannot outrank cursor's own marker in a process that
   # only reads the environment. Cursor exposes no effort flag, so the shared
   # effort axis is deliberately omitted and stays in task metadata only.
-  cursor) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_INVOKED_AS __CURSORBIN__ --trust --yolo __MODELFLAG__--workspace __WORKTREE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  cursor) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_INVOKED_AS __FMLOCKHOLDER__ __CURSORBIN__ --trust --yolo __MODELFLAG__--workspace __WORKTREE__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   # gemini (Google Gemini CLI): a positional query starts the supervised
   # interactive session and auto-submits it, so the brief rides the launch
   # command exactly as it does for claude and grok (verified: a multi-line
@@ -3058,7 +3071,7 @@ launch_template() {
   # effort inside the model reference as `<model>(<effort>)`, so the effort
   # axis rides `__MODELFLAG__` after mapping to the nearest compatible
   # level in the installed model's selectable set.
-  polytoken) printf '%s' 'for _fmv in $(env | cut -d= -f1 | grep -E '\''^(ORCA_|FM_)'\''); do case $_fmv in FM_TASK_ID|FM_TASK_INBOX|FM_ZELLIJ_SESSION) ;; *) unset $_fmv ;; esac; done; env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u FM_OMP_HARNESS -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI -u AGENT __POLYTOKENBIN__ --config-dir __POLYTOKENCONFIG__ new --sessions-dir __POLYTOKENSESSIONS__ --facet firstmate-worker --facets-dir __POLYTOKENFACETS__ __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
+  polytoken) printf '%s' 'for _fmv in $(env | cut -d= -f1 | grep -E '\''^(ORCA_|FM_)'\''); do case $_fmv in FM_TASK_ID|FM_TASK_INBOX|FM_ZELLIJ_SESSION|FM_LOCK_HOLDER) ;; *) unset $_fmv ;; esac; done; env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u FM_OMP_HARNESS -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI -u AGENT __FMLOCKHOLDER__ __POLYTOKENBIN__ --config-dir __POLYTOKENCONFIG__ new --sessions-dir __POLYTOKENSESSIONS__ --facet firstmate-worker --facets-dir __POLYTOKENFACETS__ __MODELFLAG__--prompt "$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
   # Command Code receives the typed launch envelope after -- as its initial
   # message. --yolo bypasses permission prompts, --trust skips the folder-trust
   # prompt of a fresh worktree, and --skip-onboarding skips taste onboarding.
@@ -4134,6 +4147,10 @@ if [ "$KIND" = secondmate ]; then
     exit 1
   }
   PROJ_ABS=$(validate_firstmate_home_for_spawn "$ID" "$FIRSTMATE_HOME")
+  # The launched secondmate claims its own home under its marker's name
+  # (launch-holder contract, header). The home check above already pinned the
+  # marker, read the same way, to this validated task id.
+  SECONDMATE_LOCK_HOLDER=$(cat "$PROJ_ABS/$SUB_HOME_MARKER")
   if [ -e "$DATA/secondmates.md" ] || [ -L "$DATA/secondmates.md" ]; then
     if ! secondmate_registry_validate_bindings "$DATA/secondmates.md" resolve_path "$ID" "$FIRSTMATE_HOME"; then
       echo "error: $SECONDMATE_REGISTRY_ERROR" >&2
@@ -7477,6 +7494,14 @@ kiro)
   ;;
 esac
 LAUNCH=${LAUNCH//__WORKTREE__/$sq_worktree}
+# Launch-holder contract (header): strip any inherited FM_LOCK_HOLDER, then give
+# a secondmate its marker's name. One env carries both, options before the
+# assignment, so the strip can never undo the set.
+LOCK_HOLDER_ENV='-u FM_LOCK_HOLDER'
+if [ "$KIND" = secondmate ]; then
+  LOCK_HOLDER_ENV="$LOCK_HOLDER_ENV FM_LOCK_HOLDER=$(shell_quote "$SECONDMATE_LOCK_HOLDER")"
+fi
+LAUNCH=${LAUNCH//__FMLOCKHOLDER__/$LOCK_HOLDER_ENV}
 # A record-backed launch brief is published into the state dir of the pane
 # receiving it, which for a secondmate is its own home, not this primary's.
 case "$LAUNCH" in
@@ -7503,7 +7528,7 @@ case "$LAUNCH" in
 esac
 case "$HARNESS" in
 claude | codex | opencode | pi | pi-signed | grok | kimi | gemini | muse | rovo | agy | devin | commandcode | cortex | kiro)
-  LAUNCH="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI $LAUNCH"
+  LAUNCH="env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI $LOCK_HOLDER_ENV $LAUNCH"
   ;;
 esac
 # Crewmate panes are created by a long-lived tmux/herdr daemon that does not
@@ -7614,6 +7639,13 @@ fi
 if [ "$LAVISH_AXI_HOST_CONFIG_PRESENT" = 1 ]; then
   LAUNCH="export LAVISH_AXI_HOST=$(shell_quote "$LAVISH_AXI_HOST"); $LAUNCH"
 fi
+# Launch-holder backstop (header): the env-level strip and set above reach only
+# templated commands, so a raw or compound launch is covered here, in the shell.
+if [ "$KIND" = secondmate ]; then
+  LAUNCH="export FM_LOCK_HOLDER=$(shell_quote "$SECONDMATE_LOCK_HOLDER"); $LAUNCH"
+else
+  LAUNCH="unset FM_LOCK_HOLDER; $LAUNCH"
+fi
 # Every launch also exports the absolute path of this task's steering inbox, so
 # the constant doorbell line (bin/fm-task-inbox-lib.sh) can name
 # "$FM_TASK_INBOX" instead of a path that grows with the home's depth. Like the
@@ -7677,6 +7709,10 @@ if [ "$BACKEND" = t3code ]; then
   if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
     T3CODE_ENV+=("FM_TASK_ID=$ID")
   fi
+  # Launch holder (header): this config can only set, so a worker's empty
+  # name overrides any name the provider instance inherited; fm-lock and the
+  # session-lock library read an empty name as no name.
+  T3CODE_ENV+=("FM_LOCK_HOLDER=$SECONDMATE_LOCK_HOLDER")
   if [ -n "$SPAWN_TRACEPARENT" ] && spawn_record_traceparent; then
     T3CODE_ENV+=("TRACEPARENT=$SPAWN_TRACEPARENT")
   fi
