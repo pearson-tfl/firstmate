@@ -7637,11 +7637,6 @@ fi
 if [ "$LAVISH_AXI_HOST_CONFIG_PRESENT" = 1 ]; then
   LAUNCH="export LAVISH_AXI_HOST=$(shell_quote "$LAVISH_AXI_HOST"); $LAUNCH"
 fi
-# Every launch also exports the absolute path of this task's steering inbox, so
-# the constant doorbell line (bin/fm-task-inbox-lib.sh) can name
-# "$FM_TASK_INBOX" instead of a path that grows with the home's depth. Like the
-# kill switch below it is an export statement, so it survives a compound raw
-# launch and the launch-env-allowlist `env -i` wrapper.
 # Launch-holder backstop (header): the env-level strip and set above reach only
 # templated commands, so a raw or compound launch is covered here, in the shell.
 if [ "$KIND" = secondmate ]; then
@@ -7649,6 +7644,11 @@ if [ "$KIND" = secondmate ]; then
 else
   LAUNCH="unset FM_LOCK_HOLDER; $LAUNCH"
 fi
+# Every launch also exports the absolute path of this task's steering inbox, so
+# the constant doorbell line (bin/fm-task-inbox-lib.sh) can name
+# "$FM_TASK_INBOX" instead of a path that grows with the home's depth. Like the
+# kill switch below it is an export statement, so it survives a compound raw
+# launch and the launch-env-allowlist `env -i` wrapper.
 LAUNCH="export FM_TASK_INBOX=$(shell_quote "$STATE_REAL/$ID.inbox"); $LAUNCH"
 LAUNCH="export COMPACT_ADVISER_DISABLE=1; $LAUNCH"
 # When the live-harness gate has exported DISABLE_AUTOUPDATER into this spawn's
