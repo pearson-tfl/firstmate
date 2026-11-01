@@ -15,7 +15,7 @@ The failure repeated across harnesses and homes, and the workaround (remember to
 
 `bin/fm-control-lib.sh` is the single executable owner of three capability tables, which have no side effects, so they can be read as a contract:
 
-- The **verb allowlist**: `interrupt`, `exit`, `relaunch`.
+- The **verb allowlist**: `interrupt`, `exit`, `relaunch`, `resume`.
   There is no arbitrary-text and no generic raw-key entry point.
   A caller either names an allowlisted verb or is refused.
 - **Per-harness mechanics**: the key that cancels a running turn, how many times it must be delivered, whether the composer needs clearing afterwards, the command that exits the agent, and which task kinds the adapter is verified to run.
@@ -62,8 +62,14 @@ T3 Code has no composer and its `/mcp` tools offer no session stop, so `exit` re
 `exit` stops an agent and preserves everything else.
 Removing a worktree, closing an endpoint, or discarding work stays with [`bin/fm-teardown.sh`](../bin/fm-teardown.sh), which owns the landed-work test.
 
-**`resume` is not a verb.**
-It is not deterministic across the verified adapters: codex, grok, gemini, devin, commandcode, cortex, and kiro resume only from a session id printed at exit (kiro also has a cwd-scoped `--resume`, and its sessions live under the per-task `KIRO_HOME`), polytoken resumes only from a session id held in its own sessions registry, opencode continues the most recent session for the cwd, and claude, pi, pi-signed, omp, kimi, and agy have no verified general pane-resume contract.
+**`resume` acts only on a session the spawn fixed.**
+Every Claude Code, Pi, and pi-signed launch, fresh or relaunched, passes an exact session id it minted and records it as `agent_session_id=` in the task record ([`fm_control_agent_session_flag`](../bin/fm-control-lib.sh) owns the per-adapter flags).
+`resume` is the relaunch transaction below onto that recorded session: Claude Code reopens it with `--resume <id>` and Pi with `--session-id <id>`, in the same endpoint and worktree, keeping the recorded harness, model, and effort.
+The resumed session already holds its brief and conversation, so the brief is not rewritten; the inbox check and any `--note` become its first prompt instead.
+An agent already stopped with `exit` is simply launched again on its session.
+One exception is a Herdr-backed Pi relaunch that keeps the pane's bound session (below): the bound reference is the runtime's, not one the spawn pinned, so it records no id and `resume` refuses for that task.
+`resume` refuses before anything stops for a task with no recorded id, a raw launch command, or any other adapter: codex, grok, gemini, devin, commandcode, cortex, and kiro resume only from a session id printed at exit (kiro also has a cwd-scoped `--resume`, and its sessions live under the per-task `KIRO_HOME`), polytoken resumes only from a session id held in its own sessions registry, opencode continues the most recent session for the cwd, and omp, kimi, and agy have no verified general pane-resume contract.
+`relaunch` stays the default restart, on a freshly minted session id.
 `relaunch` uses the brief on disk - not a harness-private session - as the durable instruction when the backend can prove the old agent stopped and the composer is empty; Devin on Herdr currently fails that composer check and refuses.
 T3 Code cannot host a fresh replacement agent in a thread, so `relaunch` refuses before stopping anything.
 A relaunch does take one session reference when the endpoint's own runtime recorded it - see [the relaunch transaction](#transactional-relaunch) - but that is a relaunch input, not a caller-facing verb.

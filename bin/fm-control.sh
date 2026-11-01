@@ -7,6 +7,7 @@
 #        fm-control.sh <task-id> relaunch [--harness <name>] [--model <name>]
 #                                         [--effort <level>]
 #                                         (--note <text> | --note-file <path>)
+#        fm-control.sh <task-id> resume [--note <text> | --note-file <path>]
 #
 # Why this exists, and how it differs from fm-send.sh. bin/fm-send.sh is the
 # DATA plane: conversational text for the agent to read, always routing-marked
@@ -106,15 +107,32 @@
 #              state; it never leaves a half-transitioned task claiming to be
 #              running.
 #
+#   resume     Relaunch onto the task's RECORDED agent session instead of a
+#              fresh one, so the agent comes back with its whole conversation.
+#              Every Claude Code, Pi, and pi-signed spawn fixes that session id
+#              at launch and records it as agent_session_id=
+#              (bin/fm-control-lib.sh's fm_control_agent_session_flag owns the
+#              per-adapter flags). It is the same transaction as relaunch, in
+#              the same endpoint and worktree, with three differences: the
+#              harness, model, and effort stay as recorded (no axis flags);
+#              --note is optional and, with the inbox check, becomes the
+#              resumed session's first prompt in state/<id>.resume-prompt.md
+#              rather than being appended to instructions the session already
+#              holds; and it refuses before anything stops when the adapter has
+#              no exact-session resume form, the task was launched from a raw
+#              command, or the record carries no session id. An agent already
+#              stopped with `exit` is simply relaunched on its session.
+#              relaunch stays the default restart from the brief.
+#
 # Teardown and discard are NOT verbs here and never will be. `exit` stops an
 # agent and preserves everything else; removing a worktree, killing an
 # endpoint, or discarding work stays with bin/fm-teardown.sh, which owns the
 # landed-work test.
 #
-# `resume` is not a verb: it is not deterministic across the verified adapters
-# (bin/fm-control-lib.sh's header owns that reasoning). `relaunch` covers the
-# same need where the backend can host a replacement because the brief on disk,
-# not a harness-private session, is the durable instruction.
+# `resume` acts only where the spawn fixed an exact session id
+# (bin/fm-control-lib.sh's header owns that reasoning); on every other adapter
+# `relaunch` covers the same need, because the brief on disk, not a
+# harness-private session, is the durable instruction.
 #
 # Targeting is EXACT: only a bare task id with a state/<id>.meta record in
 # THIS home is accepted, and the record must pass the shared endpoint-identity
@@ -251,11 +269,7 @@ shift 2
 
 if ! fm_control_verb_allowed "$VERB"; then
   {
-    if [ "$VERB" = resume ]; then
-      echo "error: 'resume' is not a control verb: resuming an exited agent is not deterministic across the verified adapters (codex and grok need a session id printed at exit, opencode continues the most recent session for the cwd, and claude, pi, pi-signed, and kimi have no verified pane-resume contract). Use 'relaunch', which carries the brief plus a progress note into a fresh agent on any adapter."
-    else
-      echo "error: '$VERB' is not a control verb"
-    fi
+    echo "error: '$VERB' is not a control verb"
     echo "allowed verbs:"
     fm_control_verbs | sed 's/^/  /'
   } >&2
@@ -313,10 +327,17 @@ if [ -n "$control_want_value" ]; then
   die "--$control_want_value requires a value"
 fi
 
-if [ "$VERB" != relaunch ]; then
-  [ "$HARNESS_SET" = 0 ] && [ "$MODEL_SET" = 0 ] && [ "$EFFORT_SET" = 0 ] && [ "$NOTE_SET" = 0 ] \
-    || die "--harness, --model, --effort, and --note apply to 'relaunch' only"
-fi
+case "$VERB" in
+  relaunch) ;;
+  resume)
+    [ "$HARNESS_SET" = 0 ] && [ "$MODEL_SET" = 0 ] && [ "$EFFORT_SET" = 0 ] \
+      || die "--harness, --model, and --effort apply to 'relaunch' only; 'resume' keeps the recorded session's profile"
+    ;;
+  *)
+    [ "$HARNESS_SET" = 0 ] && [ "$MODEL_SET" = 0 ] && [ "$EFFORT_SET" = 0 ] && [ "$NOTE_SET" = 0 ] \
+      || die "--harness, --model, --effort, and --note apply to 'relaunch' only"
+    ;;
+esac
 [ "$HARNESS_SET" = 0 ] || [ -n "$NEW_HARNESS" ] || die "--harness requires a non-empty value"
 [ "$MODEL_SET" = 0 ] || [ -n "$NEW_MODEL" ] || die "--model requires a non-empty value"
 [ "$EFFORT_SET" = 0 ] || [ -n "$NEW_EFFORT" ] || die "--effort requires a non-empty value"
@@ -1158,6 +1179,8 @@ record_note() {
   [ -n "$NOTE" ] || return 0
   stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   printf '%s\n' "$NOTE" > "$NOTE_FILE"
+  # A resume carries its note in the resume prompt instead (write_resume_prompt).
+  [ -n "$RELAUNCH_BRIEF" ] || return 0
   case "$KIND" in
     ship|scout)
       cp -p "$RELAUNCH_BRIEF" "$BRIEF_PRIOR" \
@@ -1182,6 +1205,48 @@ record_note() {
   esac
 }
 
+# resume_preflight: the refusals a resume owes before anything is stopped.
+# Sets RESUME_SESSION_ID.
+RESUME=0
+RESUME_SESSION_ID=
+RESUME_PROMPT="$STATE/$ID.resume-prompt.md"
+resume_preflight() {
+  [ "$RECORDED_HARNESS" = "$HARNESS" ] \
+    || die "task $ID was launched from the raw command '$RECORDED_HARNESS', whose session cannot be resumed; relaunch it with an explicit --harness instead"
+  fm_control_agent_session_flag "$HARNESS" resume >/dev/null \
+    || die "$HARNESS has no verified resume form for an exact agent session; relaunch $ID instead, which restarts it from its instructions"
+  RESUME_SESSION_ID=$(fm_meta_get "$META" agent_session_id)
+  [ -n "$RESUME_SESSION_ID" ] \
+    || die "task $ID records no agent session id (it was spawned before spawns fixed one), so there is no exact session to resume; relaunch it instead, which restarts it from its instructions"
+  [ "$TARGET_HARNESS" = "$HARNESS" ] \
+    || die "task $ID's configured runtime is now $TARGET_HARNESS, not the recorded $HARNESS, so its session cannot be resumed there; relaunch it to switch runtime"
+}
+
+# write_resume_prompt: the first prompt of the resumed session - which already
+# holds its brief and conversation - naming the inbox and the optional note.
+write_resume_prompt() {
+  local inbox_q
+  {
+    echo "Firstmate resumed this session after its agent stopped."
+    echo "Continue your task from where you left off; the local copy and every"
+    echo "uncommitted change are exactly as you left them."
+    case "$KIND" in
+      ship|scout)
+        inbox_q=$(printf '%s' "$STATE/$ID.inbox" | sed "s/'/'\\\\''/g")
+        echo
+        echo "First, check your instruction inbox: list it with"
+        echo "\`find '$inbox_q' -maxdepth 1 -name '*.msg' 2>/dev/null | sort -V\`, act on"
+        echo "each message in numeric order, then mv each handled file into"
+        echo "'$inbox_q/handled/'. A steer sent while you were stopped waits there."
+        ;;
+    esac
+    if [ -n "$NOTE" ]; then
+      echo
+      printf '%s\n' "$NOTE"
+    fi
+  } > "$RESUME_PROMPT" || die "could not write task $ID's resume prompt at $RESUME_PROMPT"
+}
+
 do_relaunch() {
   local exit_result state note_line
   local -a spawn_args
@@ -1190,14 +1255,21 @@ do_relaunch() {
   fm_control_backend_relaunch_supported "$BACKEND" \
     || die "task $ID runs on the $BACKEND backend, where a thread keeps its conversation and a new turn or provider change continues the same agent, so no fresh replacement can be launched into its endpoint; 'interrupt' ends its turn, and a fresh task needs a teardown and a new dispatch"
   resolve_relaunch_profile
+  [ "$RESUME" = 0 ] || resume_preflight
 
   case "$KIND" in
     ship|scout)
-      RELAUNCH_BRIEF="$DATA/$ID/brief.md"
-      [ -f "$RELAUNCH_BRIEF" ] \
-        || die "task $ID has no instructions at $RELAUNCH_BRIEF; refusing to relaunch a worker with nothing to work from"
-      [ "$NOTE_SET" = 1 ] && [ -n "$NOTE" ] \
-        || die "relaunch of a $KIND task requires --note (or --note-file): the replacement worker inherits the local copy but none of the conversation, so it must be told what happened"
+      if [ "$RESUME" = 1 ]; then
+        # The resumed session already holds its instructions and
+        # conversation, so they are neither required nor rewritten.
+        RELAUNCH_BRIEF=
+      else
+        RELAUNCH_BRIEF="$DATA/$ID/brief.md"
+        [ -f "$RELAUNCH_BRIEF" ] \
+          || die "task $ID has no instructions at $RELAUNCH_BRIEF; refusing to relaunch a worker with nothing to work from"
+        [ "$NOTE_SET" = 1 ] && [ -n "$NOTE" ] \
+          || die "relaunch of a $KIND task requires --note (or --note-file): the replacement worker inherits the local copy but none of the conversation, so it must be told what happened"
+      fi
       ;;
     secondmate)
       # The charter in the secondmate's own home is its instruction source and
@@ -1220,6 +1292,10 @@ do_relaunch() {
   journal_write checkpoint "${CHECKPOINT_LINES[@]}" "$note_line"
 
   record_note
+  if [ "$RESUME" = 1 ]; then
+    write_resume_prompt
+    note_line="$note_line"$'\n'"resume_session=$RESUME_SESSION_ID"
+  fi
   journal_write noted "${CHECKPOINT_LINES[@]}" "$note_line"
 
   journal_write stopping "${CHECKPOINT_LINES[@]}" "$note_line"
@@ -1233,6 +1309,7 @@ do_relaunch() {
   spawn_args=("$ID" --relaunch --harness "$TARGET_HARNESS")
   [ "$TARGET_MODEL" = default ] || spawn_args+=(--model "$TARGET_MODEL")
   [ "$TARGET_EFFORT" = default ] || spawn_args+=(--effort "$TARGET_EFFORT")
+  [ "$RESUME" = 0 ] || spawn_args+=(--resume-session "$RESUME_PROMPT")
   if FM_CONTROL_RELAUNCH_TX="$RELAUNCH_TX" \
       "$SCRIPT_DIR/fm-spawn.sh" "${spawn_args[@]}" >/dev/null; then
     RELAUNCH_META_PUBLISHED=1
@@ -1266,6 +1343,10 @@ do_relaunch() {
 
   journal_write complete "${CHECKPOINT_LINES[@]}" "$note_line" "exit_result=$exit_result"
   RELAUNCH_ACTIVE=0
+  if [ "$RESUME" = 1 ]; then
+    echo "resumed $ID harness=$TARGET_HARNESS session=$RESUME_SESSION_ID model=$TARGET_MODEL effort=$TARGET_EFFORT backend=$BACKEND endpoint=$T worktree=$WT"
+    return 0
+  fi
   echo "relaunched $ID harness=$TARGET_HARNESS from=$PRIOR_RECORDED_HARNESS model=$TARGET_MODEL effort=$TARGET_EFFORT backend=$BACKEND endpoint=$T worktree=$WT"
 }
 
@@ -1293,6 +1374,10 @@ case "$VERB" in
     echo "$result $ID harness=$HARNESS backend=$BACKEND endpoint=$T worktree=$WT"
     ;;
   relaunch)
+    do_relaunch
+    ;;
+  resume)
+    RESUME=1
     do_relaunch
     ;;
 esac
