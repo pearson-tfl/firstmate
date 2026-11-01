@@ -50,8 +50,8 @@ make_case() {  # <name> <on|off>
   WT_DIR="$dir/wt"
   mkdir -p "$HOME_DIR/data/$TASK" "$HOME_DIR/projects" "$HOME_DIR/state" "$HOME_DIR/config" "$HOME_DIR/user-home"
   printf 'claude\n' > "$HOME_DIR/config/crew-harness"
-  # The case home's main is held by name (bin/fm-lock.sh); in_home runs every
-  # producer under that name.
+  # The case home's main is held by name: the holder line bin/fm-lock.sh writes
+  # for a named claim. in_home runs every producer under that name.
   printf 'holder:test-main\n' > "$HOME_DIR/state/.lock"
   touch "$HOME_DIR/state/.last-watcher-beat"
   [ "$2" = off ] || : > "$HOME_DIR/config/fleet-ledger"
