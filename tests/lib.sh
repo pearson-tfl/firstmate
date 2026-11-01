@@ -442,15 +442,16 @@ fi
 #
 # fm_pi_package_dir prints the @earendil-works/pi-coding-agent package behind
 # the `pi` on PATH, so a real-Pi test exercises the Pi that actually runs:
-# FM_PI_PACKAGE_DIR when set, else the current release of a Pi managed install
+# FM_PI_PACKAGE_DIR when set (as an absolute path; 1 if it names no
+# directory), else the current release of a Pi managed install
 # (<agent>/bin/pi beside <agent>/install/current-version), else the package
 # enclosing the resolved `pi` entrypoint, else the npm global package. It
 # returns 1 when none carries a package.json (a standalone Pi binary has no SDK).
 fm_pi_package_dir() {
   local name=@earendil-works/pi-coding-agent bin link dir agent version candidate root
   if [ -n "${FM_PI_PACKAGE_DIR:-}" ]; then
-    printf '%s\n' "$FM_PI_PACKAGE_DIR"
-    return 0
+    (cd "$FM_PI_PACKAGE_DIR" 2>/dev/null && pwd -P)
+    return
   fi
   if bin=$(command -v pi 2>/dev/null) && [ -n "$bin" ]; then
     while [ -L "$bin" ]; do
@@ -488,20 +489,22 @@ fm_pi_package_dir() {
 }
 
 # fm_pi_package_dep <package-dir> <dependency> prints where Node resolves
-# <dependency> from the Pi package: nested under its own node_modules (npm
-# global install) or hoisted into an enclosing node_modules (managed install,
-# plain npm project). It returns 1 when no such directory exists.
+# <dependency> from the Pi package, in Node's own lookup order: the
+# node_modules of the package and then of each ancestor that is not itself a
+# node_modules, so a nested copy (npm global install) wins over one hoisted
+# beside the package (managed install) or further out (plain npm project).
+# It returns 1 when no such directory exists or the package dir does not.
 fm_pi_package_dep() {
-  local dir=$1 dep=$2
-  [ -d "$dir/node_modules/$dep" ] && { printf '%s\n' "$dir/node_modules/$dep"; return 0; }
-  while [ -n "$dir" ] && [ "$dir" != / ]; do
-    if [ "${dir##*/}" = node_modules ] && [ -d "$dir/$dep" ]; then
-      printf '%s\n' "$dir/$dep"
+  local dir dep=$2
+  [ -n "$1" ] && dir=$(cd "$1" 2>/dev/null && pwd -P) || return 1
+  while :; do
+    if [ "${dir##*/}" != node_modules ] && [ -d "$dir/node_modules/$dep" ]; then
+      printf '%s\n' "$dir/node_modules/$dep"
       return 0
     fi
+    [ -z "$dir" ] && return 1
     dir=${dir%/*}
   done
-  return 1
 }
 
 # --- live-capability gate ---------------------------------------------------

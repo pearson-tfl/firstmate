@@ -395,7 +395,7 @@ SH
 # the `pi` on PATH whether its dependencies are nested (npm global install) or
 # hoisted beside it (Pi 1.x managed install, a plain npm project).
 test_pi_package_resolution() (
-  local dir="$TMP_ROOT/pi-package" agent nested hoisted out
+  local dir="$TMP_ROOT/pi-package" agent nested hoisted outer out
   agent="$dir/home/.pi/agent"
   hoisted="$agent/install/releases/9.9.9/node_modules"
   mkdir -p "$agent/bin" "$agent/install" "$hoisted/@earendil-works/pi-coding-agent/dist" \
@@ -425,8 +425,18 @@ test_pi_package_resolution() (
   assert_equals "$nested" "$out" "npm global Pi install resolves the package behind its bin link"
   assert_equals "$nested/node_modules/typebox" "$(fm_pi_package_dep "$out" typebox)" "nested dependency wins over a hoisted one"
 
+  outer="$dir/work/app/node_modules/@earendil-works/pi-coding-agent"
+  mkdir -p "$outer" "$dir/work/node_modules/typebox"
+  assert_equals "$dir/work/node_modules/typebox" "$(fm_pi_package_dep "$outer" typebox)" "a dependency hoisted above Pi's own tree resolves as Node finds it"
+
+  mkdir -p "$dir/override"
   out=$(PATH="$dir/global/bin:/usr/bin:/bin" FM_PI_PACKAGE_DIR="$dir/override" fm_pi_package_dir)
   assert_equals "$dir/override" "$out" "FM_PI_PACKAGE_DIR overrides discovery"
+  out=$(cd "$dir" && FM_PI_PACKAGE_DIR=override fm_pi_package_dir)
+  assert_equals "$(cd "$dir/override" && pwd -P)" "$out" "a relative FM_PI_PACKAGE_DIR resolves to an absolute directory"
+  if (cd "$dir" && FM_PI_PACKAGE_DIR=missing-sdk fm_pi_package_dir >/dev/null 2>&1); then
+    fail "a FM_PI_PACKAGE_DIR naming no directory must not resolve"
+  fi
 
   printf '#!/bin/sh\nexit 0\n' > "$dir/path/pi-standalone"
   mkdir -p "$dir/standalone"
@@ -436,6 +446,12 @@ test_pi_package_resolution() (
   chmod +x "$dir/standalone/npm"
   if PATH="$dir/standalone:/usr/bin:/bin" FM_PI_PACKAGE_DIR='' fm_pi_package_dir >/dev/null 2>&1; then
     fail "a standalone Pi binary with no SDK package must not resolve a package dir"
+  fi
+  if (cd "$dir" && fm_pi_package_dep missing-sdk typebox >/dev/null 2>&1); then
+    fail "a dependency lookup from a missing relative package dir must return 1, not loop"
+  fi
+  if (cd "$dir/work/app" && fm_pi_package_dep '' typebox >/dev/null 2>&1); then
+    fail "a dependency lookup with no package dir must not resolve from the working directory"
   fi
   if fm_pi_package_dep "$nested" @earendil-works/absent >/dev/null 2>&1; then
     fail "an absent dependency must not resolve"
