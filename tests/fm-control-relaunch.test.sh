@@ -3035,6 +3035,36 @@ SH
   pass "fm-control exit removes the dialog file before it releases the control lock"
 }
 
+# A relaunch must bring a loadout worker back on its recorded role and
+# workflows lever, never on the home's defaults.
+test_relaunch_reuses_recorded_loadout_and_workflows() {
+  local dir out stub
+  dir=$(new_case loadoutreuse rl90)
+  add_ship_task "$dir" rl90 claude
+  printf 'loadout=implement\nworkflows=on\n' >> "$dir/home/state/rl90.meta"
+  mkdir -p "$dir/home/config"
+  stub="$dir/loadout-line"
+  cat > "$stub" <<SH
+#!/bin/sh
+printf '%s\n' "\$@" > "$dir/loadout.argv"
+printf '%s' '{"tools":"Bash,Read","settings":"{}","mcp":"{\\"mcpServers\\":{}}","setting_sources":"all","permission_args":["--dangerously-skip-permissions"],"plugin_args":[],"design_args":[]}'
+SH
+  chmod +x "$stub"
+  printf '%s\n' "$stub" > "$dir/home/config/loadout-command"
+  printf 'zsh' > "$dir/fake/command"
+  out=$(run_spawn "$dir" rl90 --relaunch)
+  assert_contains "$out" "spawned rl90 harness=claude" "the loadout relaunch should complete"
+  assert_equals "implement" "$(grep -A1 -x -- --role "$dir/loadout.argv" | tail -n 1)" \
+    "the relaunch should ask the loadout command for the recorded role"
+  assert_contains "$(cat "$dir/fake/literal")" "env -u CLAUDE_CODE_DISABLE_WORKFLOWS" \
+    "the relaunch should keep the recorded workflows lever on"
+  assert_contains "$(cat "$dir/fake/literal")" "'--tools' 'Bash,Read'" \
+    "the relaunch should start on the role's launch string"
+  assert_equals "implement" "$(meta_field "$dir" rl90 loadout)" "the republished record should keep the role"
+  assert_equals "on" "$(meta_field "$dir" rl90 workflows)" "the republished record should keep the lever"
+  pass "fm-spawn --relaunch: a loadout worker comes back on its recorded role and workflows lever"
+}
+
 test_relaunch_off_opencode_removes_tracked_wiring
 test_exit_and_relaunch_remove_the_dialog_file
 test_exit_removes_the_dialog_file_before_releasing_the_lock
@@ -3125,3 +3155,4 @@ test_herdr_rebind_failure_from_a_plain_shell_names_the_real_cause
 test_relaunch_reverifies_an_already_in_flight_item_instead_of_rewriting_it
 test_relaunch_moves_a_drifted_item_back_in_flight
 test_away_branch_relaunch_accepts_existing_dispatchable_items
+test_relaunch_reuses_recorded_loadout_and_workflows
