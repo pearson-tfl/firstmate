@@ -229,10 +229,10 @@
 #             fm-sessionstart-run.sh. A genuine `startup` that owns the active
 #             session lock records AGENTS.md's SHA-256 baseline only after the
 #             digest completion record is published, keyed to that lock's
-#             harness pid. No resume, clear, reset, compact, or other rebuild
-#             creates or replaces it. Pi and pi-signed compaction are the only
+#             line 1 (a harness pid or a holder:<name>). No resume, clear,
+#             reset, compact, or other rebuild creates or replaces it. Pi and pi-signed compaction are the only
 #             supported stale-cache rebuild pair: a missing baseline, a baseline
-#             for another harness pid, or a changed hash causes the complete
+#             for another lock line 1, or a changed hash causes the complete
 #             current AGENTS.md to print before the bulky digest. The baseline
 #             remains immutable so every later drifted compaction refreshes
 #             again, while an equal baseline emits no instruction refresh.
@@ -713,7 +713,15 @@ if [ "$LOCK_RC" -ne 0 ]; then
     printf '%s\n' "$BAR"
   }
 fi
-REBUILDING_SESSION_PID=$(fm_harness_ancestry_pid 2>/dev/null || true)
+# The rebuilding session's identity is the lock line 1 it now holds - a pid or a
+# named holder - the same value the completion and AGENTS baseline records are
+# keyed to. A read-only session holds no line, so it has no identity to match
+# and always refreshes against its own startup copy.
+REBUILDING_SESSION_PID=
+if [ "$READ_ONLY" -eq 0 ]; then
+  REBUILDING_SESSION_PID=$(head -n 1 "$STATE/.lock" 2>/dev/null || true)
+  fm_session_lock_identity_valid "$REBUILDING_SESSION_PID" || REBUILDING_SESSION_PID=
+fi
 print_agents_refresh_if_required "$REBUILDING_SESSION_PID"
 
 # --- 1b. home role -------------------------------------------------------
@@ -872,7 +880,9 @@ if [ "$PRIMARY_HARNESS" = omp ]; then
     fi
     # Warning only: name the cause when existing facts establish it.
     OMP_MARKER_PID=$(sed -n '2p' "$OMP_WATCH_MARKER" 2>/dev/null || true)
-    OMP_CURRENT_PID=${REBUILDING_SESSION_PID:-$(sed -n '1p' "$OMP_LOCK" 2>/dev/null || true)}
+    # This session's own process, not the lock line: the marker records a pid.
+    OMP_CURRENT_PID=$(fm_harness_ancestry_pid 2>/dev/null || true)
+    [ -n "$OMP_CURRENT_PID" ] || OMP_CURRENT_PID=$(sed -n '1p' "$OMP_LOCK" 2>/dev/null || true)
     if [ -n "$OMP_MARKER_PID" ] && [ -n "$OMP_CURRENT_PID" ] && [ "$OMP_MARKER_PID" != "$OMP_CURRENT_PID" ]; then
       printf 'OMP_WATCH_CAUSE: the extension marker %s names pid %s, which is not this session (pid %s)\n' "$OMP_WATCH_MARKER" "$OMP_MARKER_PID" "$OMP_CURRENT_PID"
     fi
@@ -1105,7 +1115,7 @@ EOF
 if [ "$READ_ONLY" -eq 0 ] && [ "$REEMIT" -eq 0 ]; then
   COMPLETION_RECORDED=0
   COMPLETION_PID=$(cat "$STATE/.lock" 2>/dev/null || true)
-  fm_session_pid_valid "$COMPLETION_PID" || COMPLETION_PID=
+  fm_session_lock_identity_valid "$COMPLETION_PID" || COMPLETION_PID=
   COMPLETION_TMP=$(mktemp "$STATE/.session-start-complete.XXXXXX" 2>/dev/null || true)
   if [ -n "$COMPLETION_PID" ] && [ -n "$COMPLETION_TMP" ] \
     && printf '%s\n' "$COMPLETION_PID" > "$COMPLETION_TMP" 2>/dev/null \

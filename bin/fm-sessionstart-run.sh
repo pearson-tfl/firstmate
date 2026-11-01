@@ -106,7 +106,7 @@ session_start_completed() {
   fm_session_lock_owned_by_self "$STATE" || return 1
   lock_pid=$(cat "$STATE/.lock" 2>/dev/null) || return 1
   completion_pid=$(cat "$COMPLETION_FILE" 2>/dev/null) || return 1
-  fm_session_pid_valid "$lock_pid" || return 1
+  fm_session_lock_identity_valid "$lock_pid" || return 1
   [ "$completion_pid" = "$lock_pid" ]
 }
 
