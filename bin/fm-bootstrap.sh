@@ -240,7 +240,7 @@ network_phase() { [ "$FM_BOOTSTRAP_NETWORK_PHASE" != skip ]; }
 network_mutation_authorized() {
   local expected=${FM_BOOTSTRAP_NETWORK_LOCK_PID:-} current
   [ -n "$expected" ] || return 0
-  fm_session_pid_valid "$expected" || return 1
+  fm_session_lock_identity_valid "$expected" || return 1
   [ -f "$STATE/.lock" ] && [ ! -L "$STATE/.lock" ] || return 1
   current=$(cat "$STATE/.lock" 2>/dev/null) || return 1
   [ "$current" = "$expected" ]

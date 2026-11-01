@@ -339,7 +339,7 @@ EOF
 # fail closed to the read-only probe.
 lock_unchanged() {  # <expected-pid>
   local expected=$1 current
-  fm_session_pid_valid "$expected" || return 1
+  fm_session_lock_identity_valid "$expected" || return 1
   [ -f "$STATE/.lock" ] && [ ! -L "$STATE/.lock" ] || return 1
   current=$(cat "$STATE/.lock" 2>/dev/null) || return 1
   [ "$current" = "$expected" ]

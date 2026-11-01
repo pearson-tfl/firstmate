@@ -191,6 +191,22 @@ fm_session_pid_valid() {  # <value>
   return 0
 }
 
+# True when $1 is a well-formed state/.lock line 1 identity: a session pid that
+# fm_session_pid_valid accepts, or a named holder, holder:<name>, in the name
+# charset bin/fm-lock.sh accepts. The string compares that ask "does the lock
+# still name the session that asked for this work?" - the startup sweep's
+# re-check, bootstrap's clone refresh, and the session-start completion marker -
+# take either. fm_session_pid_valid itself still rejects a name, because its
+# other readers kill -0 or walk the value as a pid.
+fm_session_lock_identity_valid() {  # <value>
+  fm_session_pid_valid "$1" && return 0
+  case "$1" in
+    holder:|holder:*[!A-Za-z0-9._-]*) return 1 ;;
+    holder:*) return 0 ;;
+  esac
+  return 1
+}
+
 # Windows command paths are backslash-separated and .exe-suffixed, neither of
 # which the path-component matcher above understands. Normalizing here is what
 # keeps that matcher's whole-component safety intact: without it the harness
