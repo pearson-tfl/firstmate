@@ -48,6 +48,7 @@ run_under_agy() {
       -u CURSOR_AGENT -u CURSOR_INVOKED_AS \
       -u GEMINI_CLI -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI \
       -u PI_CODING_AGENT -u FM_PI_HARNESS -u FM_OMP_HARNESS -u GROK_AGENT \
+      FM_LOCK_HOLDER="${FM_LOCK_HOLDER:-agy-main}" \
       "$@" "$FAKE_AGY" -c "$AGY_CHILD_CMD"
 }
 
@@ -295,7 +296,7 @@ test_sessionstart_agy_primary_secondmate_and_worktree_scope() {
 run_agy_stop() {
   local dir=$1 payload=$2
   AGY_CHILD_CMD='
-    printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+    printf "holder:%s\n" "$FM_LOCK_HOLDER" > "$FM_HOME/state/.lock"
     "$FM_HOME/bin/fm-turnend-guard-agy.sh"
   '
   printf '%s' "$payload" | run_under_agy FM_HOME="$dir" FM_AGY_PARK_POLL=1 2>/dev/null
