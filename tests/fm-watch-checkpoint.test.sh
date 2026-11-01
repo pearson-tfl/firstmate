@@ -407,8 +407,8 @@ test_real_host_checkpoint_ends_quietly_at_its_bound() {
   mkdir -p "$fakebin"
   ln -s /bin/bash "$fakebin/codex"
   status=0
-  FM_HOME="$home" FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$fakebin/codex" -c '
-    printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+  FM_HOME="$home" FM_LOCK_HOLDER=fm-test-main FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$fakebin/codex" -c '
+    printf "holder:%s\n" "$FM_LOCK_HOLDER" > "$FM_HOME/state/.lock"
     "$0" --seconds 4
   ' "$CHECKPOINT" >"$home/out.txt" 2>"$home/err.txt" || status=$?
   expect_code 124 "$status" "a quiet host checkpoint: $(cat "$home/out.txt" "$home/err.txt")"

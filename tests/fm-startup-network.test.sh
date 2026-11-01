@@ -117,10 +117,17 @@ EOF
   pass "fm-startup-network: wait fails when no deferred stage publishes before its deadline"
 }
 
+# Every stage runs as the named holder "main" (FM_LOCK_HOLDER), so a case that
+# seeds holder:main owns the lock by name. Cases whose subject is the locked
+# mutating sweeps, their single flight, or a hand-off between owners seed this
+# shell's pid instead: the sweep phase binds to a numeric lock pid
+# (lock_unchanged in bin/fm-startup-network.sh) and downgrades a holder line to
+# the read-only probe.
 run_stage() {  # <home> <root> <args...>
   local home=$1 root=$2
   shift 2
   PATH="$root/bin:$PATH" FM_FAKE_HARNESS_PID="${FM_FAKE_HARNESS_PID_OVERRIDE:-$$}" \
+    FM_LOCK_HOLDER="${FM_TEST_LOCK_HOLDER:-main}" \
     FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$root/bin/fm-startup-network.sh" "$@"
 }
 
@@ -177,7 +184,7 @@ test_start_returns_without_holding_the_callers_stdout() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
 
   started=$(date +%s)
   # Command substitution reads to EOF, exactly like a hook harvesting hook output.
@@ -205,7 +212,7 @@ test_harvest_acknowledgement_suppresses_the_wake_and_no_claim_produces_it() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
 
   sleep 30 &
   claimant=$!
@@ -699,7 +706,7 @@ test_timings_are_published_and_only_the_on_demand_report_prints_them() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
 
   FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_OUT='sweep finding' \
     FM_FAKE_TIMING_PHASE=fleet-sync FM_FAKE_TIMING_DETAIL=dotfiles-private \
@@ -737,7 +744,7 @@ test_a_bounded_run_still_publishes_the_timings_it_managed_to_record() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
 
   FM_STARTUP_NETWORK_TIMEOUT=1 FM_SESSION_START_TIMEOUT=2 \
     FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_SLEEP=20 \
@@ -763,7 +770,7 @@ test_the_timing_artifact_cannot_carry_a_command_line_or_forge_records() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
 
   FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_TIMING_PHASE=secondmate-sync \
     FM_FAKE_TIMING_DETAIL="ssh -i /key host	v1	forged	0	9999

@@ -821,7 +821,7 @@ EOF
 # --- lock refusal: read-only path --------------------------------------------
 
 test_lock_refusal_read_only_path() {
-  local rec root home fakebin holder_pid out status
+  local rec root home fakebin out status
   rec=$(new_world lock-refusal)
   IFS='|' read -r root home fakebin <<EOF
 $rec
@@ -839,18 +839,15 @@ EOF
   append_wake "$home/state" signal sm-x "done: surfaced before refusal" || fail "seed wake failed"
   git -C "$root" checkout -q -B fm/read-only-tangle
 
-  sleep 300 &
-  holder_pid=$!
-  printf '%s\n' "$holder_pid" > "$home/state/.lock"
+  # Main is held by another named session; this one runs under its own name.
+  printf 'holder:other-main\n' > "$home/state/.lock"
 
   status=0
-  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH") || status=$?
-  kill "$holder_pid" 2>/dev/null || true
-  wait "$holder_pid" 2>/dev/null || true
+  out=$(FM_LOCK_HOLDER=test-main run_session_start "$home" "$root" "$fakebin:$BASE_PATH") || status=$?
 
   expect_code 0 "$status" "fm-session-start.sh must exit 0 even on a lock refusal"
   assert_contains "$out" "READ-ONLY SESSION" "read-only banner missing on lock refusal"
-  assert_contains "$out" "another live firstmate session holds the lock" "read-only banner did not surface fm-lock.sh's own error text"
+  assert_contains "$out" "main is held by other-main; read-only" "read-only banner did not surface fm-lock.sh's own error text"
   assert_contains "$out" "Skipping every mutating step" "read-only banner did not explain what was skipped"
   assert_contains "$out" "skipped (read-only session)" "wake-queue section did not report itself skipped"
   assert_contains "$out" "WATCHER DOWN - SUPERVISION IS OFF" "read-only guard did not surface watcher-liveness alarm"
@@ -927,12 +924,8 @@ EOF
     || fail "a new session start must freeze an env-on override over an absent config flag"
   frozen=$(cat "$home/state/.trace-context-effective")
 
-  sleep 300 &
-  holder_pid=$!
-  printf '%s\n' "$holder_pid" > "$home/state/.lock"
-  out=$(FM_TRACE_CONTEXT=off run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-  kill "$holder_pid" 2>/dev/null || true
-  wait "$holder_pid" 2>/dev/null || true
+  printf 'holder:other-main\n' > "$home/state/.lock"
+  out=$(FM_LOCK_HOLDER=test-main FM_TRACE_CONTEXT=off run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
   assert_contains "$out" "READ-ONLY SESSION" "trace-context refusal fixture did not enter read-only mode"
   [ "$(cat "$home/state/.trace-context-effective")" = "$frozen" ] \
     || fail "a lock-refused session must not mutate the frozen trace-context state"
@@ -1947,19 +1940,9 @@ $rec
 EOF
   make_fake_toolchain "$fakebin"
   make_fake_ps_claude "$fakebin"
-  printf '999999\n' > "$home/state/.lock"
-  cat > "$fakebin/ps" <<'SH'
-#!/usr/bin/env bash
-set -u
-case "$*" in
-  *"-p 999999"*) printf 'claude\n'; exit 0 ;;
-  *"comm="*|*"args="*) printf 'bash\n'; exit 0 ;;
-esac
-exit 0
-SH
-  chmod +x "$fakebin/ps"
+  printf 'holder:other-main\n' > "$home/state/.lock"
 
-  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  out=$(FM_LOCK_HOLDER=test-main run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
 
   assert_contains "$out" "READ-ONLY SESSION" "the read-only fixture did not actually refuse the lock"
   assert_contains "$out" "skipped (read-only session) - GitHub authentication" \
@@ -2572,11 +2555,11 @@ EOF
   holder_pid=$!
   printf '%s\n%s\n' "$holder_pid" "$(hash_file_for_test "$root/AGENTS.md")" \
     > "$home/state/.session-start-agents-baseline"
-  printf '%s\n' "$holder_pid" > "$home/state/.lock"
+  printf 'holder:other-main\n' > "$home/state/.lock"
   baseline_before=$(cat "$home/state/.session-start-agents-baseline")
   completion_before=$(cat "$home/state/.session-start-complete")
 
-  out=$(FM_FAKE_HARNESS=pi FM_FAKE_LIVE_HOLDER_PID="$holder_pid" \
+  out=$(FM_LOCK_HOLDER=test-main FM_FAKE_HARNESS=pi FM_FAKE_LIVE_HOLDER_PID="$holder_pid" \
     run_pi_session_start "$home" "$root" "$fakebin:$BASE_PATH" --reemit --source compact)
   kill "$holder_pid" 2>/dev/null || true
   wait "$holder_pid" 2>/dev/null || true
@@ -2659,7 +2642,7 @@ SH
 }
 
 test_reemit_keeps_repair_ownership_with_the_lock_holder() {
-  local rec root home fakebin reemit readonly_out holder_pid
+  local rec root home fakebin reemit readonly_out
   rec=$(new_world reemit-tangle)
   IFS='|' read -r root home fakebin <<EOF
 $rec
@@ -2679,15 +2662,10 @@ EOF
   assert_not_contains "$reemit" "must leave restore work to the session holding the fleet lock" \
     "--reemit misreported itself as an unlocked read-only session"
 
-  rm -f "$home/state/.lock"
-  sleep 300 &
-  holder_pid=$!
-  printf '%s\n' "$holder_pid" > "$home/state/.lock"
+  printf 'holder:other-main\n' > "$home/state/.lock"
   readonly_out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$fakebin:$BASE_PATH" \
     env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
-    "$SESSION_START" --reemit)
-  kill "$holder_pid" 2>/dev/null || true
-  wait "$holder_pid" 2>/dev/null || true
+    FM_LOCK_HOLDER=test-main "$SESSION_START" --reemit)
 
   assert_contains "$readonly_out" "READ-ONLY SESSION" \
     "--reemit assumed lock ownership instead of re-verifying it"

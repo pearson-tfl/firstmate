@@ -1080,7 +1080,7 @@ test_network_sweeps_recheck_lock_ownership() {
   case_dir="$TMP_ROOT/network-lock-handoff"
   mkdir -p "$case_dir/home/config" "$case_dir/home/projects" "$case_dir/home/state"
   printf '%s\n' manual > "$case_dir/home/config/backlog-backend"
-  printf '222222\n' > "$case_dir/home/state/.lock"
+  printf 'holder:next-main\n' > "$case_dir/home/state/.lock"
   fakebin=$(make_fake_toolchain "$case_dir")
   fake_root="$case_dir/root"
   marker="$case_dir/fleet-sync.started"
