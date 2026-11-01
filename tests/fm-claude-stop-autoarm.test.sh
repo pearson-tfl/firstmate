@@ -1395,11 +1395,13 @@ test_recycled_bridge_claim_stays_open_on_session_id_match() {
   pass "auto-arm: a recycled-bridge claim stays open on its recorded session id and lock-holder identity, and nothing else does"
 }
 
-# A claim with no numeric session-lock pid is never open: nothing can receive
-# its rewake (the hook itself goes silent on a missing or malformed lock), so
-# deferring to it would leave the home deaf. Same live, identity-matched,
-# fresh-beacon owner, three lock states, one predicate.
-test_claim_without_numeric_session_lock_is_not_open() {
+# A claim is open only while state/.lock still names the holder the claim was
+# taken under. Another name, a missing lock or a malformed lock means nothing
+# this claim belongs to can receive its rewake (the hook itself goes silent on
+# a missing or malformed lock), so deferring to it would leave the home deaf.
+# Same live, identity-matched, fresh-beacon owner, four lock states, one
+# predicate.
+test_claim_is_open_only_under_its_named_holder() {
   local dir rc
   dir=$(make_primary_dir "$TMP_ROOT/v2-lockless-claim")
   : > "$dir/state/.last-watcher-beat"
@@ -1936,7 +1938,7 @@ test_stopped_legacy_owner_is_reclaimed_with_term_pending
 test_open_generation_claim_defers_without_any_lock
 test_stuck_generation_claim_is_superseded_and_rearms
 test_orphaned_claim_from_dead_session_is_superseded_by_replacement
-test_claim_without_numeric_session_lock_is_not_open
+test_claim_is_open_only_under_its_named_holder
 test_recycled_bridge_claim_stays_open_on_session_id_match
 test_identityless_ledger_never_defers
 test_superseded_owner_never_reinvokes_the_arm

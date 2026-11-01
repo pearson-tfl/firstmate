@@ -2147,7 +2147,7 @@ fm_pid_descends_from() {  # <pid> <ancestor>
 # build's entry gets its deference from its held role-carrying lock through
 # the legacy shim, and anything else must not defer.
 fm_autoarm_claim_open() {  # <state-dir> [grace]
-  local state=$1 grace=${2:-${FM_GUARD_GRACE:-300}} epoch current lock_pid lock_identity recorded
+  local state=$1 grace=${2:-${FM_GUARD_GRACE:-300}} epoch current lock_pid lock_holder lock_identity recorded
   epoch="$state/.claude-autoarm-epoch"
   case "$grace" in
     ''|*[!0-9]*|0) grace=300 ;;
@@ -2159,33 +2159,29 @@ fm_autoarm_claim_open() {  # <state-dir> [grace]
   current=$(fm_pid_identity "$FM_AUTOARM_OWNER" 2>/dev/null) || return 1
   [ -n "$current" ] || return 1
   [ "$current" = "$FM_AUTOARM_IDENTITY" ] || return 1
-  lock_pid=$(sed -n '1p' "$state/.lock" 2>/dev/null || true)
-  case "$lock_pid" in
-    holder:?*)
-      # A named holder has no pid to descend from: the claim is reachable while
-      # the lock still names the holder the claim was taken under and, when the
-      # claim recorded its session's CLAUDE_PID, that pid is still a live
-      # harness. Two runs share one name, so the pid is what tells a dead run's
-      # orphaned claim from the live run's.
-      [ -n "$FM_AUTOARM_OWNER_HOLDER" ] && [ "$lock_pid" = "holder:$FM_AUTOARM_OWNER_HOLDER" ] || return 1
-      if [ -n "$FM_AUTOARM_OWNER_HARNESS_PID" ]; then
-        _fm_wake_require_session_lock
-        fm_harness_pid_alive "$FM_AUTOARM_OWNER_HARNESS_PID" || return 1
-      fi
-      ;;
-    *)
-      _fm_wake_require_session_lock
-      fm_session_pid_valid "$lock_pid" || return 1
-      if ! fm_pid_descends_from "$FM_AUTOARM_OWNER" "$lock_pid"; then
-        [ -n "$FM_AUTOARM_OWNER_SESSION_ID" ] || return 1
-        [ -n "$FM_AUTOARM_OWNER_LOCK_IDENTITY" ] || return 1
-        lock_identity=$(fm_session_pid_identity "$lock_pid" 2>/dev/null) || return 1
-        [ "$lock_identity" = "$FM_AUTOARM_OWNER_LOCK_IDENTITY" ] || return 1
-        recorded=$(fm_session_lock_recorded_session_id "$state" 2>/dev/null || true)
-        [ -n "$recorded" ] && [ "$recorded" = "$FM_AUTOARM_OWNER_SESSION_ID" ] || return 1
-      fi
-      ;;
-  esac
+  _fm_wake_require_session_lock
+  if lock_holder=$(fm_session_lock_recorded_holder "$state"); then
+    # A named holder has no pid to descend from: the claim is reachable while
+    # the lock still names the holder the claim was taken under and, when the
+    # claim recorded its session's CLAUDE_PID, that pid is still a live
+    # harness. Two runs share one name, so the pid is what tells a dead run's
+    # orphaned claim from the live run's.
+    [ -n "$FM_AUTOARM_OWNER_HOLDER" ] && [ "$lock_holder" = "$FM_AUTOARM_OWNER_HOLDER" ] || return 1
+    if [ -n "$FM_AUTOARM_OWNER_HARNESS_PID" ]; then
+      fm_harness_pid_alive "$FM_AUTOARM_OWNER_HARNESS_PID" || return 1
+    fi
+  else
+    lock_pid=$(sed -n '1p' "$state/.lock" 2>/dev/null || true)
+    fm_session_pid_valid "$lock_pid" || return 1
+    if ! fm_pid_descends_from "$FM_AUTOARM_OWNER" "$lock_pid"; then
+      [ -n "$FM_AUTOARM_OWNER_SESSION_ID" ] || return 1
+      [ -n "$FM_AUTOARM_OWNER_LOCK_IDENTITY" ] || return 1
+      lock_identity=$(fm_session_pid_identity "$lock_pid" 2>/dev/null) || return 1
+      [ "$lock_identity" = "$FM_AUTOARM_OWNER_LOCK_IDENTITY" ] || return 1
+      recorded=$(fm_session_lock_recorded_session_id "$state" 2>/dev/null || true)
+      [ -n "$recorded" ] && [ "$recorded" = "$FM_AUTOARM_OWNER_SESSION_ID" ] || return 1
+    fi
+  fi
   if [ "$(fm_path_age "$epoch")" -ge "$grace" ] \
     && [ "$(fm_path_age "$state/.last-watcher-beat")" -ge "$grace" ]; then
     return 1
@@ -2218,13 +2214,12 @@ fm_autoarm_midturn_healthy() {  # <state-dir> [grace]
   [ "$FM_AUTOARM_OUTCOME" = rewake ] || return 1
   lock_pid=$(sed -n '1p' "$state/.lock" 2>/dev/null || true)
   [ -n "$FM_AUTOARM_SESSION" ] && [ "$FM_AUTOARM_SESSION" = "$lock_pid" ] || return 1
-  case "$lock_pid" in
-    holder:?*) ;;  # a named holder never expires; the equality above binds it
-    *)
-      _fm_wake_require_session_lock
-      fm_session_pid_alive "$lock_pid" || return 1
-      ;;
-  esac
+  _fm_wake_require_session_lock
+  # A named holder never expires, so the equality above is its whole binding;
+  # a pid holder must still be alive.
+  if ! fm_session_lock_recorded_holder "$state" >/dev/null; then
+    fm_session_pid_alive "$lock_pid" || return 1
+  fi
   fm_recovery_marker_read "$state/.watcher-down" || return 1
   recovery=${FM_RECOVERY_MARKER_TOKEN##*:}
   [ -n "$FM_AUTOARM_RECOVERY" ] && [ "$FM_AUTOARM_RECOVERY" = "$recovery" ] || return 1
@@ -2239,7 +2234,7 @@ fm_autoarm_midturn_healthy() {  # <state-dir> [grace]
 # 1 when the micro-mutex is contended, the mandatory identity cannot be
 # computed, or the write failed.
 fm_autoarm_claim_next() {  # <state-dir> [grace]
-  local state=$1 grace=${2:-${FM_GUARD_GRACE:-300}} lock epoch pid gen identity session_id lock_pid lock_identity holder harness_pid tmp
+  local state=$1 grace=${2:-${FM_GUARD_GRACE:-300}} lock epoch pid gen identity session_id lock_pid lock_identity lock_holder claim_holder harness_pid tmp
   lock="$state/.claude-autoarm.lock"
   epoch="$state/.claude-autoarm-epoch"
   FM_AUTOARM_MY_GEN=
@@ -2255,18 +2250,15 @@ fm_autoarm_claim_next() {  # <state-dir> [grace]
     *[![:alnum:]_.-]*) session_id= ;;
   esac
   lock_pid=$(sed -n '1p' "$state/.lock" 2>/dev/null || true)
-  holder=
-  case "$lock_pid" in
-    holder:?*)
-      [ -n "${FM_LOCK_HOLDER:-}" ] && [ "$lock_pid" = "holder:$FM_LOCK_HOLDER" ] \
-        && holder=$FM_LOCK_HOLDER
-      ;;
-  esac
-  case "$holder" in
-    *[!A-Za-z0-9._-]*) holder= ;;
-  esac
+  # The claim records the named holder only when it is this process's own
+  # FM_LOCK_HOLDER, so a claim is never bound to a name it does not carry.
+  claim_holder=
+  if lock_holder=$(fm_session_lock_recorded_holder "$state") \
+    && [ "$lock_holder" = "${FM_LOCK_HOLDER:-}" ]; then
+    claim_holder=$lock_holder
+  fi
   harness_pid=
-  if [ -n "$holder" ]; then
+  if [ -n "$claim_holder" ]; then
     case "${CLAUDE_PID:-}" in
       ''|*[!0-9]*) ;;
       *) harness_pid=$CLAUDE_PID ;;
@@ -2289,7 +2281,7 @@ fm_autoarm_claim_next() {  # <state-dir> [grace]
       printf 'epoch=%s owner_pid=%s outcome=arming updated_at=%s' \
         "$gen" "$pid" "$(date +%s)"
       [ -z "$session_id" ] || printf ' owner_session_id=%s' "$session_id"
-      [ -z "$holder" ] || printf ' owner_holder=%s' "$holder"
+      [ -z "$claim_holder" ] || printf ' owner_holder=%s' "$claim_holder"
       [ -z "$harness_pid" ] || printf ' owner_harness_pid=%s' "$harness_pid"
       printf '\n%s\n' "$identity"
       [ -z "$session_id" ] || printf '%s\n' "$lock_identity"
