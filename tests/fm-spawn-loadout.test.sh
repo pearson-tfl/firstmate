@@ -37,7 +37,7 @@ make_case() {
 # the role's skill posture and a contrary disableWorkflows laid over them, as
 # the real launch.py lays a role's launch settings over the base.
 install_loadout_stub() {
-  local code=${1:-0} tools=${2-Bash,Read,Edit} sources=${3:-project,local} perm=${4:-'"--permission-mode", "auto", '} extra=${5:-} stub="$CASE_DIR/loadout-line"
+  local code=${1:-0} tools=${2-Bash,Read,Edit} sources=${3:-project,local} perm=${4-'"--permission-mode", "auto", '} extra=${5:-} stub="$CASE_DIR/loadout-line"
   cat > "$stub" <<PY
 #!/usr/bin/env python3
 import json, sys
@@ -238,7 +238,25 @@ test_loadout_keeps_firstmates_permission_mode() {
     && fail "a role's bypass flag must not return after approval failover"
   assert_equals "Bash(git:*)" "$(arg_after "$seen" --allowedTools)" "the role's allow list should still reach the agent"
   assert_equals "auto" "$(meta_value "$HOME_DIR" approval_mode lo-g1)" "the record should report the mode actually launched"
-  pass "a loadout launch keeps config/claude-permission-mode and drops the role's own mode"
+  make_case loadout-attribution lo-g3
+  install_loadout_stub 0 Bash,Read all '' ', "attribution": {"commit": "role trailer"}, "feedbackDrafts": "on"'
+  out=$(run_spawn lo-g3 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --loadout implement)
+  expect_code 0 "$?" "a loadout spawn whose role sets attribution should succeed: $out"
+  seen=$(probe_output 0) || fail "the emitted launch failed to run"
+  assert_equals '""' "$(settings_key "$seen" .attribution.commit)" "Firstmate's attribution policy should win over the role's"
+  assert_equals '"off"' "$(settings_key "$seen" .feedbackDrafts)" "Firstmate's feedbackDrafts should win over the role's"
+
+  make_case loadout-modeforms lo-g2
+  install_loadout_stub 0 Bash,Read project,local '"--disallowedTools", "WebFetch", "--permission-mode=plan", '
+  out=$(run_spawn lo-g2 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --loadout implement)
+  expect_code 0 "$?" "a loadout spawn with mixed mode forms should succeed: $out"
+  seen=$(probe_output 0) || fail "the emitted launch failed to run"
+  assert_equals "WebFetch" "$(arg_after "$seen" --disallowedTools)" "the role's deny list should reach the agent"
+  printf '%s\n' "$seen" | grep -q '^ARG=--permission-mode' \
+    && fail "the = form of a role mode should not reach the agent"
+  printf '%s\n' "$seen" | grep -qx 'ARG=--dangerously-skip-permissions' \
+    || fail "Firstmate's own mode should stand"
+  pass "a loadout launch keeps config/claude-permission-mode and drops the role's own mode in either form"
 }
 
 test_loadout_refuses_to_drop_worker_hooks() {
@@ -254,6 +272,7 @@ test_loadout_refuses_to_drop_worker_hooks() {
   expect_code 1 "$?" "settings with disableAllHooks should be refused: $out"
   assert_contains "$out" "worker hooks" "the refusal should say the worker hooks would be lost"
   assert_not_contains "$out" "skillOverrides" "the refusal must not echo the line's settings"
+  assert_contains "$out" "disableAllHooks" "the refusal should name the cause that fired"
   pass "a loadout line that would drop Firstmate's worker hooks is refused without echoing it"
 }
 

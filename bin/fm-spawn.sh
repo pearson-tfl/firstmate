@@ -2705,7 +2705,8 @@ spawn_claude_task_channel_statement() {
 # Asks the home's loadout command (config/loadout-command) for LOADOUT_ROLE's
 # launch line in this worktree, over Firstmate's own settings, and sets:
 #   CLAUDE_LOADOUT_SETTINGS  the --settings value (the role's posture laid over
-#                            the base; the workflows lever re-asserted on top)
+#                            the base; Firstmate's feedbackDrafts, attribution
+#                            and workflows lever re-asserted on top)
 #   CLAUDE_LOADOUT_PERM      the role's allow and deny lists, quoted, after
 #                            config/claude-permission-mode's flag; the role's
 #                            own permission mode is dropped, so approval
@@ -2723,7 +2724,7 @@ spawn_claude_task_channel_statement() {
 # fails, or a line that is not the --line JSON, refuses the spawn; the line
 # itself is never echoed, because its settings and MCP map can carry secrets.
 claude_loadout_line() {
-  local base=$1 line err
+  local base=$1 line err cause
   err=$(mktemp "${TMPDIR:-/tmp}/fm-loadout-err.XXXXXX") || return 1
   if ! line=$("$LOADOUT_CMD" --line --role "$LOADOUT_ROLE" --repo "$WT" --base-settings "$base" 2>"$err"); then
     echo "error: the loadout command could not build role '$LOADOUT_ROLE' for this launch: $(cat "$err")" >&2
@@ -2731,15 +2732,18 @@ claude_loadout_line() {
     return 1
   fi
   rm -f "$err"
-  if CLAUDE_LOADOUT_SETTINGS=$(printf '%s' "$line" | jq -er --argjson off "$WORKFLOWS_DISABLE" \
-    '.settings | if (try fromjson catch null) | type == "object" then fromjson + {disableWorkflows: $off} | tojson else . end') \
+  if CLAUDE_LOADOUT_SETTINGS=$(printf '%s' "$line" | jq -er --argjson off "$WORKFLOWS_DISABLE" --argjson own "$base" \
+    '.settings | if (try fromjson catch null) | type == "object"
+      then fromjson + ($own | with_entries(select(.key == "feedbackDrafts" or .key == "attribution")))
+        + {disableWorkflows: $off} | tojson
+      else . end' 2>/dev/null) \
     && CLAUDE_LOADOUT_PERM=$(printf '%s' "$line" | jq -er --arg own "$CLAUDE_PERM_FLAG" '
       [foreach .permission_args[] as $a ({skip: false};
         if .skip then {skip: false, out: null}
         elif $a == "--permission-mode" then {skip: true, out: null}
         elif $a == "--dangerously-skip-permissions" or ($a | startswith("--permission-mode=")) then {skip: false, out: null}
         else {skip: false, out: $a} end; .out) | select(. != null)]
-      | $own + (if length > 0 then " " + (map(@sh) | join(" ")) else "" end)') \
+      | $own + (if length > 0 then " " + (map(@sh) | join(" ")) else "" end)' 2>/dev/null) \
     && CLAUDE_LOADOUT_ARGS=$(printf '%s' "$line" | jq -er '
       if (.tools | length) == 0 then error("empty tool list") else . end
       | if .setting_sources != "all" and (.setting_sources | split(",") | index("local") | not)
@@ -2750,10 +2754,18 @@ claude_loadout_line() {
         + (.plugin_args // []) + (.design_args // [])
         + ["--mcp-config", .mcp, "--strict-mcp-config"]
         + (if .setting_sources == "all" then [] else ["--setting-sources", .setting_sources] end))
-      | map(@sh) | join(" ") + " "'); then
+      | map(@sh) | join(" ") + " "' 2>/dev/null); then
     return 0
   fi
-  echo "error: the loadout command's line for role '$LOADOUT_ROLE' is not usable here: an empty tool list, settings sources without local or disableAllHooks (either would drop Firstmate's worker hooks), or not the --line JSON" >&2
+  # Name the cause from fixed strings only, never from the line's content.
+  cause=$(printf '%s' "$line" | jq -r '
+    if (.tools | length) == 0 then "an empty tool list"
+    elif .setting_sources != "all" and (.setting_sources | split(",") | index("local") | not)
+    then "settings sources without local, which would drop Firstmate'"'"'s worker hooks"
+    elif (.settings | try fromjson catch null | type == "object" and .disableAllHooks == true)
+    then "disableAllHooks, which would drop Firstmate'"'"'s worker hooks"
+    else "not the --line JSON" end' 2>/dev/null) || cause="not the --line JSON"
+  echo "error: the loadout command's line for role '$LOADOUT_ROLE' is not usable here: ${cause:-not the --line JSON}" >&2
   return 1
 }
 
