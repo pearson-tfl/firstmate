@@ -146,11 +146,11 @@ fm_test_launch_git_prefix() {  # <launch>
 }
 
 # The command a pane runs after the launch's Git configuration prefix and its
-# leading export statements, for suites that split it into arguments.
+# leading export and unset statements, for suites that split it into arguments.
 fm_test_launch_command() {  # <launch>
   local command=$1 end=' || return 1 2>/dev/null || exit 1; '
   case "$command" in *"$end"*) command=${command#*"$end"} ;; esac
-  while [[ "$command" == export\ *\;* ]]; do
+  while [[ "$command" == export\ *\;* || "$command" == unset\ *\;* ]]; do
     command=${command#*; }
   done
   printf '%s' "$command"
