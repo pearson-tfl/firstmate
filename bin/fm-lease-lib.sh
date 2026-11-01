@@ -34,9 +34,11 @@
 #     IS the current state/.lock holder. So a lease left by an exited session
 #     goes stale for every reader, whichever harness now owns the home, and an
 #     unmarked main honors a live branch lease exactly as a Pi main does.
+#     Since #5065 no session writes a pid on line 1 (only holder:<name>), so
+#     no lease reads live until #5138 moves leases to holder lines.
 #     The one residual is a recorded pid recycled onto the next session-lock
-#     holder itself; the host that owns a branch conversation releases that actor's leases when
-#     it activates a new one (the Pi branch extension's
+#     holder itself; the host that owns a branch conversation releases that
+#     actor's leases when it activates a new one (the Pi branch extension's
 #     generation-activation cleanup; the supervision host also releases them
 #     after every engine turn), which also recovers a lease held by the live
 #     session but an abandoned branch conversation.

@@ -48,13 +48,6 @@ as_session() {  # <home> <script>
     'printf "%s\n" "$$" > "$FM_HOME/state/.lock"; '"$2"
 }
 
-# The supervision host is inert (#5138): a case that needs this file's
-# as_session ownership, which relied on the deleted process-ancestry walk,
-# reports a skip naming the case instead of running.
-skip_5138() {  # <case>
-  printf '# skip - %s: needs the deleted process-ancestry session ownership; supervision host inert, see #5138\n' "$1"
-}
-
 # The command string one tracked registration runs.
 claude_cmd() { jq -r --arg e "$1" '.hooks[$e][].hooks[] | select(.command | contains("fm-host-mirror.sh")) | .command' "$ROOT/.claude/settings.json"; }
 cursor_cmd() { jq -r --arg e "$1" '.hooks[$e][] | select(.command | contains("fm-host-mirror.sh")) | .command' "$ROOT/.cursor/hooks.json"; }

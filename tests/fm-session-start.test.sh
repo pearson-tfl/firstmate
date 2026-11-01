@@ -778,15 +778,6 @@ write_omp_loaded_markers() {
 
 # --- context digest: absent vs empty vs present -----------------------------
 
-# Cases that need a pid on lock line 1, which only the deleted unnamed path
-# wrote; ruled on #5065 to skip, naming the ticket that owns their un-skip.
-skip_5137() {  # <case>
-  printf '# skip - %s: needs a pid on lock line 1, which no session writes now; Pi, omp and Cursor adapters, see #5137\n' "$1"
-}
-skip_5138() {  # <case>
-  printf '# skip - %s: needs a pid on lock line 1, which no session writes now; task leases inert, see #5138\n' "$1"
-}
-
 test_context_digest_absent_empty_present() {
   local rec root home fakebin out
   rec=$(new_world context-digest)

@@ -7473,7 +7473,7 @@ opencode)
   # A detected OpenCode 2 also gets --standalone: its default launch attaches to
   # the shared background service, which hosts plugins with the service's own
   # environment and ignores this pane's OPENCODE_CONFIG_CONTENT, so per-worker
-  # model, permissions, FM_HOME, and lock ancestry would be wrong.
+  # model, permissions, FM_HOME, and FM_LOCK_HOLDER would be wrong.
   if [ -n "$OPENCODE_BIN" ]; then
     oc_launch_bin=$(shell_quote "$OPENCODE_BIN")
   else

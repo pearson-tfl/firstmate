@@ -181,12 +181,6 @@ kind_of_followup() {  # <json> -> the operational kind
 
 # --- HOST GUARD --------------------------------------------------------------
 
-# Cases that need a pid on lock line 1, which only the deleted unnamed path
-# wrote; ruled on #5065 to skip, naming the ticket that owns their un-skip.
-skip_5137() {  # <case>
-  printf '# skip - %s: needs a pid on lock line 1, which no session writes now; Pi, omp and Cursor adapters, see #5137\n' "$1"
-}
-
 test_turnend_guard_stands_down_on_cursor_payload() {
   local dir out status
   dir=$(make_primary_dir "$TMP_ROOT/host-turnend")

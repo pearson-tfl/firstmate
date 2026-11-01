@@ -5,7 +5,9 @@
 # sets FM_LOCK_HOLDER=<name>. Only a named holder acquires. An unnamed run of
 # this script exits 1 and changes nothing; a legacy pid line left by an older
 # build is refused while that pid is a live verified harness, and claimed once
-# it is dead or not a harness.
+# it is dead or not a harness. Readers that still need a pid on line 1 are
+# inert under a named holder: task leases and the supervision host (#5138),
+# and the Pi, omp and Cursor primaries' extension and park proofs (#5137).
 #
 # The trusted Claude session id (fm_session_lock_trusted_session_id in
 # bin/fm-session-lock-lib.sh) is recorded beside the lock in
@@ -14,15 +16,15 @@
 # proves no trusted id, and left byte-identical when it already names that id.
 #
 # A named holder: with FM_LOCK_HOLDER=<name> set (letters, digits, dot,
-# underscore, dash), acquisition claims line 1 as holder:<name> under the claim
-# lock. A free, emptied or stale line 1, or this
-# same name, is claimed and the sidecar is published or cleared as above; a
-# live harness pid or another name is refused and nothing changes. The
-# two-mains guard refuses every caller that is not the recorded holder with
-# "main is held by <name>; read-only". A refusal because the prior session's
-# startup sweep holds the claim lock exits 75: wait and retry rather than
-# treating main as taken. A name never expires;
-# only release clears it. Two runs under one name both pass.
+# underscore, dash), acquisition claims line 1 as holder:<name> under the
+# claim lock. A free, emptied or stale line 1, or this same name, is claimed
+# and the sidecar is published or cleared as above; a live harness pid or
+# another name is refused and nothing changes. The two-mains guard refuses
+# every caller that is not the recorded holder with "main is held by <name>;
+# read-only". A refusal because the prior session's startup sweep holds the
+# claim lock exits 75: wait and retry rather than treating main as taken. A
+# name never expires; only release clears it. Two runs under one name both
+# pass.
 #
 # Usage: FM_LOCK_HOLDER=<name> fm-lock.sh
 #                             acquire; exit 1 unless ownership is verified

@@ -11,14 +11,12 @@
 #     secondmate home) with AGENTS.md, bin/, and the effective state dir - the
 #     exact fm-turnend-guard.sh scope. Child crew/scout worktrees stay inert.
 #   - Identity: only when THIS session holds state/.lock, as
-#     bin/fm-session-lock-lib.sh decides it: the recorded pid is a harness
-#     ancestor, or a live lock was recorded under this same trusted Claude
-#     session id (which is what keeps a background session arming after its
-#     transient helper chain is recycled).
+#     bin/fm-session-lock-lib.sh decides it: line 1 is holder:<name> matching
+#     this process's FM_LOCK_HOLDER. A pid line is never owned.
 #     When an existing numeric owner fails the shared harness-liveness predicate,
 #     the hook delegates guarded recovery to bin/fm-lock.sh and then re-verifies
-#     ownership. A live owner, missing lock, malformed lock, or unresolved
-#     ancestry remains inert, so a competing session never arms or rewakes.
+#     ownership. A live owner, missing lock, malformed lock, or unnamed
+#     session remains inert, so a competing session never arms or rewakes.
 #   - AFK: while state/.afk exists the away daemon owns the watcher and triage;
 #     this hook exits 0 and NEVER rewakes the primary (checked again at
 #     translation time so a mid-cycle AFK transition is honored).
@@ -113,7 +111,7 @@
 #
 # In hook mode it never blocks the Stop decision itself or prints to stdout:
 # exit 0 is silent, and exit 2 carries the rewake banner on stderr.
-# On any uncertainty such as unresolvable ancestry, malformed lock state, or
+# On any uncertainty such as an unnamed session, malformed lock state, or
 # lock contention, it exits 0 and leaves continuity to the synchronous guard and
 # the model.
 #
