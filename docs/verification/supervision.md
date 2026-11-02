@@ -364,7 +364,6 @@ The re-anchor, same-process re-key, and lease phases ran on 2026-10-15 on Linux 
 
 ```sh
 bin/fm-test-run.sh tests/fm-session-lock-ancestry.test.sh
-bin/fm-test-run.sh tests/fm-turnend-foreign-owner-arm-fix.test.sh
 ```
 
 Observed output, bounded to the lines that coverage adds:
@@ -372,9 +371,21 @@ Observed output, bounded to the lines that coverage adds:
 ```text
 ok - session-lock e2e: a background session keeps its lock and its supervision across a recycled helper chain and a same-process session-id change
 ok - session-lock: a re-anchor keeps both supervision actors' task leases live
-same-session acquisition rc=0 pid=3116951 output='lock acquired: harness pid 3116951\n'
-other-session acquisition rc=0 stdout='lock_rc=1\n' stderr='error: another live firstmate session holds the lock (pid 3116951, session synthetic-same); operate read-only until resolved\n'
-FIXED same-session id re-anchors the lock onto its own process; a different id is still foreign
+```
+
+The named-holder repro ran on 2026-11-02 on Linux with GNU bash 5.3.15 as the fake harness interpreter and Python 3.14.0 for the repro:
+
+```sh
+bash tests/fm-turnend-foreign-owner-arm-fix.test.sh
+```
+
+Observed output, bounded to its milestone lines:
+
+```text
+second-session acquisition rc=0 stdout='lock_rc=1\n' stderr='error: main is held by synthetic-owner; read-only\n'
+FIXED repeated non-owner Stops: all five ended safely
+COUNTERFACTUAL ended original owner, same-name replacement: watcher= 1924528
+FIXED a second Claude session's Stop is allowed while main is held by name
 COMPLETE
 ```
 
