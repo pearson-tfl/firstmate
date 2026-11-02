@@ -1984,13 +1984,17 @@ SH
     || fail "a change after a one-liner must select only its own function's callers, got: $listed"
   git -C "$repo" checkout -q -- tests/lib.sh
 
-  # A function no suite names, and one a trap runs, keep the whole-file
-  # selection rather than select nothing.
-  for fn_body in 'echo nobody/echo NOBODY' 'echo cleanup/echo CLEANUP'; do
-    sed -i.bak "s/$fn_body/" "$repo/tests/lib.sh" && rm -f "$repo/tests/lib.sh.bak"
+  # A function no suite names keeps the whole-file selection rather than
+  # select nothing; so does one a trap runs, even when a suite also names it.
+  printf 'probe_cleanup\n' >>"$repo/tests/fm-pr-merge.test.sh"
+  git -C "$repo" add .
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm cleanup-caller
+  local edit
+  for edit in 'echo nobody/echo NOBODY' 'echo cleanup/echo CLEANUP'; do
+    sed -i.bak "s/$edit/" "$repo/tests/lib.sh" && rm -f "$repo/tests/lib.sh.bak"
     listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
     assert_contains "$listed" "tests/fm-backend-orca.test.sh" \
-      "an uncalled or trap-run lib function keeps the whole-file selection ($fn_body)"
+      "an uncalled or trap-run lib function keeps the whole-file selection ($edit)"
     git -C "$repo" checkout -q -- tests/lib.sh
   done
 

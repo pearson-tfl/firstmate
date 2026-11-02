@@ -1483,17 +1483,17 @@ families_for_unmapped_bin() {
 
 # Each line of the shell file on stdin as "<line number> <owner> <text>". The
 # owner is the function whose definition or body holds the line, or - at top
-# level. Assumes the repository's helper layout: a function opens on a
-# `name() {` line and closes on a `}` in column 1, or on its own line when it
-# is a one-liner. Anything else reads as top level, which widens selection.
+# level. Only a definition in column 1 opens a function: it closes on a `}` in
+# column 1, or on its own line when it is a one-liner. An indented definition
+# reads as top level, which keeps the whole-file selection.
 function_owner_lines() {
   awk '
-    fn == "" && /^[[:space:]]*(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(\)/ {
+    fn == "" && /^(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(\)/ {
       fn = $0
-      sub(/^[[:space:]]*(function[[:space:]]+)?/, "", fn)
+      sub(/^(function[[:space:]]+)?/, "", fn)
       sub(/[[:space:]]*\(\).*/, "", fn)
       print NR, fn, $0
-      if ($0 ~ /\{.*\}[[:space:]]*(#.*)?$/) fn = ""
+      if ($0 ~ /\{.*\}[[:space:]]*;?[[:space:]]*(#.*)?$/) fn = ""
       next
     }
     { print NR, (fn == "" ? "-" : fn), $0 }
