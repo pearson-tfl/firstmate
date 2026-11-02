@@ -80,8 +80,8 @@ If the harness shows only a preview and persists the full output to a file, read
 Do not separately re-read the context, backlog, metadata, or bulk status inputs it just printed unless a source was reported absent or corrupt, older history is specifically needed, or a targeted workflow must inspect before writing.
 An `ABSENT` captain, shared-captain, secondmate, or learnings file means the firstmate repo's built-in defaults, no shared captain preferences, no registered secondmates, or no captured learnings; rebuild an absent or stale project registry from the clones before dispatch.
 
-A session that is not main's named holder (`FM_LOCK_HOLDER`, normally pocock) stays read-only: if the session lock cannot be acquired and verified, report its exact diagnostic and remain read-only; another active session is only one possible cause.
-Claude-main fallback: pocock runs `release` (the `bin/fm-lock.sh` header), then the Claude session starts with `FM_LOCK_HOLDER=claude`.
+A session that is not main's named holder (`FM_LOCK_HOLDER`, normally claude) stays read-only: if the session lock cannot be acquired and verified, report its exact diagnostic and remain read-only; another active session is only one possible cause.
+Main's Claude session starts with `FM_LOCK_HOLDER=claude` and runs `release` (the `bin/fm-lock.sh` header) on exit; another holder takes main only after that `release`.
 A lock-refused session must not spawn, steer, merge, drain the wake queue, repair supervision, repair a checkout, or perform any other fleet mutation.
 
 When the digest's `NETWORK CHECKS` section reports checks still in progress, treat none of the named checks as passed until `bin/fm-startup-network.sh report` returns the finished result; a failed or otherwise actionable result also arrives as a `check: startup-network` wake.

@@ -322,6 +322,7 @@ Two reads stay synchronous because Pi's own API is synchronous there, not as an 
 Both read the same uncached ownership authority.
 The lock's process ancestry is walked in full every time it is asked, never cached.
 Reparenting and pid reuse can invalidate a remembered chain, and this answer decides ownership rather than hinting at it.
+This walk is the Pi extension's own and reads a pid from lock line 1; under a named holder line 1 carries no pid, so the answer is never owned and a Pi primary loses its own supervision ([named holder limits](turnend-guard.md#named-holder-limits), #5137).
 
 ## Lost-wake outcome backstop
 

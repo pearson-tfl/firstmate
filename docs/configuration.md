@@ -211,6 +211,7 @@ Configuration changes require the next extension load.
 Ownership requires the effective home, current directory, session directory and primary PID marker to match this primary, with the session lock naming its process or a verified ancestor.
 Workers, supervision branches, foreign owners and nested capability probes remain outside the guard.
 Linux ancestry uses bounded `ps` queries, including when a wrapper holds the lock.
+The guard reads a pid from lock line 1, so under a named holder it stays inactive ([named holder limits](turnend-guard.md#named-holder-limits), #5137).
 Enabled configuration on macOS or Windows reports an unsupported-platform load error; those platforms have no protection claim.
 Missing ownership evidence leaves the guard inactive without writing session history or aborting another session.
 A proven owner records `fm-read-repetition-activation-v1` in its Pi session journal with the effective limits and restored latch state; extension discovery alone is not evidence of activation.
