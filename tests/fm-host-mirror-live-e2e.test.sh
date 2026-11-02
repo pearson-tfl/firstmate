@@ -28,7 +28,7 @@ fm_live_gate opt-in FM_HOST_MIRROR_LIVE_E2E jq tmux
 # Past the live gate, skipped by ruling on #5065: the fixture session seeds a pid on lock line 1
 # and relied on the deleted process-ancestry ownership; the supervision host is
 # inert until #5138.
-skip_file_5138
+skip_file_5138 && exit 0
 
 HARNESSES=${FM_HOST_MIRROR_LIVE_HARNESSES:-claude cursor}
 LAB=$(fm_test_tmproot fm-host-mirror-live)
