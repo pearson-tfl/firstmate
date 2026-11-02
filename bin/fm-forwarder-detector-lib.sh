@@ -16,6 +16,11 @@
 # Callers set STATE to the home's state directory and source bin/fm-wake-lib.sh
 # (fm_path_mtime, fm_path_age) first.
 
+# The one row prefix every detector row carries, naming the home.
+fm_detector_row() {  # <text>
+  printf 'firstmate forwarder detector in %s: %s\n' "${FM_HOME:-$STATE}" "$1"
+}
+
 fm_detector_beat_check() {  # <notify-command> [args...]
   local beat="$STATE/.detector-beat" reported="$STATE/.detector-stale-reported"
   local stale=${FM_DETECTOR_BEAT_STALE_SECONDS:-900} mtime age
@@ -25,7 +30,7 @@ fm_detector_beat_check() {  # <notify-command> [args...]
   age=$(fm_path_age "$beat")
   [ "$age" -gt "$stale" ] || return 0
   [ "$(cat "$reported" 2>/dev/null)" != "$mtime" ] || return 0
-  if "$@" "firstmate forwarder detector in ${FM_HOME:-$STATE}: detector beat is ${age}s old (over ${stale}s); the detector job is not running or is hung" </dev/null; then
+  if "$@" "$(fm_detector_row "detector beat is ${age}s old (over ${stale}s); the detector job is not running or is hung")" </dev/null; then
     printf '%s\n' "$mtime" > "$reported" 2>/dev/null || true
   else
     echo "detector-beat check: notify command failed; retried on the next check" >&2

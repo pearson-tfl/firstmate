@@ -9,17 +9,17 @@
 # Each run is cut off after FM_DETECTOR_ALARM_SECONDS (default 120): the script
 # re-runs itself under `perl -e 'alarm N; exec @ARGV'`, and the alarm ends a
 # hung run. Each run then:
-#   1. Touches state/.detector-beat. The forwarder loop and the named claim
-#      (bin/fm-lock.sh) send one row when that beat is over 900s old
-#      (bin/fm-forwarder-detector-lib.sh).
+#   1. Touches state/.detector-beat, which the forwarder loop and the named
+#      claim (bin/fm-lock.sh) check (bin/fm-forwarder-detector-lib.sh).
 #   2. With --doorbell, reads `launchctl print gui/<uid>/<label>` and logs
 #      "detector: doorbell down: <label>" on stderr when that job is not
 #      running, since an escalation row is silent without the inbox poller.
 #   3. While state/.forwarder-escalated exists, stops: no restart, no row. The
 #      holder of main clears it after the captain replies.
 #   4. Decides whether the forwarder is hung. Hung means either
-#      state/.forwarder-beat and state/.last-watcher-beat are both over 960s
-#      old (the 900s watcher stall bound plus 60s), or a
+#      state/.forwarder-beat and state/.last-watcher-beat are both older than
+#      the watcher stall bound (fm_watcher_stall_bound, 900s at the default
+#      poll) plus 60s, so 960s, or a
 #      state/.watch-cycle-exits.log row whose arm_pid is the beat's arm_pid
 #      ended over 60s after the beat was written. A cycle end under any other
 #      arm pid, such as a hand-run arm, does not count. With no
@@ -80,7 +80,8 @@ export FM_HOME
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
 
-HUNG_SECONDS=960
+# The watcher stall bound (900s at the default poll) plus 60s margin.
+HUNG_SECONDS=$(( $(fm_watcher_stall_bound) + 60 ))
 CYCLE_SLACK_SECONDS=60
 RESTART_WINDOW_SECONDS=3600
 FORWARDER_BEAT="$STATE/.forwarder-beat"
@@ -92,8 +93,11 @@ DOMAIN="gui/$(id -u)"
 
 log() { echo "detector: $*" >&2; }
 
-notify_row() {  # <notify-command> [args...]; the row text is $ROW
-  "$@" "firstmate forwarder detector in $FM_HOME: $ROW" </dev/null
+notify_row() {  # <row-text> <notify-command> [args...]
+  local row
+  row=$(fm_detector_row "$1")
+  shift
+  "$@" "$row" </dev/null
 }
 
 mkdir -p "$STATE" 2>/dev/null
@@ -146,14 +150,13 @@ if [ ! -e "$RESTART_AT" ] || [ "$restart_age" -gt "$RESTART_WINDOW_SECONDS" ]; t
   fi
   printf '%s\n' "$(date +%s)" > "$RESTART_AT.tmp" && mv -f "$RESTART_AT.tmp" "$RESTART_AT"
   log "forwarder hung ($why); $result"
-  ROW="forwarder hung ($why); $result"
-  notify_row "$@" || log "notify command failed for the restart row"
+  notify_row "forwarder hung ($why); $result" "$@" || log "notify command failed for the restart row"
   exit 0
 fi
 
-ROW="forwarder hung again ${restart_age}s after its last restart ($why); not restarted; escalate to the captain; clear $ESCALATED after the reply"
-log "$ROW"
-if notify_row "$@"; then
+row="forwarder hung again ${restart_age}s after its last restart ($why); not restarted; escalate to the captain; clear $ESCALATED after the reply"
+log "$row"
+if notify_row "$row" "$@"; then
   : > "$ESCALATED"
 else
   log "notify command failed for the escalate row; no marker written, retried next run"

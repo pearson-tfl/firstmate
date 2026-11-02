@@ -32,6 +32,7 @@ config/crew-dispatch.json  optional crewmate dispatch profiles; LOCAL, gitignore
 config/project-capacity  optional per-machine count of workers each named project admits at once, read from the root home by every local home; LOCAL, gitignored; see docs/configuration.md "Project capacity"
 config/secondmate-harness  primary-local secondmate runtime pins; see docs/configuration.md "Choose the secondmate harness" for schema, precedence, and inheritance
 config/lane-capacity  optional lane cap and limits for this home, read by bin/fm-capacity.sh and the opt-in that makes its watcher publish state/lane-capacity.json; LOCAL, gitignored, not inherited by secondmate homes; see docs/configuration.md "Lane capacity"
+config/detector-notify  optional notify command, one argument per line, for the named claim's stale-detector-beat row; LOCAL, gitignored, not inherited; see docs/configuration.md "Hung-forwarder detector notify"
 config/backlog-backend  backlog backend override; LOCAL, gitignored; absent or "tasks-axi" = the configured tasks-axi backend, "manual" = force routine backlog updates to hand-editing; inherited by secondmate homes (section 10)
 config/backend  runtime session-provider backend override for new tasks; LOCAL, gitignored; docs/configuration.md "Runtime backend" owns supported values, selection, and limits; inherited by secondmate homes under the primary-authoritative contract in secondmate-provisioning
 config/t3code-token  LOCAL, gitignored T3 Code mcp-client credential; docs/t3code-backend.md "Sign-in" owns minting, expiry, and secondmate linking
@@ -163,6 +164,7 @@ state/               runtime records and signals; gitignored
   lane-capacity.json  this home's published lane facts, refreshed only while config/lane-capacity exists; written only by bin/fm-capacity.sh --publish, whose header owns the document
   .last-watcher-beat watcher liveness beacon, touched every poll (including while absorbing benign wakes); guard scripts read it
   .forwarder.lock .forwarder-beat .forwarder-arm.out   wake-forwarder singleton, beat carrying its current arm pid, and last arm output; written only by bin/fm-wake-forwarder.sh, whose header owns them; never touch
+  .detector-beat .detector-stale-reported .forwarder-restart-at .forwarder-escalated   hung-forwarder detector beat, last stale beat reported, last restart time, and escalation marker; bin/fm-forwarder-detector.sh and bin/fm-forwarder-detector-lib.sh own them; the holder of main removes .forwarder-escalated after the captain replies, otherwise never touch
   .subsuper-* .supervise-daemon.*   sub-supervisor internals; never touch
 .no-mistakes/        local validation state and evidence; gitignored
 ```
