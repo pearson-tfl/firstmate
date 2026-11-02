@@ -1498,6 +1498,7 @@ On enables every workflow the worker can reach, not deep research alone: Claude 
 Without the flag, the optional local, gitignored `config/crew-workflows` holds this home's default as `on` or `off` on its first line, and with no file the default is `off`.
 Off launches the worker with `CLAUDE_CODE_DISABLE_WORKFLOWS=1` and `disableWorkflows` true in its launch settings; on clears an inherited `CLAUDE_CODE_DISABLE_WORKFLOWS` and sets `disableWorkflows` false.
 The lever wins over a loadout role's own `disableWorkflows` setting when the role's settings are JSON.
+With the lever on, `Workflow` joins a loadout role's tool list when the list leaves it out, so the worker can call it.
 When the role's settings are a file path, as with the design lever on, only the environment switch carries the lever, so off holds and on cannot undo a `disableWorkflows` true in that file.
 Any other value refuses the spawn.
 The task record keeps the lever as `workflows=`, and a relaunch reuses it.

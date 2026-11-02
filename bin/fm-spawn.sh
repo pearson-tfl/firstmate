@@ -2757,6 +2757,8 @@ spawn_claude_task_channel_statement() {
 #                            the brief doorbell), and --setting-sources last,
 #                            as launch.py orders them.
 # An empty tool list refuses: claude reads it as no built-in tools at all.
+# With the workflows lever on, Workflow joins the tool list, so the lever wins
+# over a role whose list leaves it out.
 # The line's model and effort pins are not applied: Firstmate's --model and
 # --effort stay the launch's axes. A line whose settings sources leave out
 # `local`, or whose settings set disableAllHooks, refuses: Firstmate's worker
@@ -2784,8 +2786,9 @@ claude_loadout_line() {
         elif $a == "--dangerously-skip-permissions" or ($a | startswith("--permission-mode=")) then {skip: false, out: null}
         else {skip: false, out: $a} end; .out) | select(. != null)]
       | $own + (if length > 0 then " " + (map(@sh) | join(" ")) else "" end)' 2>/dev/null) \
-    && CLAUDE_LOADOUT_ARGS=$(printf '%s' "$line" | jq -er '
+    && CLAUDE_LOADOUT_ARGS=$(printf '%s' "$line" | jq -er --argjson off "$WORKFLOWS_DISABLE" '
       if (.tools | length) == 0 then error("empty tool list") else . end
+      | if $off or (.tools | split(",") | index("Workflow")) then . else .tools += ",Workflow" end
       | if .setting_sources != "all" and (.setting_sources | split(",") | index("local") | not)
         then error("settings sources leave out local") else . end
       | if (.settings | try fromjson catch null | type == "object" and .disableAllHooks == true)
