@@ -214,6 +214,21 @@ test_workflows_lever() {
   seen=$(probe_output 0) || fail "the emitted launch failed to run"
   assert_equals "true" "$(settings_key "$seen" .disableWorkflows)" "the lever should win over a role's own workflows setting"
   assert_contains "$seen" "ENV_DISABLE_WORKFLOWS=1" "the lever's off switch should ride a loadout launch too"
+  assert_equals "Bash,Read,Edit" "$(arg_after "$seen" --tools)" "workflows off should leave the role's tool list alone"
+
+  make_case wf-loadout-on wf-d2
+  install_loadout_stub
+  out=$(run_spawn wf-d2 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --loadout implement --workflows on)
+  expect_code 0 "$?" "a loadout spawn with workflows on should succeed: $out"
+  seen=$(probe_output 1) || fail "the emitted launch failed to run"
+  assert_equals "Bash,Read,Edit,Workflow" "$(arg_after "$seen" --tools)" \
+    "workflows on should add the Workflow tool to a role's tool list"
+  make_case wf-loadout-has wf-d3
+  install_loadout_stub 0 Bash,Workflow,Read
+  out=$(run_spawn wf-d3 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --loadout implement --workflows on)
+  expect_code 0 "$?" "a loadout spawn whose role lists Workflow should succeed: $out"
+  seen=$(probe_output 1) || fail "the emitted launch failed to run"
+  assert_equals "Bash,Workflow,Read" "$(arg_after "$seen" --tools)" "a role that lists Workflow should keep its list as is"
 
   make_case wf-bad wf-e1
   out=$(run_spawn wf-e1 "$PROJ_DIR" --mode no-mistakes --yolo off --harness claude --workflows maybe)
