@@ -115,7 +115,7 @@ test_hung_restarts_once_then_escalates_then_stays_silent() {
   [ "$(row_count "$dir/inbox")" -eq 2 ] || fail "appended while escalated: $(cat "$dir/inbox")"
   pass "detector: while the escalation marker stands it neither restarts nor appends"
 
-  # Cleared by pocock after John replies: past the hour, it restarts again.
+  # Cleared by the holder of main after the captain replies: past the hour, it restarts again.
   rm -f "$state/.forwarder-escalated"
   run_detector "$dir" || fail "post-clear run exited nonzero"
   [ "$(kickstarts "$dir")" -eq 2 ] || fail "no restart after the marker cleared and the hour passed"
