@@ -12,7 +12,8 @@ When this session owns supervision and away mode is not active:
 8. Never use shell `&` for watcher supervision.
    The arm mechanism above is plugin-owned, not a model tool call, but a manual recovery probe that backgrounds, pipes, or bundles the arm is denied automatically by the PreToolUse seatbelt (`.opencode/plugins/fm-primary-pretool-check.js`, `bin/fm-arm-pretool-check.sh`).
 9. Do not rely on this plugin in headless `opencode run`; firstmate primary supervision targets persistent OpenCode TUI sessions.
-10. On OpenCode 2, the home's TUI must run as `opencode --standalone`; the default launch hosts the plugins in the shared background service, outside this home's environment and session-lock ancestry.
+10. On OpenCode 2, the home's TUI must run as `opencode --standalone`; the default launch hosts the plugins in the shared background service, outside this home's environment.
+   Under a named session-lock holder the plugin does not arm the watcher; the OpenCode adapter reference owns that gap.
 
 OpenCode's persistent TUI plugin runtime is the wake mechanism.
 The plugin applies in the main primary checkout and a secondmate's own home, and stays silent only in child crewmate and scout worktrees.

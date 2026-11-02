@@ -95,11 +95,7 @@ The full digest updates the completion record in this order:
 
 So `clear` or `compact` cannot skip startup sweeps after a truncated run.
 
-`bin/fm-lock.sh` treats a lock as this session's own when it is owned through any of these:
-
-- A named holder equal to this session's `FM_LOCK_HOLDER`.
-- The shared ancestry verdict.
-- A trusted same-session Claude id.
+`bin/fm-lock.sh` treats a lock as this session's own only when line 1 is a named holder equal to this session's `FM_LOCK_HOLDER`.
 
 So a proven `clear` or `compact` re-emit re-verifies ownership and proceeds.
 A lock another live session took meanwhile still produces the ordinary read-only digest.
@@ -107,9 +103,7 @@ A lock another live session took meanwhile still produces the ordinary read-only
 ### Nudge wrapper on a run-tier harness
 
 On a run-tier harness, only `resume`, `reload`, and `fork` are routed to the nudge wrapper.
-The nudge wrapper has its own separate lock check (below), which normally stays silent when this process already holds the lock.
-For a pid lock, a background Claude helper-chain recycle can break the ancestry walk that check uses.
-The wrapper may then emit a redundant nudge even though the shared same-session verdict still owns the lock.
+The nudge wrapper has its own lock check (below), which stays silent when this session already holds the lock by name.
 The requested session start remains idempotent.
 
 ### Re-emit mechanics
@@ -206,15 +200,8 @@ The Ahoy skill's own step 0 helm check is the fallback that protects a nudge-tie
 ### Nudge wrapper lock check
 
 Before printing, the nudge wrapper reads `state/.lock`.
-When line 1 is a named holder, `holder:<name>`, the wrapper stays silent only when this session carries that name in `FM_LOCK_HOLDER`, through the library's `fm_session_lock_owned_by_self`; a session with another name or none is nudged.
-Otherwise it walks at most eight parents from its own pid.
-That walk is its own separate, hard-coded loop, independent of two other ownership checks:
-
-- The shared sixteen-hop ancestry walk in `bin/fm-session-lock-lib.sh` that `bin/fm-lock.sh` uses for anchor selection and ownership.
-- Pi's `lockOwnership()`.
-
-If the lock names a live pid in that ancestry, session start already ran in this harness session and the wrapper stays silent.
-On Windows/Git Bash, a lock holding a tagged `win:<pid>` identity is outside this process table, so the wrapper instead asks the library's `fm_session_lock_owned_by_self`, whose Windows process-boundary bridge owns that identity.
+The wrapper stays silent only when line 1 is a named holder, `holder:<name>`, and this session carries that name in `FM_LOCK_HOLDER`, through the library's `fm_session_lock_owned_by_self`.
+A session with another name or none is nudged, and so is any pid line, legacy or not, because no pid line is ever this session's.
 
 ### Exit codes
 

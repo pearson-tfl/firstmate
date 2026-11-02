@@ -24,7 +24,7 @@ fm_live_gate opt-in FM_SUPERVISION_HOST_LIVE_E2E claude node perl git
 # Past the live gate, skipped by ruling on #5065: the fixture session seeds a pid on lock line 1
 # and relied on the deleted process-ancestry ownership; the supervision host is
 # inert until #5138.
-skip_file_5138
+skip_file_5138 && exit 0
 
 CLAUDE_VERSION=$(claude --version 2>/dev/null | head -n 1)
 LAB=$(fm_test_tmproot fm-supervision-host-live)
