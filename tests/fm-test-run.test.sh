@@ -417,15 +417,15 @@ test_changed_dependency_selection_and_unmapped_failure() {
   (cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD) >"$tmp/out" 2>"$tmp/err"
   rc=$?
   set -e
-  [ "$rc" -eq 2 ] || fail "unmapped changed source must fail with exit 2, got $rc"
-  grep -Fq 'no changed-test mapping for source path: src/unmapped.ts' "$tmp/err" \
-    || fail "unmapped changed source failure is not actionable: $(cat "$tmp/err")"
+  [ "$rc" -eq 0 ] || fail "an unmapped changed source must warn and continue, got exit $rc"
+  grep -Fq 'warning: no changed-test mapping for source path: src/unmapped.ts' "$tmp/err" \
+    || fail "the unmapped-source warning does not name the path: $(cat "$tmp/err")"
 
   rm -f "$repo/src/unmapped.ts"
   listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
   [ -z "$listed" ] || fail "a retired unmapped source without consumers selected tests: $listed"
   rm -rf "$tmp"
-  pass "changed selection covers dependents, fails closed for live unmapped source, and accepts retired unconsumed source"
+  pass "changed selection covers dependents, warns past a live unmapped source, and accepts retired unconsumed source"
 }
 
 # A direct test reference is per-script evidence. Widening it to the referencing
@@ -1445,9 +1445,9 @@ test_changed_shared_fixture_selects_its_readers() {
   (cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD) >"$tmp/out" 2>"$tmp/err"
   rc=$?
   set -e
-  [ "$rc" -eq 2 ] || fail "an unread tests/ path must still fail with exit 2, got $rc"
-  grep -Fq 'no changed-test mapping for source path: tests/unread-thing.sh' "$tmp/err" \
-    || fail "the refusal did not name the unread tests/ path: $(cat "$tmp/err")"
+  [ "$rc" -eq 0 ] || fail "an unread tests/ path must warn and continue, got exit $rc"
+  grep -Fq 'warning: no changed-test mapping for source path: tests/unread-thing.sh' "$tmp/err" \
+    || fail "the warning did not name the unread tests/ path: $(cat "$tmp/err")"
   git -C "$repo" checkout -q -- tests/unread-thing.sh
 
   # A nested tests/fixtures/<dir>/<name>-fixture.sh still reaches the
@@ -1458,7 +1458,7 @@ test_changed_shared_fixture_selects_its_readers() {
     "a nested fixture selects the suite that reads its directory"
 
   rm -rf "$tmp"
-  pass "a changed shared test fixture selects its readers while an unread tests/ path still refuses"
+  pass "a changed shared test fixture selects its readers while an unread tests/ path warns"
 }
 
 # Suites outside backend-dispatch source the T3 fake and the T3 adapter, so a
@@ -1895,6 +1895,72 @@ assert len(doc["scripts"])==3
   pass "aggregate-json merges lane timing artifacts"
 }
 
+# A tests/ file that is not itself a suite (a Python repro a suite runs) selects
+# the suites that name it, one script each.
+test_changed_test_support_file_selects_its_runner() {
+  local tmp repo listed
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-support.XXXXXX")
+  repo="$tmp/repo"
+  init_changed_fixture_repo "$repo"
+  printf 'print("repro")\n' >"$repo/tests/probe-repro.py"
+  printf 'python3 tests/probe-repro.py\n' >>"$repo/tests/fm-backend.test.sh"
+  git -C "$repo" add .
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm repro
+
+  printf '\n' >>"$repo/tests/probe-repro.py"
+  listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
+  [ "$listed" = "tests/fm-backend.test.sh" ] \
+    || fail "a changed repro must select only the suite that runs it, got: $listed"
+  rm -rf "$tmp"
+  pass "a changed tests/ support file selects the suite that names it"
+}
+
+# A change inside a tests/lib.sh function selects the suites that call it,
+# directly or through another tests/lib.sh function, not every suite sourcing
+# the file. A change outside every function keeps the whole-file selection.
+test_changed_lib_function_selects_its_callers() {
+  local tmp repo listed
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-libfn.XXXXXX")
+  repo="$tmp/repo"
+  init_changed_fixture_repo "$repo"
+  cat >"$repo/tests/lib.sh" <<'SH'
+LIB_TOP=1
+probe_alpha() {
+  echo alpha
+}
+probe_beta() {  # calls alpha
+  probe_alpha
+}
+probe_gamma() {
+  echo gamma
+}
+SH
+  printf 'probe_alpha\n' >>"$repo/tests/fm-pr-merge.test.sh"
+  printf 'probe_beta\n' >>"$repo/tests/fm-secondmate-safety.test.sh"
+  printf 'probe_gamma\n' >>"$repo/tests/fm-bearings-snapshot.test.sh"
+  git -C "$repo" add .
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm lib-functions
+
+  sed -i.bak 's/echo alpha/echo ALPHA/' "$repo/tests/lib.sh" && rm -f "$repo/tests/lib.sh.bak"
+  listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
+  [ "$listed" = "$(printf '%s\n' tests/fm-pr-merge.test.sh tests/fm-secondmate-safety.test.sh)" ] \
+    || fail "a changed lib function must select its direct and indirect callers only, got: $listed"
+  git -C "$repo" checkout -q -- tests/lib.sh
+
+  sed -i.bak '/echo gamma/d' "$repo/tests/lib.sh" && rm -f "$repo/tests/lib.sh.bak"
+  listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
+  [ "$listed" = "tests/fm-bearings-snapshot.test.sh" ] \
+    || fail "a line deleted from a lib function must select its callers, got: $listed"
+  git -C "$repo" checkout -q -- tests/lib.sh
+
+  sed -i.bak 's/LIB_TOP=1/LIB_TOP=2/' "$repo/tests/lib.sh" && rm -f "$repo/tests/lib.sh.bak"
+  listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
+  assert_contains "$listed" "tests/fm-backend-orca.test.sh" \
+    "a top-level lib change keeps the whole-file selection"
+  rm -rf "$tmp"
+  pass "a changed tests/lib.sh function selects its callers, not every sourcing suite"
+}
+
 test_list_all_exact_suite_coverage
 test_family_selection
 test_single_script_selection
@@ -1931,6 +1997,8 @@ test_jobs_admits_a_concurrent_safe_family
 test_unmapped_new_test_never_inherits_family_concurrency
 test_changed_shared_fixture_selects_its_readers
 test_changed_t3_sources_select_their_readers
+test_changed_test_support_file_selects_its_runner
+test_changed_lib_function_selects_its_callers
 test_concurrent_runs_are_ordered_longest_first
 test_per_script_timeout_bounds_a_hang
 test_changed_bound_gives_slow_watcher_suites_headroom

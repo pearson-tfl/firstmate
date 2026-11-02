@@ -146,7 +146,10 @@
 # evidence. Consumer bin/ scripts still resolve through the curated map, so
 # recorded family-level coupling still expands to the whole family.
 # tests/lib.sh, tests/fixtures.sh, tests/*-helpers.sh and tests/*-fixture.sh are
-# shared files that map to the suites naming them; a fixture under
+# shared files: a change inside their functions maps to the suites calling those
+# functions, any other change to the suites naming the file. Any other tests/
+# file maps to the suites naming it, and a path nothing maps prints a warning
+# and selects nothing rather than refusing the run. A fixture under
 # tests/fixtures/<dir>/ or a recorded capture under tests/captures/<dir>/ is
 # mapped by that directory instead. Curated family arms above those also name
 # individual tests/ files explicitly.
@@ -1478,6 +1481,91 @@ families_for_unmapped_bin() {
   [ "$found" -eq 1 ]
 }
 
+# Shell functions owning the lines of <file content on stdin> listed in <lines>
+# (space-separated line numbers). Prints one name per line, or __top__ for a
+# changed line outside every function that is neither blank nor a comment.
+# Assumes the repository's helper layout: a function opens on a `name() {`
+# line and closes on a `}` in column 1.
+functions_owning_lines() {
+  awk -v want=" $1 " '
+    /^[[:space:]]*(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(\)/ && fn == "" {
+      fn = $0
+      sub(/^[[:space:]]*(function[[:space:]]+)?/, "", fn)
+      sub(/[[:space:]]*\(\).*/, "", fn)
+    }
+    index(want, " " NR " ") {
+      if (fn != "") print fn
+      else if ($0 !~ /^[[:space:]]*(#.*)?$/) print "__top__"
+    }
+    fn != "" && /^}/ { fn = "" }
+  '
+}
+
+# Every function body line of the non-suite shell files under tests/, as
+# "<name> <line>", so callers inside other helpers can be followed.
+helper_function_lines() {
+  local f
+  for f in tests/*.sh; do
+    case "$f" in *.test.sh) continue ;; esac
+    [ -f "$f" ] || continue
+    awk '
+      /^[[:space:]]*(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(\)/ && fn == "" {
+        fn = $0
+        sub(/^[[:space:]]*(function[[:space:]]+)?/, "", fn)
+        sub(/[[:space:]]*\(\).*/, "", fn)
+        next
+      }
+      fn != "" && /^}/ { fn = ""; next }
+      fn != "" { print fn, $0 }
+    ' "$f"
+  done
+}
+
+# A shared test helper changed only inside its functions selects the suites
+# that call those functions, directly or through another helper function, one
+# script each. Fails (so the caller keeps the whole-file selection) when a
+# changed line is live code outside every function, no function changed, or the
+# change cannot be read.
+scripts_for_changed_functions() {
+  local path=$1 hunk old_lines="" new_lines="" a b c d i names more s found=0
+  local -a parts
+  [ -n "${CHANGED_MERGE_BASE:-}" ] || return 1
+  while IFS= read -r hunk; do
+    # @@ -a[,b] +c[,d] @@
+    hunk=${hunk#@@ -}
+    hunk=${hunk%% @@*}
+    IFS=' ' read -r -a parts <<<"$hunk"
+    a=${parts[0]%%,*}; b=1; case "${parts[0]}" in *,*) b=${parts[0]#*,} ;; esac
+    c=${parts[1]#+}; c=${c%%,*}; d=1; case "${parts[1]}" in *,*) d=${parts[1]#*,} ;; esac
+    for ((i = a; i < a + b; i++)); do old_lines="$old_lines $i"; done
+    for ((i = c; i < c + d; i++)); do new_lines="$new_lines $i"; done
+  done < <(git -C "$ROOT" diff -U0 "$CHANGED_MERGE_BASE" -- "$path" 2>/dev/null | grep '^@@ ')
+  [ -n "$old_lines$new_lines" ] || return 1
+  names=$(
+    {
+      git -C "$ROOT" show "$CHANGED_MERGE_BASE:$path" 2>/dev/null | functions_owning_lines "$old_lines"
+      [ ! -f "$path" ] || functions_owning_lines "$new_lines" <"$path"
+    } | LC_ALL=C sort -u
+  )
+  # A comment- or blank-only change keeps the whole-file selection too: the
+  # runner over-selects rather than guess that nothing reads that text.
+  case "$names" in ''|*__top__*) return 1 ;; esac
+  while :; do
+    more=$(helper_function_lines | grep -wF -f <(printf '%s\n' "$names") | cut -d' ' -f1 || true)
+    more=$(printf '%s\n%s\n' "$names" "$more" | grep -v '^$' | LC_ALL=C sort -u)
+    [ "$more" != "$names" ] || break
+    names=$more
+  done
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    if grep -qwF -f <(printf '%s\n' "$names") "$s"; then
+      printf '__script__:%s\n' "$(basename "$s")"
+      found=1
+    fi
+  done < <(all_repo_tests)
+  [ "$found" -eq 1 ] || true
+}
+
 # Conservative path → family map. Over-selects rather than under-selects.
 # Never expands to the complete suite.
 families_for_changed_path() {
@@ -1854,7 +1942,8 @@ families_for_changed_path() {
       # tests/*-fixture.sh would otherwise swallow a nested
       # tests/fixtures/<dir>/<name>-fixture.sh and scan for its basename
       # instead of the fixture directory its readers actually name.
-      families_for_test_reference "$(basename "$path")" \
+      scripts_for_changed_functions "$path" \
+        || families_for_test_reference "$(basename "$path")" \
         || printf '%s\n' "__unmapped__:$path"
       ;;
     bin/*)
@@ -1867,7 +1956,10 @@ families_for_changed_path() {
       fi
       ;;
     tests/*)
-      printf '%s\n' "__unmapped__:$path"
+      # Not a suite itself (a repro or data file a suite runs or reads): the
+      # suites that name it, one script each.
+      scripts_for_test_reference "$(basename "$path")" \
+        || printf '%s\n' "__unmapped__:$path"
       ;;
     README.md|LICENSE|assets/*|docs/*|.gitignore)
       ;;
@@ -1893,6 +1985,7 @@ select_changed() {
   if ! git -C "$ROOT" rev-parse --verify "$base" >/dev/null 2>&1; then
     die "changed-file base ref not found: $base (pass --base <ref>)"
   fi
+  CHANGED_MERGE_BASE=$(git -C "$ROOT" merge-base "$base" HEAD 2>/dev/null || true)
 
   while IFS= read -r path; do
     [ -n "$path" ] || continue
@@ -1904,7 +1997,9 @@ select_changed() {
           wanted_scripts+=("$script_name")
           ;;
         __unmapped__:*)
-          die "no changed-test mapping for source path: ${entry#__unmapped__:}"
+          # One unmapped path must not cost the whole run its targeted selection.
+          printf 'fm-test-run: warning: no changed-test mapping for source path: %s (no suite selected for it)\n' \
+            "${entry#__unmapped__:}" >&2
           ;;
         *)
           wanted_families+=("$entry")
