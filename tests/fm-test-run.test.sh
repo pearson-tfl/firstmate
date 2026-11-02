@@ -1952,6 +1952,7 @@ probe_cleanup() {
   echo cleanup
 }
 trap probe_cleanup EXIT
+# Usage, at top level: probe_alpha && exit 0. A comment calls nothing.
 SH
   printf 'probe_alpha\n' >>"$repo/tests/fm-pr-merge.test.sh"
   printf 'probe_beta\n' >>"$repo/tests/fm-secondmate-safety.test.sh"

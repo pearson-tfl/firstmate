@@ -1516,13 +1516,14 @@ changed_owners() {
 }
 
 # Owners (from function_owner_lines on stdin) of the lines naming any word in
-# <names>, space-separated.
+# <names>, space-separated. A comment line calls nothing, so it is skipped.
 owners_naming() {
   awk -v names="$1" '
     BEGIN { n = split(names, a, " "); for (i = 1; i <= n; i++) want[a[i]] = 1 }
     {
       text = $0
       sub(/^[0-9]+ [^ ]+ /, "", text)
+      if (text ~ /^[[:space:]]*#/) next
       m = split(text, w, /[^A-Za-z0-9_]+/)
       for (i = 1; i <= m; i++) if (w[i] in want) { print $2; next }
     }
