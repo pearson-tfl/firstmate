@@ -94,16 +94,12 @@ While supervision is still needed and away mode remains inactive, an actionable 
 
 The hook handles the session lock as follows:
 
-- A session-lock owner, including a tagged `win:<pid>` holder on Windows/Git Bash, that fails the shared `fm_harness_pid_alive` predicate is reclaimed through `bin/fm-lock.sh` before auto-arm state changes.
-- A live owner the session does not own, an absent lock, or an unusable lock keeps the competing hook inert.
+- A legacy pid owner, including a tagged `win:<pid>` holder on Windows/Git Bash, that fails the shared `fm_harness_pid_alive` predicate is reclaimed through `bin/fm-lock.sh` before auto-arm state changes; the claim succeeds only for a session that carries `FM_LOCK_HOLDER`.
+- A live owner the session does not own, an absent lock, an unusable lock, or an unnamed session keeps the competing hook inert.
 
 Whether the session owns that lock is the shared `fm_session_lock_owned_by_self` verdict in `bin/fm-session-lock-lib.sh`.
-That verdict accepts either of two cases:
-
-- A recorded pid inside the current harness ancestry.
-- A live lock recorded under this same trusted Claude session id.
-
-With that verdict, a background session keeps arming after its transient helper chain is recycled.
+That verdict accepts one case only: line 1 is `holder:<name>` and this process's `FM_LOCK_HOLDER` carries that name.
+A pid line is never owned.
 [`turnend-guard.md`](turnend-guard.md#guard-predicates) owns the Claude guard's behavior when that live owner is genuinely another session.
 The stale-owner claim occurs only after the existing AFK and supervision-need gates pass.
 
@@ -510,7 +506,6 @@ It checks that a newly appended keyed decision is classified without rereading e
 - Single-flight.
 - Supersession of a dead session's orphaned claim by the replacement session's first Stop, including a resumed session that carries the dead one's conversation id, and a claim with no readable session lock.
 - A recycled background bridge keeping its live claim on the trusted session id pinned to the lock holder's recorded session-lock identity.
-- The Windows/Git Bash session-lock readers for the supervision-host key, claim read-back, and mid-turn health, plus untagged-value parity with the numeric helpers, in `tests/fm-session-lock-windows-consumers.test.sh`.
 - Bounded failure retries.
 - Benign live-watcher cycle ends.
 - One-notice failure episodes.

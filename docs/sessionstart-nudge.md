@@ -95,11 +95,7 @@ The full digest updates the completion record in this order:
 
 So `clear` or `compact` cannot skip startup sweeps after a truncated run.
 
-`bin/fm-lock.sh` treats a lock as this session's own when it is owned through any of these:
-
-- A named holder equal to this session's `FM_LOCK_HOLDER`.
-- The shared ancestry verdict.
-- A trusted same-session Claude id.
+`bin/fm-lock.sh` treats a lock as this session's own only when line 1 is a named holder equal to this session's `FM_LOCK_HOLDER`.
 
 So a proven `clear` or `compact` re-emit re-verifies ownership and proceeds.
 A lock another live session took meanwhile still produces the ordinary read-only digest.
@@ -206,15 +202,8 @@ The Ahoy skill's own step 0 helm check is the fallback that protects a nudge-tie
 ### Nudge wrapper lock check
 
 Before printing, the nudge wrapper reads `state/.lock`.
-When line 1 is a named holder, `holder:<name>`, the wrapper stays silent only when this session carries that name in `FM_LOCK_HOLDER`, through the library's `fm_session_lock_owned_by_self`; a session with another name or none is nudged.
-Otherwise it walks at most eight parents from its own pid.
-That walk is its own separate, hard-coded loop, independent of two other ownership checks:
-
-- The shared sixteen-hop ancestry walk in `bin/fm-session-lock-lib.sh` that `bin/fm-lock.sh` uses for anchor selection and ownership.
-- Pi's `lockOwnership()`.
-
-If the lock names a live pid in that ancestry, session start already ran in this harness session and the wrapper stays silent.
-On Windows/Git Bash, a lock holding a tagged `win:<pid>` identity is outside this process table, so the wrapper instead asks the library's `fm_session_lock_owned_by_self`, whose Windows process-boundary bridge owns that identity.
+The wrapper stays silent only when line 1 is a named holder, `holder:<name>`, and this session carries that name in `FM_LOCK_HOLDER`, through the library's `fm_session_lock_owned_by_self`.
+A session with another name or none is nudged, and so is any pid line, legacy or not, because no pid line is ever this session's.
 
 ### Exit codes
 

@@ -6,8 +6,12 @@
 # this script exits 1 and changes nothing; a legacy pid line left by an older
 # build is refused while that pid is a live verified harness, and claimed once
 # it is dead or not a harness. Readers that still need a pid on line 1 are
-# inert under a named holder: task leases and the supervision host (#5138),
-# and the Pi, omp and Cursor primaries' extension and park proofs (#5137).
+# inert under a named holder: task leases, the supervision host and
+# bin/fm-supervision-handoff.sh (#5138); the Pi, omp and Cursor primaries'
+# extension and park proofs (#5137); the OpenCode primary's watch-arm
+# ownership check (.opencode/plugins/fm-primary-watch-arm.js), so an OpenCode
+# primary never arms its watcher; and bin/fm-live-lab.sh's primary and mate
+# checks.
 #
 # The trusted Claude session id (fm_session_lock_trusted_session_id in
 # bin/fm-session-lock-lib.sh) is recorded beside the lock in
