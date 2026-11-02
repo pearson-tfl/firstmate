@@ -393,7 +393,7 @@ Today the only verified engine is Claude's print mode, measured on Claude Code 2
 - `--safe-mode` loads none of the home's hooks, `CLAUDE.md`, skills, plugins, or MCP servers.
   So the engine can never fire the home's own Stop or SessionStart hooks.
 - `--bare` is unusable because it never reads claude.ai OAuth.
-- From inside the engine's shell the primary is not in the harness ancestry, so the engine can never act as the session-lock owner.
+- Session-lock ownership is the named holder, not process ancestry, and under a named holder the supervision host stays inert ([named holder limits](turnend-guard.md#named-holder-limits)).
 
 **Permissions**
 
