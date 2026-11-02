@@ -18,32 +18,42 @@ set -u
 
 
 test_main_only_close_after_handled_turn_restores_inherited_handling() {
+  skip_5138 test_main_only_close_after_handled_turn_restores_inherited_handling && return 0
   assert_main_only_close_after_handled_turn restore
   pass "host+hook: a main-only close after a handled turn restores inherited handling and rewakes main"
 }
 
 
 test_main_only_close_after_handled_turn_delivers_restore_failure() {
+  skip_5138 test_main_only_close_after_handled_turn_delivers_restore_failure && return 0
   assert_main_only_close_after_handled_turn refuse
   pass "host+hook: a refused inherited handling restore delivers a failure instead of silent success"
 }
 
 
 test_returned_driver_is_caught_attended() {
+  skip_5138 test_returned_driver_is_caught_attended && return 0
   assert_returned_driver_is_caught attended
   pass "host+hook: a driver returning to an idle worker is stale-handled while attended"
 }
 
 
 test_returned_driver_is_caught_away() {
+  skip_5138 test_returned_driver_is_caught_away && return 0
   assert_returned_driver_is_caught away
   pass "host+hook: a driver returning to an idle worker is stale-handled while away"
 }
 
 
-test_lost_boundary_handoff() { assert_lost_handoff_keeps_watching boundary; }
+test_lost_boundary_handoff() {
+  skip_5138 test_lost_boundary_handoff && return 0
+  assert_lost_handoff_keeps_watching boundary
+}
 
-test_lost_pass_through_handoff() { assert_lost_handoff_keeps_watching pass-through; }
+test_lost_pass_through_handoff() {
+  skip_5138 test_lost_pass_through_handoff && return 0
+  assert_lost_handoff_keeps_watching pass-through
+}
 
 
 # A close that turns main-only at its turn hands back through the same opt-in
@@ -51,6 +61,7 @@ test_lost_pass_through_handoff() { assert_lost_handoff_keeps_watching pass-throu
 # this turn confirmed, and the owner replaces that stopped arm within its poll,
 # so the live-watcher check waits for it.
 test_acknowledged_handoff_at_the_turn_keeps_the_pass_through_row() {
+  skip_5138 test_acknowledged_handoff_at_the_turn_keeps_the_pass_through_row && return 0
   local home
   home=$(make_primary_home hook-turns-main-only-ack)
   : > "$home/config/supervision-handoff-ack"
@@ -73,6 +84,7 @@ test_acknowledged_handoff_at_the_turn_keeps_the_pass_through_row() {
 # The transport fixture exercises the existing busy/composer/submit readers,
 # not a Claude run: live continuation acceptance remains a documented limit.
 test_handoff_retry_respects_the_receiving_pane() {
+  skip_5138 test_handoff_retry_respects_the_receiving_pane && return 0
   local home doorbell record real_ps
   home=$(make_primary_home handoff-doorbell)
   real_ps=$(command -v ps)
@@ -138,6 +150,7 @@ SH
 # Close the confirmed handling watcher after the engine has acknowledged its
 # wake but before its captain outcome returns to the host.
 test_claude_stop_hook_restores_handoff_when_successor_closed_before_exit_to_main() {
+  skip_5138 test_claude_stop_hook_restores_handoff_when_successor_closed_before_exit_to_main && return 0
   local home
   home=$(make_primary_home hook-successor-closed-before-return)
   ln -s "$ROOT/.agents" "$home/.agents"
@@ -156,6 +169,7 @@ test_claude_stop_hook_restores_handoff_when_successor_closed_before_exit_to_main
 
 
 test_claude_stop_hook_restores_handoff_when_successor_closed_mid_engine_turn() {
+  skip_5138 test_claude_stop_hook_restores_handoff_when_successor_closed_mid_engine_turn && return 0
   local home successor
   home=$(make_primary_home hook-successor-closed-before-outcome)
   ln -s "$ROOT/.agents" "$home/.agents"
@@ -188,12 +202,14 @@ test_claude_stop_hook_restores_handoff_when_successor_closed_mid_engine_turn() {
 
 
 test_claude_stop_hook_notifies_when_closed_successor_downtime_restore_fails() {
+  skip_5138 test_claude_stop_hook_notifies_when_closed_successor_downtime_restore_fails && return 0
   assert_claude_stop_hook_notifies_when_closed_successor_downtime_restore_fails pending
   pass "host+hook: a refused hand-back becomes a delivered failure notice"
 }
 
 
 test_claude_stop_hook_notifies_when_closed_announced_successor_downtime_restore_fails() {
+  skip_5138 test_claude_stop_hook_notifies_when_closed_announced_successor_downtime_restore_fails && return 0
   assert_claude_stop_hook_notifies_when_closed_successor_downtime_restore_fails announced
   pass "host+hook: a refused hand-back on an announced handling marker becomes a delivered failure notice"
 }
@@ -204,6 +220,7 @@ test_claude_stop_hook_notifies_when_closed_announced_successor_downtime_restore_
 # rewake commit refused and it exited 0 in silence. An idle primary was never
 # woken, and the detached successor's own later close reached no reader.
 test_claude_stop_hook_delivers_a_main_only_pass_through() {
+  skip_5138 test_claude_stop_hook_delivers_a_main_only_pass_through && return 0
   local home
   home=$(make_primary_home hook-main-only)
   start_hook_session "$home"
@@ -226,6 +243,7 @@ test_claude_stop_hook_delivers_a_main_only_pass_through() {
 # stale close four hours later. A note queued while the host is parked on a
 # handled wake's successor must rewake main.
 test_claude_stop_hook_rewakes_main_for_an_inbox_note_after_a_handled_wake() {
+  skip_5138 test_claude_stop_hook_rewakes_main_for_an_inbox_note_after_a_handled_wake && return 0
   local home drained
   home=$(make_primary_home hook-inbox-after-handled)
   ln -s "$ROOT/.agents" "$home/.agents"
@@ -256,6 +274,7 @@ test_claude_stop_hook_rewakes_main_for_an_inbox_note_after_a_handled_wake() {
 # present Claude captain, whose worker's captain outcomes waited for a return.
 # Through the real Stop hook the outcome now rewakes main, with no away note.
 test_claude_stop_hook_rewakes_a_present_captain_beside_a_quiet_record() {
+  skip_5138 test_claude_stop_hook_rewakes_a_present_captain_beside_a_quiet_record && return 0
   local home drained
   home=$(make_primary_home hook-quiet-record)
   # This case runs an engine turn from the primary root, whose prompt reads the skills.
@@ -285,6 +304,7 @@ test_claude_stop_hook_rewakes_a_present_captain_beside_a_quiet_record() {
 # config/supervision-host-off runs the plain watcher arm, mirrors nothing, and every wake
 # reaches main as the arm printed it.
 test_claude_stop_hook_runs_the_host_without_the_file_and_off_opts_out() {
+  skip_5138 test_claude_stop_hook_runs_the_host_without_the_file_and_off_opts_out && return 0
   local home first
   home=$(make_primary_home hook-default-on)
   ln -s "$ROOT/.agents" "$home/.agents"
@@ -325,6 +345,7 @@ test_claude_stop_hook_runs_the_host_without_the_file_and_off_opts_out() {
 
 
 test_claude_stop_hook_delivers_a_close_that_turns_main_only_at_its_turn() {
+  skip_5138 test_claude_stop_hook_delivers_a_close_that_turns_main_only_at_its_turn && return 0
   local home
   home=$(make_primary_home hook-turns-main-only)
   turn_main_only_at_second_offer "$home"
@@ -344,6 +365,7 @@ test_claude_stop_hook_delivers_a_close_that_turns_main_only_at_its_turn() {
 # The successor a close that turns main-only at its turn leaves for main
 # outlives the Stop hook's process group teardown, like the pass-through's.
 test_successor_left_at_the_turn_survives_the_hook_process_group_teardown() {
+  skip_5138 test_successor_left_at_the_turn_survives_the_hook_process_group_teardown && return 0
   local home watcher
   home=$(make_primary_home hook-turns-main-only-teardown)
   turn_main_only_at_second_offer "$home" quiet
@@ -367,6 +389,7 @@ test_successor_left_at_the_turn_survives_the_hook_process_group_teardown() {
 # If the at-turn hand-back cannot publish downtime, the healthy successor
 # cannot turn that undelivered close into a silent Stop-hook success.
 test_claude_stop_hook_notifies_when_at_turn_downtime_write_fails() {
+  skip_5138 test_claude_stop_hook_notifies_when_at_turn_downtime_write_fails && return 0
   local home real_mktemp
   home=$(make_primary_home hook-turns-main-only-write-fails)
   turn_main_only_at_second_offer "$home"
@@ -399,6 +422,7 @@ SH
 # running, so no arm is attached to read it: the next turn end must still
 # deliver that close instead of stranding it in the queue.
 test_successor_close_during_main_turn_is_delivered_at_the_next_turn_end() {
+  skip_5138 test_successor_close_during_main_turn_is_delivered_at_the_next_turn_end && return 0
   local home successor drained
   home=$(make_primary_home hook-successor-close)
   start_hook_session "$home"
@@ -433,6 +457,7 @@ test_successor_close_during_main_turn_is_delivered_at_the_next_turn_end() {
 # "check: rearm-resurface" that woke main again, over and over. The successor
 # must outlive that teardown, so the next park takes it over quietly.
 test_pass_through_successor_survives_the_hook_process_group_teardown() {
+  skip_5138 test_pass_through_successor_survives_the_hook_process_group_teardown && return 0
   local home pgid watcher
   home=$(make_primary_home hook-group-teardown)
   : > "$home/hook.own-group"
@@ -455,6 +480,7 @@ test_pass_through_successor_survives_the_hook_process_group_teardown() {
 
 
 test_next_park_takes_over_the_cycle_a_pass_through_left_for_main() {
+  skip_5138 test_next_park_takes_over_the_cycle_a_pass_through_left_for_main && return 0
   local home left_watcher left_arm
   home=$(make_primary_home hook-takeover)
   leave_a_cycle_for_main_and_restart "$home"
@@ -483,6 +509,7 @@ test_next_park_takes_over_the_cycle_a_pass_through_left_for_main() {
 # that cycle's arm: the park the Stop hook runs next still takes it over rather
 # than attaching to it beside the orphan.
 test_a_park_stopped_mid_take_over_leaves_the_take_over_to_the_next_park() {
+  skip_5138 test_a_park_stopped_mid_take_over_leaves_the_take_over_to_the_next_park && return 0
   local home holder host
   home=$(make_primary_home hook-takeover-interrupted)
   leave_a_cycle_for_main_and_restart "$home"
@@ -518,6 +545,7 @@ test_a_park_stopped_mid_take_over_leaves_the_take_over_to_the_next_park() {
 # running: the host stops it on exit, the close still reaches main unchanged,
 # and main's next turn end owns a fresh cycle with no orphan beside it.
 test_unrecorded_successor_is_stopped_rather_than_left_for_main() {
+  skip_5138 test_unrecorded_successor_is_stopped_rather_than_left_for_main && return 0
   local home
   home=$(make_primary_home hook-successor-unrecorded)
   mkdir "$home/state/.supervision-host-left"

@@ -117,10 +117,16 @@ EOF
   pass "fm-startup-network: wait fails when no deferred stage publishes before its deadline"
 }
 
+# Every stage runs as the named holder "main" (FM_LOCK_HOLDER), so a case that
+# seeds holder:main owns the lock by name; the locked sweeps compare lock line 1
+# as a string (lock_unchanged in bin/fm-startup-network.sh), so they run under
+# that holder too. A hand-off case names the next owner with
+# FM_TEST_STAGE_HOLDER.
 run_stage() {  # <home> <root> <args...>
   local home=$1 root=$2
   shift 2
   PATH="$root/bin:$PATH" FM_FAKE_HARNESS_PID="${FM_FAKE_HARNESS_PID_OVERRIDE:-$$}" \
+    FM_LOCK_HOLDER="${FM_TEST_STAGE_HOLDER:-main}" \
     FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$root/bin/fm-startup-network.sh" "$@"
 }
 
@@ -177,7 +183,7 @@ test_start_returns_without_holding_the_callers_stdout() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
 
   started=$(date +%s)
   # Command substitution reads to EOF, exactly like a hook harvesting hook output.
@@ -205,7 +211,7 @@ test_harvest_acknowledgement_suppresses_the_wake_and_no_claim_produces_it() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
 
   sleep 30 &
   claimant=$!
@@ -386,7 +392,7 @@ test_deferred_invalid_secondmate_markers_queue_durable_findings() {
     IFS='|' read -r home root log <<EOF
 $rec
 EOF
-    printf '%s\n' $$ > "$home/state/.lock"
+    printf 'holder:main\n' > "$home/state/.lock"
     if [ "$kind" = malformed ]; then
       printf '../other-home\n' > "$home/.fm-secondmate-home"
     else
@@ -425,9 +431,9 @@ test_mutating_sweeps_are_refused_when_the_lock_changed_hands() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '222222\n' > "$home/state/.lock"
+  printf 'holder:other-main\n' > "$home/state/.lock"
 
-  FM_FAKE_BOOTSTRAP_LOG="$log" run_stage "$home" "$root" run --locked 1 --lock-pid 111111
+  FM_FAKE_BOOTSTRAP_LOG="$log" run_stage "$home" "$root" run --locked 1 --lock-pid holder:main
   assert_grep 'network=only detect_only=1' "$log" \
     "the worker ran mutating sweeps for a lock it no longer held"
   report=$(run_stage "$home" "$root" report)
@@ -436,7 +442,7 @@ EOF
 
   # A detached start captures the lock itself and may run the mutating phase.
   : > "$log"
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
   FM_FAKE_BOOTSTRAP_LOG="$log" run_stage "$home" "$root" start --locked 1 --harvest-pid $$
   run_stage "$home" "$root" wait 30 >/dev/null || fail "the lock-authorized worker never published"
   assert_grep 'network=only detect_only=0' "$log" \
@@ -452,7 +458,7 @@ test_the_stage_bound_is_reported_not_swallowed() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
 
   FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_SLEEP=20 FM_STARTUP_NETWORK_TIMEOUT=2 \
     run_stage "$home" "$root" start --locked 1 --harvest-pid $$
@@ -513,7 +519,7 @@ test_locked_start_is_not_satisfied_by_an_inflight_probe() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
   printf '../other-home\n' > "$home/.fm-secondmate-home"
 
   FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_SLEEP=6 \
@@ -544,7 +550,7 @@ test_start_is_single_flight() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
 
   FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_SLEEP=6 \
     run_stage "$home" "$root" start --locked 1 --harvest-pid $$
@@ -594,14 +600,14 @@ test_new_lock_owner_does_not_reuse_the_previous_owners_worker() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
   FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_SLEEP=6 \
     run_stage "$home" "$root" start --locked 1 --harvest-pid $$
   generation_one=$(sed -n 's/^generation=//p' "$home/state/.startup-network.status")
 
-  next_owner=$(/bin/ps -o ppid= -p $$ | tr -d ' ')
-  printf '%s\n' "$next_owner" > "$home/state/.lock"
-  FM_FAKE_HARNESS_PID_OVERRIDE="$next_owner" FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_SLEEP=1 \
+  next_owner=next-main
+  printf 'holder:%s\n' "$next_owner" > "$home/state/.lock"
+  FM_TEST_STAGE_HOLDER="$next_owner" FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_SLEEP=1 \
     run_stage "$home" "$root" start --locked 1 --harvest-pid $$
   generation_two=$(sed -n 's/^generation=//p' "$home/state/.startup-network.status")
   [ "$generation_one" != "$generation_two" ] \
@@ -610,13 +616,17 @@ EOF
   pass "fm-startup-network: a new lock owner gets a distinct worker generation"
 }
 
+# A hand-over between named holders goes through main's release, which takes the
+# claim lock the mutating sweep holds: while the sweep runs, the release is a
+# wait-and-retry refusal that changes nothing, so the lock stays main's (another
+# name is refused outright while it does) until the sweep has finished.
 test_lock_takeover_stays_read_only_while_a_sweep_holds_the_lease() {
-  local rec home root log next_owner new_owner out rc started elapsed waited=0
+  local rec home root log out rc started elapsed waited=0
   rec=$(new_world sweep-lease)
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
   FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_SLEEP=6 \
     run_stage "$home" "$root" start --locked 1 --harvest-pid $$
   while [ ! -s "$log" ] && [ "$waited" -lt 50 ]; do
@@ -625,27 +635,28 @@ EOF
   done
   [ -s "$log" ] || fail "the mutating sweep never started"
 
-  next_owner=$(/bin/ps -o ppid= -p $$ | tr -d ' ')
   started=$(date +%s)
   rc=0
-  out=$(PATH="$root/bin:$PATH" FM_FAKE_HARNESS_PID="$next_owner" \
-    FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$root/bin/fm-lock.sh" 2>&1) || rc=$?
+  out=$(PATH="$root/bin:$PATH" FM_LOCK_HOLDER=main \
+    FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$root/bin/fm-lock.sh" release 2>&1) || rc=$?
   elapsed=$(( $(date +%s) - started ))
-  [ "$rc" -ne 0 ] || fail "lock takeover succeeded while the prior sweep was mutating"
-  [ "$elapsed" -lt 4 ] || fail "lock takeover blocked ${elapsed}s behind deferred network work"
-  assert_contains "$out" "operate read-only" \
-    "a lease-blocked takeover did not fail closed to read-only: $out"
-  [ "$(cat "$home/state/.lock")" = "$$" ] \
-    || fail "the lease-blocked takeover replaced the prior owner"
+  [ "$rc" -eq 75 ] \
+    || fail "main's release was not a wait-and-retry refusal while the sweep was mutating (rc=$rc): $out"
+  [ "$elapsed" -lt 4 ] || fail "main's release blocked ${elapsed}s behind deferred network work"
+  assert_contains "$out" "wait and retry" \
+    "a lease-blocked release did not say to wait and retry: $out"
+  [ "$(cat "$home/state/.lock")" = holder:main ] \
+    || fail "the lease-blocked release cleared the prior holder"
 
   run_stage "$home" "$root" wait 30 >/dev/null || fail "the leased sweep never settled"
-  out=$(PATH="$root/bin:$PATH" FM_FAKE_HARNESS_PID="$next_owner" \
+  out=$(PATH="$root/bin:$PATH" FM_LOCK_HOLDER=main \
+    FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$root/bin/fm-lock.sh" release 2>&1) \
+    || fail "main's release still failed after the sweep released its lease: $out"
+  out=$(PATH="$root/bin:$PATH" FM_LOCK_HOLDER=next-main \
     FM_HOME="$home" FM_ROOT_OVERRIDE="$root" "$root/bin/fm-lock.sh" 2>&1) \
-    || fail "lock takeover still failed after the sweep released its lease"
-  new_owner=$(cat "$home/state/.lock")
-  assert_contains "$out" "lock acquired: harness pid $new_owner" \
-    "the fleet lock did not record the harness owner reported by acquisition"
-  [ "$new_owner" != "$$" ] || fail "the prior harness still owned the lock after takeover"
+    || fail "the next holder could not claim after main released: $out"
+  [ "$(cat "$home/state/.lock")" = holder:next-main ] \
+    || fail "the fleet lock did not record the next holder after the hand-over: $out"
   pass "fm-startup-network: fleet-lock takeover cannot overlap a mutating sweep"
 }
 
@@ -699,7 +710,7 @@ test_timings_are_published_and_only_the_on_demand_report_prints_them() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
 
   FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_OUT='sweep finding' \
     FM_FAKE_TIMING_PHASE=fleet-sync FM_FAKE_TIMING_DETAIL=dotfiles-private \
@@ -737,7 +748,7 @@ test_a_bounded_run_still_publishes_the_timings_it_managed_to_record() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
 
   FM_STARTUP_NETWORK_TIMEOUT=1 FM_SESSION_START_TIMEOUT=2 \
     FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_BOOTSTRAP_SLEEP=20 \
@@ -763,7 +774,7 @@ test_the_timing_artifact_cannot_carry_a_command_line_or_forge_records() {
   IFS='|' read -r home root log <<EOF
 $rec
 EOF
-  printf '%s\n' $$ > "$home/state/.lock"
+  printf 'holder:main\n' > "$home/state/.lock"
 
   FM_FAKE_BOOTSTRAP_LOG="$log" FM_FAKE_TIMING_PHASE=secondmate-sync \
     FM_FAKE_TIMING_DETAIL="ssh -i /key host	v1	forged	0	9999

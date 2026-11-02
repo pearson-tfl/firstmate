@@ -328,18 +328,20 @@ EOF
 #
 # The question is deliberately "does the lock still name the session that asked
 # for this work?", not "is that session still alive". The hazard being closed is
-# a SECOND session sweeping concurrently. bin/fm-lock.sh rewrites that pid with
-# its own anchor whenever the recorded holder is no longer a live harness, or
-# when the same session re-anchors a live recorded pid outside its ancestry.
+# a SECOND session sweeping concurrently. bin/fm-lock.sh rewrites line 1 only
+# when the recorded holder is no longer a live harness (a takeover), or claims
+# it as holder:<name> for a named run; it never rewrites a live harness pid.
 # An unchanged value therefore proves no one else owns the sweeps, which is the
-# whole guarantee; a re-anchor also fails closed, which only defers idempotent
+# whole guarantee; a takeover also fails closed, which only defers idempotent
 # work. Requiring liveness instead would refuse to finish work
 # nobody else has claimed, and the sweeps are idempotent, so finishing it is
 # strictly better than abandoning it. A missing, unreadable, or replaced lock all
 # fail closed to the read-only probe.
-lock_unchanged() {  # <expected-pid>
+# The expected value is line 1 as recorded at launch: a harness pid, or a
+# named holder (holder:<name>) that fm-lock.sh never rewrites while it holds.
+lock_unchanged() {  # <expected line 1>
   local expected=$1 current
-  fm_session_pid_valid "$expected" || return 1
+  fm_session_lock_identity_valid "$expected" || return 1
   [ -f "$STATE/.lock" ] && [ ! -L "$STATE/.lock" ] || return 1
   current=$(cat "$STATE/.lock" 2>/dev/null) || return 1
   [ "$current" = "$expected" ]

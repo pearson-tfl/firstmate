@@ -137,10 +137,12 @@ fm_trace_context_enabled() {  # <config-dir>
   [ -f "$config_dir/trace-context" ]
 }
 
-# Echo the lock pid that owns the effective-state file's home, or fail when the
-# adjacent session lock is absent or malformed. Binding the decision to this
-# token makes a prior session's record inactive even if publication cannot
-# replace or remove that stale file.
+# Echo the lock identity that owns the effective-state file's home - a named
+# holder, holder:<name>, or a legacy pid - or fail when the adjacent session
+# lock is absent or malformed. Binding the decision to this token makes a prior
+# owner's record inactive even if publication cannot replace or remove that
+# stale file; a holder name is kept across its sessions, so for it that
+# guarantee rests on every session start republishing the record.
 fm_trace_context_session_lock() {  # <effective-state-file>
   local effective_file=$1 state_dir lock_pid
   state_dir=${effective_file%/*}
@@ -150,6 +152,8 @@ fm_trace_context_session_lock() {  # <effective-state-file>
   # trailing 2>/dev/null on the bare read would still leak the open failure.
   { IFS= read -r lock_pid < "$state_dir/.lock"; } 2>/dev/null || return 1
   case "$lock_pid" in
+    holder: | holder:*[!A-Za-z0-9._-]*) return 1 ;;
+    holder:*) printf '%s' "$lock_pid"; return 0 ;;
     '' | *[!0-9]*) return 1 ;;
   esac
   [ "$lock_pid" -gt 1 ] || return 1

@@ -94,9 +94,9 @@ test_lock_status_is_per_home() {
   home_one="$TMP_ROOT/lock-one"
   home_two="$TMP_ROOT/lock-two"
   mkdir -p "$home_one/state" "$home_two/state"
-  printf '999999\n' > "$home_one/state/.lock"
+  printf 'holder:home-one\n' > "$home_one/state/.lock"
   out=$(FM_HOME="$home_one" "$ROOT/bin/fm-lock.sh" status)
-  printf '%s\n' "$out" | grep -F 'lock: stale' >/dev/null || fail "home one lock status did not read its own lock"
+  [ "$out" = "lock: held by home-one" ] || fail "home one lock status did not read its own lock: $out"
   out=$(FM_HOME="$home_two" "$ROOT/bin/fm-lock.sh" status)
   [ "$out" = "lock: free" ] || fail "home two lock status was affected by home one"
   pass "fm-lock status is scoped per home"

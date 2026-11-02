@@ -67,7 +67,7 @@
 #   1. a live identity-matched watcher with a fresh beacon - or, in away mode, a
 #      live identity-matched daemon with a fresh beacon - allows immediately;
 #   2. an unhealthy session with a verified live session-lock owner it does not
-#      own under the shared ancestry-or-trusted-id verdict exits with a read-only
+#      own under the shared named-holder verdict exits with a read-only
 #      diagnostic instead of blocking a session that cannot repair supervision
 #      without stealing ownership;
 #   3. otherwise wait briefly (FM_CLAUDE_AUTOARM_SYNC_WAIT_MS, default 800ms)
@@ -316,14 +316,20 @@ block_stop() {
 }
 
 # Another verified live session owns the home lock under the shared
-# ancestry-or-trusted-id verdict. This session is read-only and cannot arm or
-# repair supervision without
-# stealing ownership, so blocking its Stop would create an impossible loop.
+# named-holder verdict. This session is read-only and cannot arm or repair
+# supervision without stealing ownership, so blocking its Stop would create
+# an impossible loop.
 # Report the ownership conflict as a diagnostic and let this turn end safely;
 # the owning session remains responsible for restoring the watcher.
+# A named holder (FM_LOCK_HOLDER) is reported by name rather than as a pid.
 if [ "$CLAUDE_MODE" -eq 1 ] && fm_session_lock_foreign_owner_live "$STATE"; then
-  printf '{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (lock owner pid %s). Allowing this turn to end safely; the owning session must restore supervision."}\n' \
-    "$FM_SESSION_LOCK_FOREIGN_OWNER_PID"
+  if [ -n "$FM_SESSION_LOCK_FOREIGN_OWNER_HOLDER" ]; then
+    owner_label="lock held by $FM_SESSION_LOCK_FOREIGN_OWNER_HOLDER"
+  else
+    owner_label="lock owner pid $FM_SESSION_LOCK_FOREIGN_OWNER_PID"
+  fi
+  printf '{"systemMessage":"FIRSTMATE SUPERVISION IS OWNED BY ANOTHER LIVE SESSION: this read-only session cannot and should not arm or repair the watcher (%s). Allowing this turn to end safely; the owning session must restore supervision."}\n' \
+    "$owner_label"
   exit 0
 fi
 

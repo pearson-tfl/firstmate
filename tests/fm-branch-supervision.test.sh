@@ -867,6 +867,8 @@ test_home_without_branch_is_untouched() {
 
   # A leftover lease whose pid is alive but is not the current lock holder - a
   # session that exited while its pid lives on - is stale for a Claude main.
+  # This seed stays a pid line: the case pins the lease-pid against lock-pid
+  # mismatch (fm_lease_live), and a holder line would make every lease stale.
   printf '%s\n' "$$" > "$home/state/.lock"
   printf 'branch\t%s\t123\n' "$PPID" > "$home/state/.lease-task-reused"
   # The positional parameter belongs to the nested shell.
@@ -957,9 +959,10 @@ test_unmarked_main_honors_a_live_branch_lease() {
 # too, so the branch cannot claim between that caller's check and its mutation.
 test_unmarked_guard_with_a_lease_file_holds_exclusivity_through_mutation() {
   local home operation_pid claim_pid claim_status
+  local -x FM_LOCK_HOLDER=test-main
   home="$TMP_ROOT/unmarked-guard-mutation-home"
   mkdir -p "$home/state"
-  printf '%s\n' "$$" > "$home/state/.lock"
+  printf 'holder:test-main\n' > "$home/state/.lock"
   printf 'branch\t999999\t123\n' > "$home/state/.lease-task-race"
 
   # The positional parameter belongs to the nested shell.
@@ -1227,9 +1230,10 @@ SH
 
 test_guard_holds_exclusivity_through_mutation() {
   local home operation_pid claim_pid claim_status
+  local -x FM_LOCK_HOLDER=test-main
   home="$TMP_ROOT/guard-mutation-home"
   mkdir -p "$home/state"
-  printf '%s\n' "$$" > "$home/state/.lock"
+  printf 'holder:test-main\n' > "$home/state/.lock"
 
   PI_CODING_AGENT=true STATE="$home/state" FM_TEST_READY="$home/operation-ready" \
     FM_TEST_RELEASE="$home/operation-release" bash -c '
@@ -1274,9 +1278,10 @@ test_claim_refuses_the_other_actors_name_loudly() {
 test_release_actor_drops_only_that_actors_leases() {
   local home out status
   local -x PI_CODING_AGENT=true
+  local -x FM_LOCK_HOLDER=test-main
   home="$TMP_ROOT/release-actor-home"
   mkdir -p "$home/state"
-  printf '%s\n' "$$" > "$home/state/.lock"
+  printf 'holder:test-main\n' > "$home/state/.lock"
   FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ "$ROOT/bin/fm-lease.sh" claim task-a --actor branch \
     || fail "branch claim failed"
   FM_HOME="$home" FM_LEASE_HOLDER_PID=$$ "$ROOT/bin/fm-lease.sh" claim task-b --actor main \

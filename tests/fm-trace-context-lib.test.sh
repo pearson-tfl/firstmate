@@ -138,6 +138,25 @@ rm "$SESSION_STATE"
   || fail "missing session state must fail independent and default off"
 pass "missing or invalid frozen session state defaults off"
 
+HOLDER_DIR="$WORK/holder-state"
+HOLDER_STATE="$HOLDER_DIR/.trace-context-effective"
+mkdir -p "$HOLDER_DIR"
+printf 'holder:pocock\n' > "$HOLDER_DIR/.lock"
+FM_TRACE_CONTEXT=on fm_trace_context_session_start "$CFG_OFF" "$HOLDER_STATE"
+[ "$(cat "$HOLDER_STATE")" = "holder:pocock on" ] \
+  || fail "a named holder's session must bind the decision to holder:pocock (got '$(cat "$HOLDER_STATE")')"
+[ "$(fm_trace_context_session_effective "$HOLDER_STATE")" = on ] \
+  || fail "a named holder's frozen on decision must read back on"
+printf 'holder:claude\n' > "$HOLDER_DIR/.lock"
+[ "$(fm_trace_context_session_effective "$HOLDER_STATE")" = off ] \
+  || fail "another holder's record must be inactive"
+for bad in 'holder:' 'holder:a b' 'holder:a/b'; do
+  printf '%s\n' "$bad" > "$HOLDER_DIR/.lock"
+  [ "$(fm_trace_context_session_effective "$HOLDER_STATE")" = off ] \
+    || fail "a malformed holder line '$bad' must read as not locked"
+done
+pass "a named holder lock binds the frozen decision; another or malformed holder reads off"
+
 # --- resolve: default-off omits; enabled mints ------------------------------
 
 NOMETA="$WORK/none.meta"

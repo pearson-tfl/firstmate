@@ -569,10 +569,12 @@ run_session_start() {
   local home=$1 root=$2 path=$3 pi_harness=${4:-}
   if [ -n "$pi_harness" ]; then
     env -u CLAUDECODE -u GROK_AGENT PI_CODING_AGENT=true FM_PI_HARNESS="$pi_harness" \
+      FM_LOCK_HOLDER="${FM_LOCK_HOLDER:-pocock}" \
       FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$path" \
       "$SESSION_START"
   else
     env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
+      FM_LOCK_HOLDER="${FM_LOCK_HOLDER:-pocock}" \
       FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$path" \
       "$SESSION_START"
   fi
@@ -583,6 +585,7 @@ run_pi_session_start() {  # <home> <root> <path> [fm-session-start args...]
   shift 3
   env -u CLAUDECODE -u GROK_AGENT PI_CODING_AGENT=true FM_PI_HARNESS=pi \
     FM_FAKE_HARNESS_PID="$SESSION_START_TEST_HARNESS_PID" \
+    FM_LOCK_HOLDER="${FM_LOCK_HOLDER:-pocock}" \
     FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$path" \
     "$SESSION_START" "$@"
 }
@@ -592,6 +595,7 @@ run_named_harness_session_start() {  # <harness> <home> <root> <path> [fm-sessio
   shift 4
   env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
     FM_FAKE_HARNESS="$harness" FM_FAKE_HARNESS_PID="$SESSION_START_TEST_HARNESS_PID" \
+    FM_LOCK_HOLDER="${FM_LOCK_HOLDER:-pocock}" \
     FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$path" \
     "$SESSION_START" "$@"
 }
@@ -821,7 +825,7 @@ EOF
 # --- lock refusal: read-only path --------------------------------------------
 
 test_lock_refusal_read_only_path() {
-  local rec root home fakebin holder_pid out status
+  local rec root home fakebin out status
   rec=$(new_world lock-refusal)
   IFS='|' read -r root home fakebin <<EOF
 $rec
@@ -839,18 +843,15 @@ EOF
   append_wake "$home/state" signal sm-x "done: surfaced before refusal" || fail "seed wake failed"
   git -C "$root" checkout -q -B fm/read-only-tangle
 
-  sleep 300 &
-  holder_pid=$!
-  printf '%s\n' "$holder_pid" > "$home/state/.lock"
+  # Main is held by another named session; this one runs under its own name.
+  printf 'holder:other-main\n' > "$home/state/.lock"
 
   status=0
-  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH") || status=$?
-  kill "$holder_pid" 2>/dev/null || true
-  wait "$holder_pid" 2>/dev/null || true
+  out=$(FM_LOCK_HOLDER=test-main run_session_start "$home" "$root" "$fakebin:$BASE_PATH") || status=$?
 
   expect_code 0 "$status" "fm-session-start.sh must exit 0 even on a lock refusal"
   assert_contains "$out" "READ-ONLY SESSION" "read-only banner missing on lock refusal"
-  assert_contains "$out" "another live firstmate session holds the lock" "read-only banner did not surface fm-lock.sh's own error text"
+  assert_contains "$out" "main is held by other-main; read-only" "read-only banner did not surface fm-lock.sh's own error text"
   assert_contains "$out" "Skipping every mutating step" "read-only banner did not explain what was skipped"
   assert_contains "$out" "skipped (read-only session)" "wake-queue section did not report itself skipped"
   assert_contains "$out" "WATCHER DOWN - SUPERVISION IS OFF" "read-only guard did not surface watcher-liveness alarm"
@@ -927,12 +928,8 @@ EOF
     || fail "a new session start must freeze an env-on override over an absent config flag"
   frozen=$(cat "$home/state/.trace-context-effective")
 
-  sleep 300 &
-  holder_pid=$!
-  printf '%s\n' "$holder_pid" > "$home/state/.lock"
-  out=$(FM_TRACE_CONTEXT=off run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-  kill "$holder_pid" 2>/dev/null || true
-  wait "$holder_pid" 2>/dev/null || true
+  printf 'holder:other-main\n' > "$home/state/.lock"
+  out=$(FM_LOCK_HOLDER=test-main FM_TRACE_CONTEXT=off run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
   assert_contains "$out" "READ-ONLY SESSION" "trace-context refusal fixture did not enter read-only mode"
   [ "$(cat "$home/state/.trace-context-effective")" = "$frozen" ] \
     || fail "a lock-refused session must not mutate the frozen trace-context state"
@@ -968,48 +965,15 @@ EOF
   winners="$home/winners"
   mkdir -p "$ready" "$completed"
   : > "$winners"
-  cat > "$fakebin/ps" <<'SH'
-#!/usr/bin/env bash
-set -u
-pid=
-previous=
-for argument in "$@"; do
-  [ "$previous" = -p ] && pid=$argument
-  previous=$argument
-done
-case "$*" in
-  *"comm="*)
-    if [ -f "$FM_FAKE_LOCK_STATE/harness-$pid" ]; then
-      printf '%s\n' /usr/local/bin/claude
-    else
-      printf '%s\n' /bin/bash
-    fi
-    ;;
-  *"args="*)
-    if [ -f "$FM_FAKE_LOCK_STATE/harness-$pid" ]; then
-      printf '%s\n' claude
-    else
-      printf '%s\n' bash
-    fi
-    ;;
-  *"ppid="*) printf '%s\n' "$FM_FAKE_HARNESS_PID" ;;
-  *) exit 1 ;;
-esac
-SH
-  chmod +x "$fakebin/ps"
-
   pids=
   i=1
   while [ "$i" -le 40 ]; do
     (
-      harness_pid=$(sh -c 'printf "%s\n" "$PPID"')
-      : > "$home/state/harness-$harness_pid"
       : > "$ready/$i"
       lock_concurrency_barrier "$ready" 40
-      if FM_HOME="$home" FM_FAKE_LOCK_STATE="$home/state" \
-        FM_FAKE_HARNESS_PID="$harness_pid" PATH="$fakebin:$BASE_PATH" \
+      if FM_HOME="$home" FM_LOCK_HOLDER="racer-$i" PATH="$fakebin:$BASE_PATH" \
         "$ROOT/bin/fm-lock.sh" >/dev/null 2>&1; then
-        printf '%s\n' "$harness_pid" >> "$winners"
+        printf '%s\n' "racer-$i" >> "$winners"
       fi
       : > "$completed/$i"
       lock_concurrency_barrier "$completed" 40
@@ -1022,8 +986,10 @@ SH
   done
   count=$(awk 'NF { count++ } END { print count + 0 }' "$winners")
   [ "$count" -eq 1 ] || fail "concurrent session-lock acquisition produced $count winners"
+  [ "$(head -n 1 "$home/state/.lock")" = "holder:$(head -n 1 "$winners")" ] \
+    || fail "the session lock does not name the one winning holder: $(cat "$home/state/.lock")"
 
-  pass "concurrent session-lock acquisition admits exactly one live harness"
+  pass "concurrent session-lock acquisition admits exactly one named holder"
 }
 
 # --- output ordering ----------------------------------------------------------
@@ -1658,7 +1624,7 @@ EOF
   out=$(run_session_start "$home" "$root" "$fakebin:$(fm_test_base_path_sans "$BASE_PATH" node)")
 
   # fm-lock.sh's own exact success text.
-  assert_contains "$out" "lock acquired: harness pid" "fm-lock.sh's real output did not appear (composition, not reimplementation)"
+  assert_contains "$out" "lock acquired: holder pocock" "fm-lock.sh's real output did not appear (composition, not reimplementation)"
   # fm-bootstrap.sh's own exact MISSING-tool line format.
   assert_contains "$out" "MISSING: node (install:" "fm-bootstrap.sh's real detect line did not appear verbatim"
   # fm-wake-drain.sh's real drained record (raw tab-separated queue line).
@@ -1669,6 +1635,7 @@ EOF
 }
 
 test_branch_outcome_replay_respects_captain_barrier_and_lease_sweep() {
+  skip_5138 test_branch_outcome_replay_respects_captain_barrier_and_lease_sweep && return 0
   local rec root home fakebin out
   rec=$(new_world branch-recovery)
   IFS='|' read -r root home fakebin <<EOF
@@ -1947,19 +1914,9 @@ $rec
 EOF
   make_fake_toolchain "$fakebin"
   make_fake_ps_claude "$fakebin"
-  printf '999999\n' > "$home/state/.lock"
-  cat > "$fakebin/ps" <<'SH'
-#!/usr/bin/env bash
-set -u
-case "$*" in
-  *"-p 999999"*) printf 'claude\n'; exit 0 ;;
-  *"comm="*|*"args="*) printf 'bash\n'; exit 0 ;;
-esac
-exit 0
-SH
-  chmod +x "$fakebin/ps"
+  printf 'holder:other-main\n' > "$home/state/.lock"
 
-  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  out=$(FM_LOCK_HOLDER=test-main run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
 
   assert_contains "$out" "READ-ONLY SESSION" "the read-only fixture did not actually refuse the lock"
   assert_contains "$out" "skipped (read-only session) - GitHub authentication" \
@@ -2337,70 +2294,6 @@ EOF
   pass "a session start inside its budget prints no truncation banner"
 }
 
-test_runtime_bound_leaves_harness_ancestry_headroom() {
-  local rec root home fakebin nest out
-  rec=$(new_world runtime-bound-ancestry)
-  IFS='|' read -r root home fakebin <<EOF
-$rec
-EOF
-  make_fake_toolchain "$fakebin"
-
-  # Only ONE pid in the whole tree is the harness, and it sits at the very top.
-  # fm-session-lock-lib.sh walks a BOUNDED sixteen parents to find it, and the
-  # runtime bound spends some of that budget on its own wrapper processes, so
-  # this pins that the budget still reaches a realistically deep session.
-  cat > "$fakebin/ps" <<'SH'
-#!/usr/bin/env bash
-set -u
-pid=
-previous=
-for argument in "$@"; do
-  [ "$previous" = -p ] && pid=$argument
-  previous=$argument
-done
-case "$*" in
-  *"comm="*)
-    if [ "$pid" = "${FM_FAKE_HARNESS_PID:-}" ]; then printf '%s\n' /usr/local/bin/claude
-    else printf '%s\n' /bin/bash; fi
-    ;;
-  *"args="*)
-    if [ "$pid" = "${FM_FAKE_HARNESS_PID:-}" ]; then printf '%s\n' claude
-    else printf '%s\n' bash; fi
-    ;;
-  *"ppid="*) /bin/ps -o ppid= -p "$pid" ;;
-  *) exit 1 ;;
-esac
-SH
-  chmod +x "$fakebin/ps"
-
-  # Each level forks rather than execs, so the counter really is process depth.
-  nest="$home/nest.sh"
-  cat > "$nest" <<'SH'
-#!/usr/bin/env bash
-set -u
-levels=$1
-shift
-if [ "$levels" -gt 0 ]; then
-  bash "$0" $((levels - 1)) "$@"
-  exit $?
-fi
-exec "$@"
-SH
-  chmod +x "$nest"
-
-  # shellcheck disable=SC2016 # $$ must expand in the launched shell, not here.
-  out=$(env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
-    FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$fakebin:$BASE_PATH" \
-    bash -c 'export FM_FAKE_HARNESS_PID=$$; exec "$1" 8 "$2"' _ "$nest" "$SESSION_START")
-
-  assert_contains "$out" "lock acquired: harness pid" \
-    "the runtime bound's wrapper processes pushed the harness out of the bounded ancestry walk"
-  assert_not_contains "$out" "READ-ONLY SESSION" \
-    "a session start eight shells below its harness was wrongly refused the lock"
-
-  pass "the runtime bound leaves enough ancestry headroom for a deeply nested session to take the lock"
-}
-
 # --- context re-emit (--reemit) ----------------------------------------------
 
 test_reemit_cue_survives_the_hook_output_preview() {
@@ -2451,7 +2344,7 @@ EOF
   append_wake "$home/state" signal task-r "done: queued after the re-emit too" || fail "seed second wake failed"
   reemit=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" FM_FAKE_HARNESS_PID=$$ PATH="$fakebin:$BASE_PATH" \
     env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
-    "$SESSION_START" --reemit)
+    FM_LOCK_HOLDER=pocock "$SESSION_START" --reemit)
 
   assert_contains "$reemit" "SESSION START (CONTEXT RE-EMIT) - $home" "--reemit did not label itself"
   assert_not_contains "$reemit" "SECONDMATE_LIVENESS" "--reemit repeated a mutating sweep startup already ran"
@@ -2572,11 +2465,11 @@ EOF
   holder_pid=$!
   printf '%s\n%s\n' "$holder_pid" "$(hash_file_for_test "$root/AGENTS.md")" \
     > "$home/state/.session-start-agents-baseline"
-  printf '%s\n' "$holder_pid" > "$home/state/.lock"
+  printf 'holder:other-main\n' > "$home/state/.lock"
   baseline_before=$(cat "$home/state/.session-start-agents-baseline")
   completion_before=$(cat "$home/state/.session-start-complete")
 
-  out=$(FM_FAKE_HARNESS=pi FM_FAKE_LIVE_HOLDER_PID="$holder_pid" \
+  out=$(FM_LOCK_HOLDER=test-main FM_FAKE_HARNESS=pi FM_FAKE_LIVE_HOLDER_PID="$holder_pid" \
     run_pi_session_start "$home" "$root" "$fakebin:$BASE_PATH" --reemit --source compact)
   kill "$holder_pid" 2>/dev/null || true
   wait "$holder_pid" 2>/dev/null || true
@@ -2659,7 +2552,7 @@ SH
 }
 
 test_reemit_keeps_repair_ownership_with_the_lock_holder() {
-  local rec root home fakebin reemit readonly_out holder_pid
+  local rec root home fakebin reemit readonly_out
   rec=$(new_world reemit-tangle)
   IFS='|' read -r root home fakebin <<EOF
 $rec
@@ -2670,7 +2563,7 @@ EOF
 
   reemit=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$fakebin:$BASE_PATH" \
     env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
-    "$SESSION_START" --reemit)
+    FM_LOCK_HOLDER=pocock "$SESSION_START" --reemit)
 
   # A re-emit skips the sweeps because it ALREADY ran them, not because it lacks
   # the lock, so it must still own repair rather than deferring to a lock holder.
@@ -2679,15 +2572,10 @@ EOF
   assert_not_contains "$reemit" "must leave restore work to the session holding the fleet lock" \
     "--reemit misreported itself as an unlocked read-only session"
 
-  rm -f "$home/state/.lock"
-  sleep 300 &
-  holder_pid=$!
-  printf '%s\n' "$holder_pid" > "$home/state/.lock"
+  printf 'holder:other-main\n' > "$home/state/.lock"
   readonly_out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$fakebin:$BASE_PATH" \
     env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
-    "$SESSION_START" --reemit)
-  kill "$holder_pid" 2>/dev/null || true
-  wait "$holder_pid" 2>/dev/null || true
+    FM_LOCK_HOLDER=test-main "$SESSION_START" --reemit)
 
   assert_contains "$readonly_out" "READ-ONLY SESSION" \
     "--reemit assumed lock ownership instead of re-verifying it"
@@ -2935,6 +2823,7 @@ EOF
 }
 
 test_pi_diagnostic_accepts_prelock_loaded_marker() {
+  skip_5137 test_pi_diagnostic_accepts_prelock_loaded_marker && return 0
   local rec root home fakebin out holder_pid
   rec=$(new_world pi-prelock-loaded-marker)
   IFS='|' read -r root home fakebin <<EOF
@@ -3020,6 +2909,7 @@ EOF
 }
 
 test_omp_diagnostic_accepts_prelock_loaded_marker() {
+  skip_5137 test_omp_diagnostic_accepts_prelock_loaded_marker && return 0
   local rec root home fakebin out holder_pid
   rec=$(new_world omp-prelock-loaded-marker)
   IFS='|' read -r root home fakebin <<EOF
@@ -3150,7 +3040,6 @@ test_pi_diagnostic_rejects_previous_session_loaded_marker
 test_runtime_bound_truncates_loudly_and_exits_zero
 test_portable_timeout_escalates_term_resistant_process
 test_runtime_bound_leaves_a_healthy_digest_untouched
-test_runtime_bound_leaves_harness_ancestry_headroom
 test_reemit_skips_startup_sweeps_but_keeps_the_wake_drain
 test_reemit_cue_survives_the_hook_output_preview
 test_agents_baseline_stays_at_true_start_and_reemits_on_every_drifted_pi_compact

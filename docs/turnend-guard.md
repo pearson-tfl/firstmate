@@ -97,25 +97,19 @@ The guard cooperates with that arm rather than trusting a beacon left by the cyc
 
 ### Foreign session-lock owner
 
-When an active home instead has a live session lock held by a verified harness that the current session does not own, the Claude guard emits a read-only ownership diagnostic and allows the turn to end safely.
+When an active home instead has a session lock held by another named holder, or a legacy pid line naming a live verified harness, that the current session does not own, the Claude guard emits a read-only ownership diagnostic and allows the turn to end safely.
 
 Ownership is the shared `fm_session_lock_owned_by_self` verdict in `bin/fm-session-lock-lib.sh`.
-The current session owns the lock when either of these holds:
-
-- The recorded pid is a member of the current session's contiguous harness ancestry.
-- The trusted Claude session id recorded beside the lock in `state/.lock-session` matches this hook's own environment while the recorded pid is still a live harness.
-
-That second signal keeps a background Claude session owning its own lock after the transient helper chain between its hooks and its recorded owner is recycled.
-The library's header owns the trust gate (`CLAUDE_PID` must be a Claude-shaped member of the current run).
-`bin/fm-lock.sh` owns the sidecar and the line-1 anchor it records for such a session.
+The current session owns the lock only when line 1 is `holder:<name>` and its `FM_LOCK_HOLDER` carries that name; a pid line is never owned.
+The foreign owner is either another named holder, reported by name, or a legacy pid line naming a live verified harness, reported by pid (`fm_session_lock_foreign_owner_live`).
 
 A Claude session that does not own the lock cannot arm or repair the home without stealing the live owner's lock, so blocking it would create an unbounded loop.
 The lock-owning session remains responsible for restoring supervision.
 
 The exception has these limits:
 
-- Malformed, absent, dead, or ancestry-uncertain lock records do not satisfy this Claude-specific exception and retain the ordinary guard behavior.
-- A missing or mismatched sidecar or an untrusted id adds nothing to the verdict, so a live owner outside the ancestry still takes this exit exactly as before.
+- Malformed, absent, or dead lock records do not satisfy this Claude-specific exception and retain the ordinary guard behavior.
+- The session id recorded in `state/.lock-session` adds nothing to the ownership verdict; only the holder name decides it.
 
 ### Pull-warning verdict by supervision model
 
@@ -356,6 +350,10 @@ The session-id signal is the second one the claiming hook's own admission accept
 Pinning that signal to the session-lock identity recorded at claim time is what keeps a resumed session, which carries the same conversation id in a new process, from reading its own dead predecessor's orphan as open - a reused pid number or reissued Windows pid is a different identity, so it does not match.
 An orphan fails both signals: it no longer descends from the replacement's lock pid, and its recorded lock-holder identity is the dead session's.
 An entry from a build before these fields existed records neither and falls back to descent alone.
+Under a named holder, where `state/.lock` line 1 is `holder:<name>`, there is no pid to descend from.
+A claim taken by that holder records `owner_holder=<name>` and, when the session publishes `CLAUDE_PID`, `owner_harness_pid=<pid>`; it is reachable while line 1 still names that holder and that pid is a live harness.
+Two runs share one name, so the recorded pid is what fails a dead run's orphan.
+A claim taken where `CLAUDE_PID` is not published records no pid and is bound by the name alone, so a dead run's orphan under the same name is then not detected; Claude Code publishes `CLAUDE_PID` to every hook.
 
 Anything else lets the next Stop-owned firing take the next generation and arm.
 That covers a finished outcome, a dead or identity-mismatched owner, an owner orphaned by its session's exit, a stuck owner, an identityless entry, or no entry.

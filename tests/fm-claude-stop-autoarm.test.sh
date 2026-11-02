@@ -21,6 +21,8 @@ FAKEBIN=$(fm_fakebin "$TMP_ROOT/fakebin")
 ln -s /bin/bash "$FAKEBIN/claude"
 FAKE_CLAUDE="$FAKEBIN/claude"
 export FAKE_CLAUDE
+# The session lock records this named holder (FM_LOCK_HOLDER), not a pid.
+export FM_LOCK_HOLDER=claude
 
 # Copy the hook and its sourced dependencies into a fixture checkout.
 install_autoarm_scripts() {
@@ -83,7 +85,7 @@ run_autoarm() {
   local dir=$1 payload=${2:-'{"session_id":"sess-autoarm","stop_hook_active":false}'} rc=0
   printf '%s\n' "$payload" \
     | FM_HOME="$dir" "$FAKE_CLAUDE" -c '
-        printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+        printf "holder:%s\n" "$FM_LOCK_HOLDER" > "$FM_HOME/state/.lock"
         "$FM_HOME/bin/fm-claude-stop-autoarm.sh"
       ' 2>&1 || rc=$?
   printf 'RC=%s\n' "$rc" >&2
@@ -254,7 +256,7 @@ run_autoarm_bg() {
   local dir=$1 out=$2
   printf '%s\n' '{"session_id":"sess-autoarm","stop_hook_active":false}' \
     | FM_HOME="$dir" "$FAKE_CLAUDE" -c '
-        printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+        printf "holder:%s\n" "$FM_LOCK_HOLDER" > "$FM_HOME/state/.lock"
         "$FM_HOME/bin/fm-claude-stop-autoarm.sh"
       ' > "$out" 2>&1 &
   RUN_AUTOARM_BG_PID=$!
@@ -307,44 +309,34 @@ test_inert_without_session_lock() {
 }
 
 test_reclaims_stale_session_lock_before_arming() {
-  local dir out status expected_owner actual_owner
+  local dir out status actual_owner
   dir=$(make_primary_dir "$TMP_ROOT/stale-lock")
   : > "$dir/state/task.meta"
   printf '9999999\n' > "$dir/state/.lock"
   write_arm_fixture "$dir" actionable
   out=$(printf '%s\n' '{"session_id":"stale"}' \
-    | FM_HOME="$dir" "$FAKE_CLAUDE" -c '
-        printf "%s\n" "$$" > "$FM_HOME/state/expected-owner"
-        "$FM_HOME/bin/fm-claude-stop-autoarm.sh"
-      ' 2>&1); status=$?
+    | FM_HOME="$dir" "$FAKE_CLAUDE" -c '"$FM_HOME/bin/fm-claude-stop-autoarm.sh"' 2>&1); status=$?
   expect_code 2 "$status" "a dead recorded session owner must be reclaimed before the actionable rewake"
-  expected_owner=$(cat "$dir/state/expected-owner")
   actual_owner=$(cat "$dir/state/.lock")
-  [ "$actual_owner" = "$expected_owner" ] || fail "stale session lock was not claimed by the current harness: expected $expected_owner, got $actual_owner"
+  [ "$actual_owner" = "holder:$FM_LOCK_HOLDER" ] || fail "stale session lock was not claimed under this session's holder name: expected holder:$FM_LOCK_HOLDER, got $actual_owner"
   [ -e "$dir/state/arm-ran" ] || fail "hook did not arm after reclaiming the stale session lock"
   [ "$(epoch_outcome "$dir")" = rewake ] || fail "stale-lock recovery must record outcome=rewake"
   pass "auto-arm: a demonstrably dead recorded session owner is reclaimed through fm-lock.sh before arming"
 }
 
 test_inert_when_lock_held_by_other_harness() {
-  local dir other out status owner_after
+  local dir out status owner_after
   dir=$(make_primary_dir "$TMP_ROOT/other-lock")
   : > "$dir/state/task.meta"
   write_arm_fixture "$dir" actionable
-  # The trailing no-op keeps the fake harness process alive instead of allowing
-  # bash to exec the final sleep into a non-harness process.
-  "$FAKE_CLAUDE" -c 'sleep 60; :' &
-  other=$!
-  printf '%s\n' "$other" > "$dir/state/.lock"
+  printf 'holder:pocock\n' > "$dir/state/.lock"
   out=$(printf '%s\n' '{"session_id":"s"}' | FM_HOME="$dir" "$FAKE_CLAUDE" -c '"$FM_HOME/bin/fm-claude-stop-autoarm.sh"' 2>&1); status=$?
   owner_after=$(cat "$dir/state/.lock")
-  kill "$other" 2>/dev/null || true
-  wait "$other" 2>/dev/null || true
-  expect_code 0 "$status" "hook must stay inert when another live harness holds the session lock"
-  [ "$owner_after" = "$other" ] || fail "hook replaced another live harness owner: expected $other, got $owner_after"
+  expect_code 0 "$status" "hook must stay inert when another named holder holds the session lock"
+  [ "$owner_after" = holder:pocock ] || fail "hook replaced another named holder: expected holder:pocock, got $owner_after"
   [ ! -e "$dir/state/arm-ran" ] || fail "hook armed while another session owned the lock"
   [ ! -e "$dir/state/.claude-autoarm-epoch" ] || fail "hook wrote an epoch while another session owned the lock"
-  pass "auto-arm: inert without arm, rewake, or lock replacement when another live harness owns the home"
+  pass "auto-arm: inert without arm, rewake, or lock replacement when another named holder owns the home"
 }
 
 test_inert_when_afk() {
@@ -383,37 +375,6 @@ test_stale_lock_recovery_preserves_afk_and_need_gates() {
   [ "$(cat "$idle_dir/state/.lock")" = 9999999 ] || fail "idle stale lock was reclaimed without supervision need"
   [ ! -e "$idle_dir/state/arm-ran" ] || fail "stale idle home armed"
   pass "auto-arm: stale-owner recovery leaves the AFK and supervision-need gates unchanged"
-}
-
-test_resolves_outermost_claude_pid_in_nested_bgspare_chain() {
-  local dir out status inner_pid lock_pid
-  dir=$(make_primary_dir "$TMP_ROOT/nested-chain")
-  : > "$dir/state/task.meta"
-  write_arm_fixture "$dir" actionable
-  # A genuine multi-level contiguous claude-named ancestry: the hook fires
-  # inside an inner fake-claude process (its recorded pid is distinct from its
-  # own parent, a second, outer fake-claude process holding the session lock -
-  # the bg-spare shape). Only the outer pid may own the lock; a
-  # first-match-wins walk would resolve to the inner pid instead and leave the
-  # hook inert. The inner process records its own pid before running the hook
-  # so bash cannot tail-exec-collapse it into the outer pid, which would
-  # collapse the two-hop chain this test depends on down to one hop.
-  out=$(printf '%s\n' '{"session_id":"nested"}' \
-    | FM_HOME="$dir" "$FAKE_CLAUDE" -c '
-        printf "%s\n" "$$" > "$FM_HOME/state/.lock"
-        "$FAKE_CLAUDE" -c "
-          printf \"%s\n\" \"\$\$\" > \"\$FM_HOME/state/inner-pid\"
-          \"\$FM_HOME/bin/fm-claude-stop-autoarm.sh\"
-        "
-      ' 2>&1); status=$?
-  inner_pid=$(cat "$dir/state/inner-pid" 2>/dev/null || true)
-  lock_pid=$(cat "$dir/state/.lock" 2>/dev/null || true)
-  [ -n "$inner_pid" ] && [ "$inner_pid" != "$lock_pid" ] \
-    || fail "test setup did not produce a genuine two-hop claude chain: inner=$inner_pid lock=$lock_pid"
-  expect_code 2 "$status" "a nested contiguous claude ancestry must resolve to the outer lock-owning pid and arm"
-  [ -e "$dir/state/arm-ran" ] || fail "hook did not resolve past the inner claude-named process to the outer lock owner"
-  [ "$(epoch_outcome "$dir")" = rewake ] || fail "nested-chain arm must record outcome=rewake"
-  pass "auto-arm: resolves the outermost pid of a nested contiguous claude ancestry (bg-spare chain)"
 }
 
 test_inert_when_fleet_idle() {
@@ -805,7 +766,7 @@ test_single_flight_admits_exactly_one_owner() {
   : > "$dir/state/task.meta"
   write_arm_fixture "$dir" slow-actionable
   FM_HOME="$dir" "$FAKE_CLAUDE" -c '
-    printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+    printf "holder:%s\n" "$FM_LOCK_HOLDER" > "$FM_HOME/state/.lock"
     printf "%s\n" "{\"session_id\":\"s\"}" | "$FM_HOME/bin/fm-claude-stop-autoarm.sh" >/dev/null 2>"$FM_HOME/state/err1" &
     p1=$!
     printf "%s\n" "{\"session_id\":\"s\"}" | "$FM_HOME/bin/fm-claude-stop-autoarm.sh" >/dev/null 2>"$FM_HOME/state/err2" &
@@ -904,7 +865,7 @@ record_autoarm_epoch() {
 
 epoch_field() {
   local dir=$1 field=$2
-  sed -n "s/^.*[[:space:]]\{0,1\}$field=\([A-Za-z0-9_-]*\).*\$/\1/p" \
+  sed -n "s/^.*[[:space:]]\{0,1\}$field=\([A-Za-z0-9_.:-]*\).*\$/\1/p" \
     "$dir/state/.claude-autoarm-epoch" 2>/dev/null || true
 }
 
@@ -1242,11 +1203,11 @@ test_open_generation_claim_defers_without_any_lock() {
   assert_absent "$dir/state/.claude-autoarm.lock" "this case must start with no owner lock at all"
   out=$(printf '%s\n' '{"session_id":"sess-autoarm","stop_hook_active":false}' \
     | FM_HOME="$dir" FM_STATE_OVERRIDE="$dir/state" "$FAKE_CLAUDE" -c '
-        printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+        printf "holder:%s\n" "$FM_LOCK_HOLDER" > "$FM_HOME/state/.lock"
         sleep 60 &
         owner=$!
         identity=$(. "$FM_HOME/bin/fm-wake-lib.sh"; fm_pid_identity "$owner") || exit 97
-        printf "epoch=464 owner_pid=%s outcome=arming updated_at=1\n%s\n" "$owner" "$identity" \
+        printf "epoch=464 owner_pid=%s outcome=arming updated_at=1 owner_holder=%s\n%s\n" "$owner" "$FM_LOCK_HOLDER" "$identity" \
           > "$FM_HOME/state/.claude-autoarm-epoch"
         touch -t 202001010000 "$FM_HOME/state/.claude-autoarm-epoch"
         "$FM_HOME/bin/fm-claude-stop-autoarm.sh" 2>&1
@@ -1291,14 +1252,16 @@ test_stuck_generation_claim_is_superseded_and_rearms() {
 # A session restart mid-cycle: the dying session's Stop hook armed
 # a cycle and then the session exited, leaving the hook alive but orphaned - no
 # parent to deliver its exit 2 to. The replacement session's first Stop must NOT
-# defer to that claim: a claim is open only while its owner still descends from
-# the pid in state/.lock, so the replacement takes the next generation, attaches
-# to the same cycle, and is the hook that delivers the actionable close. The
-# orphan is superseded and goes silent. Without this the home stays deaf until a
-# captain turn, and the orphan's banner write into its dead parent's pipe leaves
-# a stranded state/.claude-autoarm-output.* holding the reason line.
+# defer to that claim. Both sessions hold main under the same name, so the name
+# alone cannot tell them apart: a claim taken under a named holder records the
+# claiming session's CLAUDE_PID and is open only while that pid is a live
+# harness. The replacement therefore takes the next generation, attaches to the
+# same cycle, and is the hook that delivers the actionable close. The orphan is
+# superseded and goes silent. Without this the home stays deaf until a captain
+# turn, and the orphan's banner write into its dead parent's pipe leaves a
+# stranded state/.claude-autoarm-output.* holding the reason line.
 test_orphaned_claim_from_dead_session_is_superseded_by_replacement() {
-  local dir out status orphan_pid orphan_out lock_pid dead_lock_pid i
+  local dir out status orphan_pid orphan_out lock_pid i
   dir=$(make_primary_dir "$TMP_ROOT/orphaned-claim")
   : > "$dir/state/task.meta"
   write_arm_fixture "$dir" gated-actionable
@@ -1306,7 +1269,8 @@ test_orphaned_claim_from_dead_session_is_superseded_by_replacement() {
   # Dying session: hold the lock, fire the hook as a background child, exit
   # once the hook has claimed and armed, so the hook outlives its session.
   FM_HOME="$dir" "$FAKE_CLAUDE" -c '
-      printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+      export CLAUDE_PID=$$
+      printf "holder:%s\n" "$FM_LOCK_HOLDER" > "$FM_HOME/state/.lock"
       printf "%s\n" "{\"session_id\":\"sess-dying\",\"stop_hook_active\":false}" \
         | "$FM_HOME/bin/fm-claude-stop-autoarm.sh" > "$FM_HOME/state/orphan-out" 2>&1 &
       printf "%s\n" "$!" > "$FM_HOME/state/orphan-hook-pid"
@@ -1316,16 +1280,15 @@ test_orphaned_claim_from_dead_session_is_superseded_by_replacement() {
   kill -0 "$orphan_pid" 2>/dev/null || fail "the orphaned hook did not survive its session's exit"
   [ "$(epoch_field "$dir" owner_pid)" = "$orphan_pid" ] || fail "the dying session's hook did not claim the ledger: $(cat "$dir/state/.claude-autoarm-epoch")"
   [ "$(epoch_outcome "$dir")" = arming ] || fail "the orphaned claim is not arming: $(epoch_outcome "$dir")"
+  [ -n "$(epoch_field "$dir" owner_harness_pid)" ] || fail "the dying session's claim did not record its CLAUDE_PID: $(cat "$dir/state/.claude-autoarm-epoch")"
 
-  # Replacement session: it does NOT write the lock itself. The dead session's
-  # pid is still on line 1, so the hook reclaims it through the real fm-lock.sh
-  # recovery path, exactly as production does, and line 1 becomes the
-  # replacement's own anchor pid. The first Stop fires while the orphan's cycle
-  # is still under way. Wait for it to either defer (the regression) or take the
-  # next generation and arm.
-  dead_lock_pid=$(sed -n 1p "$dir/state/.lock")
+  # Replacement session: a new process under the same holder name, so line 1
+  # already names it and it does not write the lock. The first Stop fires while
+  # the orphan's cycle is still under way. Wait for it to either defer (the
+  # regression) or take the next generation and arm.
   printf '%s\n' '{"session_id":"sess-replacement","stop_hook_active":false}' \
     | FM_HOME="$dir" "$FAKE_CLAUDE" -c '
+        export CLAUDE_PID=$$
         "$FM_HOME/bin/fm-claude-stop-autoarm.sh"
       ' > "$dir/state/replacement-out" 2>&1 &
   RUN_AUTOARM_BG_PID=$!
@@ -1351,77 +1314,12 @@ test_orphaned_claim_from_dead_session_is_superseded_by_replacement() {
   [ "$(wc -l < "$dir/state/arm-ran")" -eq 3 ] || fail "expected the orphan's arm, the replacement's arm, and the replacement's handling successor: $(cat "$dir/state/arm-ran")"
   [ "$(epoch_outcome "$dir")" = rewake ] || fail "the ledger must record the replacement's rewake, got: $(cat "$dir/state/.claude-autoarm-epoch")"
   [ "$(epoch_field "$dir" owner_pid)" != "$orphan_pid" ] || fail "the orphaned hook still owns the ledger"
-  [ "$(epoch_field "$dir" session_pid)" = "$lock_pid" ] || fail "the rewake must bind the replacement session's lock pid"
-  [ "$lock_pid" != "$dead_lock_pid" ] || fail "fm-lock.sh recovery left the dead session's pid on lock line 1: $lock_pid"
+  [ "$lock_pid" = "holder:$FM_LOCK_HOLDER" ] || fail "the replacement changed the named holder on lock line 1: $lock_pid"
+  [ "$(epoch_field "$dir" session_pid)" = "$lock_pid" ] || fail "the rewake must bind the named holder on lock line 1"
   ! grep -q 'firstmate watcher wake' "$orphan_out" || fail "the superseded orphan still delivered a banner: $(cat "$orphan_out")"
   [ -z "$(find "$dir/state" -maxdepth 1 -name '.claude-autoarm-output.*')" ] \
     || fail "a stranded arm output survived the cycle: $(find "$dir/state" -maxdepth 1 -name '.claude-autoarm-output.*')"
   pass "auto-arm: a dead session's orphaned open claim is superseded so the replacement session delivers the wake"
-}
-
-# The same session restart, RESUMED (`claude --resume <id>`): the replacement
-# carries the dead session's conversation id, so bin/fm-lock.sh leaves the
-# state/.lock-session sidecar naming that id untouched and the orphan's recorded
-# owner_session_id still matches it. It must still be superseded, because the
-# resumed session holds the lock in a new process and the orphan's recorded
-# lock-holder identity is the dead holder's. Deferring here would leave the resumed
-# home deaf for exactly the case this change exists to fix.
-test_resumed_same_id_session_supersedes_the_orphan() {
-  local dir out status orphan_pid orphan_out lock_pid dead_lock_pid i
-  dir=$(make_primary_dir "$TMP_ROOT/resumed-same-id-orphan")
-  : > "$dir/state/task.meta"
-  write_arm_fixture "$dir" gated-actionable
-  orphan_out="$dir/state/orphan-out"
-  printf 'sess-resumed\n' > "$dir/state/.lock-session"
-  export CLAUDE_CODE_SESSION_ID=sess-resumed
-  FM_HOME="$dir" "$FAKE_CLAUDE" -c '
-      export CLAUDE_PID=$$
-      printf "%s\n" "$$" > "$FM_HOME/state/.lock"
-      printf "%s\n" "{\"session_id\":\"sess-resumed\",\"stop_hook_active\":false}" \
-        | "$FM_HOME/bin/fm-claude-stop-autoarm.sh" > "$FM_HOME/state/orphan-out" 2>&1 &
-      printf "%s\n" "$!" > "$FM_HOME/state/orphan-hook-pid"
-      for _ in $(seq 1 250); do [ -e "$FM_HOME/state/arm-ran" ] && break; sleep 0.02; done
-    '
-  orphan_pid=$(cat "$dir/state/orphan-hook-pid")
-  kill -0 "$orphan_pid" 2>/dev/null || fail "the orphaned hook did not survive its session's exit"
-  [ "$(epoch_field "$dir" owner_session_id)" = sess-resumed ] \
-    || fail "the dying session's claim did not record its session id: $(cat "$dir/state/.claude-autoarm-epoch")"
-  [ -n "$(sed -n 3p "$dir/state/.claude-autoarm-epoch")" ] \
-    || fail "the dying session's claim did not record its lock holder identity: $(cat "$dir/state/.claude-autoarm-epoch")"
-
-  # Resumed session: same conversation id, new process. It does NOT write the
-  # lock itself - the dead session's pid is still on line 1, so the hook reclaims
-  # it through the real fm-lock.sh recovery path and line 1 becomes this
-  # process's own anchor pid, while the same-id sidecar is left untouched.
-  dead_lock_pid=$(sed -n 1p "$dir/state/.lock")
-  printf '%s\n' '{"session_id":"sess-resumed","stop_hook_active":false}' \
-    | FM_HOME="$dir" "$FAKE_CLAUDE" -c '
-        export CLAUDE_PID=$$
-        "$FM_HOME/bin/fm-claude-stop-autoarm.sh"
-      ' > "$dir/state/replacement-out" 2>&1 &
-  RUN_AUTOARM_BG_PID=$!
-  for i in $(seq 1 250); do
-    kill -0 "$RUN_AUTOARM_BG_PID" 2>/dev/null || break
-    [ "$(wc -l < "$dir/state/arm-ran")" -ge 2 ] && break
-    sleep 0.02
-  done
-  lock_pid=$(sed -n 1p "$dir/state/.lock")
-  : > "$dir/state/arm-release"
-  wait "$RUN_AUTOARM_BG_PID"; status=$?
-  out=$(cat "$dir/state/replacement-out")
-  for i in $(seq 1 250); do kill -0 "$orphan_pid" 2>/dev/null || break; sleep 0.02; done
-  kill -0 "$orphan_pid" 2>/dev/null && { kill "$orphan_pid" 2>/dev/null; fail "the orphaned hook never finished after its cycle closed"; }
-  unset CLAUDE_CODE_SESSION_ID
-
-  expect_code 2 "$status" "a resumed session sharing the dead session's id must supersede its orphaned claim and rewake, not defer to it"
-  assert_contains "$out" "firstmate watcher wake" "the resumed session's rewake must carry the wake banner"
-  [ "$(sed -n 1p "$dir/state/.lock-session")" = sess-resumed ] \
-    || fail "the resumed session's lock recovery rewrote the sidecar, so the test no longer reproduces the same-id path"
-  [ "$(epoch_field "$dir" owner_pid)" != "$orphan_pid" ] || fail "the orphaned hook still owns the ledger"
-  [ "$(epoch_field "$dir" session_pid)" = "$lock_pid" ] || fail "the rewake must bind the resumed session's lock pid"
-  [ "$lock_pid" != "$dead_lock_pid" ] || fail "fm-lock.sh recovery left the dead session's pid on lock line 1: $lock_pid"
-  ! grep -q 'firstmate watcher wake' "$orphan_out" || fail "the superseded orphan still delivered a banner: $(cat "$orphan_out")"
-  pass "auto-arm: a resumed session with the dead session's id still supersedes its orphaned claim"
 }
 
 # A background session whose bridge is recycled mid-cycle loses the contiguous
@@ -1497,40 +1395,44 @@ test_recycled_bridge_claim_stays_open_on_session_id_match() {
   pass "auto-arm: a recycled-bridge claim stays open on its recorded session id and lock-holder identity, and nothing else does"
 }
 
-# A claim with no numeric session-lock pid is never open: nothing can receive
-# its rewake (the hook itself goes silent on a missing or malformed lock), so
-# deferring to it would leave the home deaf. Same live, identity-matched,
-# fresh-beacon owner, three lock states, one predicate.
-test_claim_without_numeric_session_lock_is_not_open() {
+# A claim is open only while state/.lock still names the holder the claim was
+# taken under. Another name, a missing lock or a malformed lock means nothing
+# this claim belongs to can receive its rewake (the hook itself goes silent on
+# a missing or malformed lock), so deferring to it would leave the home deaf.
+# Same live, identity-matched, fresh-beacon owner, four lock states, one
+# predicate.
+test_claim_is_open_only_under_its_named_holder() {
   local dir rc
   dir=$(make_primary_dir "$TMP_ROOT/v2-lockless-claim")
   : > "$dir/state/.last-watcher-beat"
+  # $1: what state/.lock holds; $2: the holder name the claim recorded.
   probe() {
     FM_STATE_OVERRIDE="$dir/state" bash -c '
         . "$1/bin/fm-wake-lib.sh"
         sleep 60 &
         owner=$!
         identity=$(fm_pid_identity "$owner") || exit 97
-        printf "epoch=464 owner_pid=%s outcome=arming updated_at=1\n%s\n" "$owner" "$identity" \
+        printf "epoch=464 owner_pid=%s outcome=arming updated_at=1 owner_holder=%s\n%s\n" "$owner" "$3" "$identity" \
           > "$1/state/.claude-autoarm-epoch"
         case "$2" in
-          self) printf "%s\n" "$$" > "$1/state/.lock" ;;
           absent) rm -f "$1/state/.lock" ;;
           *) printf "%s\n" "$2" > "$1/state/.lock" ;;
         esac
         fm_autoarm_claim_open "$1/state"; rc=$?
         kill "$owner" 2>/dev/null
         exit "$rc"
-      ' _ "$dir" "$1"
+      ' _ "$dir" "$1" "$2"
   }
-  probe self; rc=$?
+  probe holder:claude claude; rc=$?
   [ "$rc" -ne 97 ] || fail "could not record a v2 claim for the probe's sleeper"
-  expect_code 0 "$rc" "a live claim owned by a child of the numeric lock pid must be open"
-  probe absent; rc=$?
+  expect_code 0 "$rc" "a live claim taken under the lock's named holder must be open"
+  probe holder:pocock claude; rc=$?
+  expect_code 1 "$rc" "a claim taken under another holder name must not be open"
+  probe absent claude; rc=$?
   expect_code 1 "$rc" "a claim with no state/.lock at all must not be open"
-  probe not-a-pid; rc=$?
+  probe not-a-pid claude; rc=$?
   expect_code 1 "$rc" "a claim under a malformed state/.lock must not be open"
-  pass "auto-arm: a claim is open only under a numeric session lock its owner descends from"
+  pass "auto-arm: a claim is open only under the named holder it was taken under"
 }
 
 # Identity is mandatory at read time: a bare identityless one-line arming
@@ -1594,7 +1496,7 @@ test_superseded_owner_goes_silent_and_never_double_translates() {
   # fake harness holds the lock for the whole scenario and each hook runs as
   # its child, with exit codes and output left in state/ for the assertions.
   FM_HOME="$dir" "$FAKE_CLAUDE" -c '
-    printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+    printf "holder:%s\n" "$FM_LOCK_HOLDER" > "$FM_HOME/state/.lock"
     fire() { printf "%s\n" "{\"session_id\":\"s\",\"stop_hook_active\":false}" | "$FM_HOME/bin/fm-claude-stop-autoarm.sh" > "$FM_HOME/state/$1.out" 2>&1; echo $? > "$FM_HOME/state/$1.rc"; }
     fire a &
     a_pid=$!
@@ -1966,7 +1868,7 @@ test_arguments_never_arm() {
     before_contents=$(find "$dir/state" -type f ! -name .lock -exec cksum {} + | sort)
     rc=0
     out=$(FM_HOME="$dir" "$FAKE_CLAUDE" -c '
-        printf "%s\n" "$$" > "$FM_HOME/state/.lock"
+        printf "holder:%s\n" "$FM_LOCK_HOLDER" > "$FM_HOME/state/.lock"
         "$FM_HOME/bin/fm-claude-stop-autoarm.sh" "$1" </dev/null 2>"$FM_HOME/help-stderr"
       ' _ "$arg") || rc=$?
     after=$(find "$dir/state" -mindepth 1 ! -name .lock | sort)
@@ -2005,7 +1907,6 @@ test_reclaims_stale_session_lock_before_arming
 test_inert_when_lock_held_by_other_harness
 test_inert_when_afk
 test_stale_lock_recovery_preserves_afk_and_need_gates
-test_resolves_outermost_claude_pid_in_nested_bgspare_chain
 test_inert_when_fleet_idle
 test_actionable_close_rewakes_with_reason
 test_actionable_close_with_live_successor_rewakes_once
@@ -2037,8 +1938,7 @@ test_stopped_legacy_owner_is_reclaimed_with_term_pending
 test_open_generation_claim_defers_without_any_lock
 test_stuck_generation_claim_is_superseded_and_rearms
 test_orphaned_claim_from_dead_session_is_superseded_by_replacement
-test_resumed_same_id_session_supersedes_the_orphan
-test_claim_without_numeric_session_lock_is_not_open
+test_claim_is_open_only_under_its_named_holder
 test_recycled_bridge_claim_stays_open_on_session_id_match
 test_identityless_ledger_never_defers
 test_superseded_owner_never_reinvokes_the_arm

@@ -344,7 +344,7 @@ test_kimi_launch_then_send_is_verified() {
   assert_contains "$out" "spawned $id harness=kimi" "kimi spawn did not report success"
 
   launch=$(cat "$CASE_DIR/launch.log")
-  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$HOME_DIR" "$id")$(fm_test_launch_git_prefix "$launch")env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI '$FAKEBIN_DIR/kimi' --model 'kimi-code/k3' --auto" ] \
+  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$HOME_DIR" "$id")unset FM_LOCK_HOLDER; $(fm_test_launch_git_prefix "$launch")env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER '$FAKEBIN_DIR/kimi' --model 'kimi-code/k3' --auto" ] \
     || fail "kimi launch did not use the absolute binary, model, and --auto only: $launch"
   assert_not_contains "$launch" "--effort" "kimi launch emitted a nonexistent effort flag"
   assert_not_contains "$launch" "turn-ended" "kimi launch embedded a turn-end path"
@@ -720,7 +720,7 @@ test_kimi_falls_back_to_expanded_home_binary() {
   rc=$?
   expect_code 0 "$rc" "Kimi HOME fallback spawn should succeed"
   launch=$(cat "$CASE_DIR/launch.log")
-  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$HOME_DIR" "$id")$(fm_test_launch_git_prefix "$launch")env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI '$fallback' --auto" ] \
+  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$HOME_DIR" "$id")unset FM_LOCK_HOLDER; $(fm_test_launch_git_prefix "$launch")env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER '$fallback' --auto" ] \
     || fail "Kimi fallback did not expand HOME into an absolute executable: $launch"
   pass "fm-spawn: Kimi fallback expands the active HOME"
 }
@@ -1047,7 +1047,7 @@ SH
 }
 
 test_kimi_session_lock_identity() {
-  local home fakebin out
+  local home fakebin rc=0
   home="$TMP_ROOT/session-lock-home"
   fakebin=$(fm_fakebin "$TMP_ROOT/session-lock-fake")
   mkdir -p "$home/state"
@@ -1061,16 +1061,16 @@ exit 1
 SH
   chmod +x "$fakebin/ps"
 
-  FM_HOME="$home" PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-lock.sh" \
-    || fail "fm-lock did not acquire from Kimi ancestry"
-  case "$(cat "$home/state/.lock")" in
-    ''|*[!0-9]*) fail "fm-lock did not record the Kimi harness ancestor" ;;
-  esac
+  FM_HOME="$home" FM_LOCK_HOLDER=kimi PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-lock.sh" >/dev/null 2>&1 \
+    || fail "a Kimi session could not claim a free lock by name"
+  [ "$(cat "$home/state/.lock")" = holder:kimi ] || fail "the named claim did not record holder:kimi"
+  # A live Kimi process recorded by a pre-switch build is still a live owner:
+  # another name's claim is refused and changes nothing.
   printf '%s\n' "$$" > "$home/state/.lock"
-  out=$(FM_HOME="$home" PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-lock.sh" status)
-  assert_contains "$out" "lock: held by live harness pid" \
-    "fm-lock did not recognize Kimi as a live holder"
-  pass "fm-lock recognizes Kimi ancestry and live lock holders"
+  FM_HOME="$home" FM_LOCK_HOLDER=pocock PATH="$fakebin:$BASE_PATH" "$ROOT/bin/fm-lock.sh" >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "a named claim replaced a live Kimi holder"
+  [ "$(cat "$home/state/.lock")" = "$$" ] || fail "a refused named claim changed the live Kimi holder's line"
+  pass "fm-lock: Kimi claims by name and a live Kimi holder refuses another name"
 }
 
 test_kimi_busy_signature_is_scoped_to_spinner_lines() {
