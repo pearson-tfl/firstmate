@@ -301,16 +301,19 @@ test_library_reads_the_named_holder_from_line_one() {
   pass "the library reads the named holder from line 1 and decides ownership by name"
 }
 
-# The re-check the Claude first mate (holder claude) runs before each drain, spawn or merge also checks the
-# hung-forwarder detector's beat: one row per stale beat to the notify command
-# in config/detector-notify, and the claim's outcome is unchanged.
+# The re-check main's named holder runs before each drain, spawn or merge
+# also checks the hung-forwarder detector's beat: one row per stale beat to
+# the notify command in config/detector-notify, and the claim's outcome is
+# unchanged. It claims as claude, the Claude first mate the detector notifies
+# after the switch from pocock (#5266), with the installed route's target and
+# tag.
 test_recheck_sends_one_row_on_a_stale_detector_beat() {
   local home out t
   home=$(new_home detector-beat)
   mkdir -p "$home/config"
-  printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "$1" "$2" >> "%s/inbox"\n' "$home" > "$home/notify"
+  printf '#!/usr/bin/env bash\nprintf "%%s|%%s|%%s\\n" "$1" "$2" "$3" >> "%s/inbox"\n' "$home" > "$home/notify"
   chmod +x "$home/notify"
-  printf '%s\n%s\n' "$home/notify" "firstmate" > "$home/config/detector-notify"
+  printf '%s\n%s\n%s\n' "$home/notify" firstmate fm-lock-recheck > "$home/config/detector-notify"
   : > "$home/inbox"
   : > "$home/state/.detector-beat"
   out=$(claim "$home" claude)
@@ -322,7 +325,7 @@ test_recheck_sends_one_row_on_a_stale_detector_beat() {
   assert_contains "$out" "rc=0" "claim with a stale detector beat still succeeds"
   assert_contains "$out" "lock acquired: holder claude" "claim output unchanged"
   [ "$(grep -c . "$home/inbox")" -eq 1 ] || fail "stale detector beat gave $(grep -c . "$home/inbox") rows: $(cat "$home/inbox")"
-  grep -q "^firstmate|firstmate forwarder detector in $home: detector beat is" "$home/inbox" \
+  grep -q "^firstmate|fm-lock-recheck|firstmate forwarder detector in $home: detector beat is" "$home/inbox" \
     || fail "row does not carry the configured arguments and the home: $(cat "$home/inbox")"
   out=$(claim "$home" claude)
   [ "$(grep -c . "$home/inbox")" -eq 1 ] || fail "a second re-check on the same stale beat sent another row"
