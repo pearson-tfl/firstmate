@@ -304,9 +304,8 @@ ok - cursor primary: the captain keeps control and the older park stands down af
 ok - cursor primary: an away-mode escalation is delivered, confirmed, and processed
 ```
 
-The live run proved that session start acquires the fleet lock through Cursor's structural process identity in `bin/fm-cursor-lib.sh`.
-That ancestry path and its portable suite were deleted by #5065; a Cursor primary's lock is now a named holder, and its pid-dependent proofs are skipped until #5137.
-It also proved that Cursor's `autoarm` supervision model lets the mid-turn pull guard accept a fresh beacon after the between-turn watcher closes; `tests/fm-guard-stale-banner.test.sh` pins that model-aware verdict.
+A Cursor primary's lock is a named holder, and its pid-dependent proofs are skipped until #5137.
+The live run proved that Cursor's `autoarm` supervision model lets the mid-turn pull guard accept a fresh beacon after the between-turn watcher closes; `tests/fm-guard-stale-banner.test.sh` pins that model-aware verdict.
 The baton is claimed only by the next `stop`, so an actionable close before that claim can still produce one real follow-up from the sole existing park; durable wake handling is idempotent, and any older park still running after the claim stands down.
 The step is now registered for the dialog mirror, but still does not invalidate the park baton; [turnend-guard.md](../turnend-guard.md) owns the remaining pre-claim window and deferred fix.
 
@@ -341,8 +340,7 @@ That inertness result is scoped to the builds it exercised: it did not establish
 
 The secondmate-home scope and manual-repair wake path were measured with Claude Code 2.1.207 on 2026-07-12, when a native background completion re-invoked the idle model with no human input.
 The current Stop-owned main/secondmate inclusion and child-worktree exclusion are covered deterministically by `tests/fm-claude-stop-autoarm.test.sh`.
-Session-lock ownership in `bin/fm-session-lock-lib.sh` is a named holder only since #5065: line 1 is `holder:<name>` and a session owns it only when its `FM_LOCK_HOLDER` carries that name.
-The harness-ancestry walk, the trusted same-session id as an ownership signal, the line-1 re-anchor onto `CLAUDE_PID`, and `tests/fm-session-lock-ancestry.test.sh` that pinned them were deleted with it, so their earlier records are retired here.
+Session-lock ownership in `bin/fm-session-lock-lib.sh` is a named holder only: line 1 is `holder:<name>` and a session owns it only when its `FM_LOCK_HOLDER` carries that name.
 Harness identity is still read from the executable path and `argv[0]` as well as the command basename for a legacy pid line's liveness, because Claude Code's native installer names the per-session executable by its version (`.../share/claude/versions/2.1.220`): `ps -o comm=` reports that path on macOS and the bare version string on Linux, and neither basename names a harness.
 `tests/fm-turnend-foreign-owner-repro.py` holds main under a synthetic holder name as the negative control: a second session without that name is refused by the two-mains guard and its Stops end safely naming the holder, while a replacement session under the holder's own name recovers supervision.
 The named-holder repro ran on 2026-11-02 on Linux with GNU bash 5.3.15 as the fake harness interpreter and Python 3.14.0 for the repro:
