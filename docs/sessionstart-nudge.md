@@ -103,9 +103,7 @@ A lock another live session took meanwhile still produces the ordinary read-only
 ### Nudge wrapper on a run-tier harness
 
 On a run-tier harness, only `resume`, `reload`, and `fork` are routed to the nudge wrapper.
-The nudge wrapper has its own separate lock check (below), which normally stays silent when this process already holds the lock.
-For a pid lock, a background Claude helper-chain recycle can break the ancestry walk that check uses.
-The wrapper may then emit a redundant nudge even though the shared same-session verdict still owns the lock.
+The nudge wrapper has its own lock check (below), which stays silent when this session already holds the lock by name.
 The requested session start remains idempotent.
 
 ### Re-emit mechanics
