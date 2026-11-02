@@ -301,6 +301,40 @@ test_library_reads_the_named_holder_from_line_one() {
   pass "the library reads the named holder from line 1 and decides ownership by name"
 }
 
+# The re-check pocock runs before each drain, spawn or merge also checks the
+# hung-forwarder detector's beat: one row per stale beat to the notify command
+# in config/detector-notify, and the claim's outcome is unchanged.
+test_recheck_sends_one_row_on_a_stale_detector_beat() {
+  local home out t
+  home=$(new_home detector-beat)
+  mkdir -p "$home/config"
+  printf '#!/usr/bin/env bash\nprintf "%%s|%%s\\n" "$1" "$2" >> "%s/inbox"\n' "$home" > "$home/notify"
+  chmod +x "$home/notify"
+  printf '%s\n%s\n' "$home/notify" "--to-pocock" > "$home/config/detector-notify"
+  : > "$home/inbox"
+  : > "$home/state/.detector-beat"
+  out=$(claim "$home" pocock)
+  assert_contains "$out" "rc=0" "claim with a fresh detector beat"
+  [ ! -s "$home/inbox" ] || fail "a fresh detector beat sent a row: $(cat "$home/inbox")"
+  t=$(( $(date +%s) - 1000 ))
+  perl -e 'utime $ARGV[0], $ARGV[0], $ARGV[1] or die' "$t" "$home/state/.detector-beat"
+  out=$(claim "$home" pocock)
+  assert_contains "$out" "rc=0" "claim with a stale detector beat still succeeds"
+  assert_contains "$out" "lock acquired: holder pocock" "claim output unchanged"
+  [ "$(grep -c . "$home/inbox")" -eq 1 ] || fail "stale detector beat gave $(grep -c . "$home/inbox") rows: $(cat "$home/inbox")"
+  grep -q "^--to-pocock|firstmate forwarder detector in $home: detector beat is" "$home/inbox" \
+    || fail "row does not carry the configured arguments and the home: $(cat "$home/inbox")"
+  out=$(claim "$home" pocock)
+  [ "$(grep -c . "$home/inbox")" -eq 1 ] || fail "a second re-check on the same stale beat sent another row"
+  rm -f "$home/config/detector-notify"
+  t=$(( $(date +%s) - 2000 ))
+  perl -e 'utime $ARGV[0], $ARGV[0], $ARGV[1] or die' "$t" "$home/state/.detector-beat"
+  out=$(claim "$home" pocock)
+  assert_contains "$out" "rc=0" "claim with no detector-notify config"
+  [ "$(grep -c . "$home/inbox")" -eq 1 ] || fail "a row was sent with no detector-notify config"
+  pass "the named re-check sends one row on a detector beat over 900s and still claims"
+}
+
 fm_test_run \
   test_named_claim_on_a_free_lock_writes_the_holder_and_publishes_the_session \
   test_named_claim_is_refused_while_a_live_claude_pid_holds_the_lock \
@@ -312,4 +346,5 @@ fm_test_run \
   test_secondmate_release_then_reclaim \
   test_two_runs_under_one_name_both_pass \
   test_startup_sweep_refusal_reads_as_wait_and_retry \
-  test_library_reads_the_named_holder_from_line_one
+  test_library_reads_the_named_holder_from_line_one \
+  test_recheck_sends_one_row_on_a_stale_detector_beat

@@ -210,7 +210,7 @@ test_each_run_touches_the_detector_beat() {
   set_age "$state/.last-watcher-beat" 5
   set_age "$state/.detector-beat" 5000
   run_detector "$dir" || fail "run exited nonzero"
-  [ "$(fm_path_age "$state/.detector-beat")" -lt 30 ] || fail "detector beat not touched"
+  [ $(( $(date +%s) - $(perl -e 'print +(stat $ARGV[0])[9]' "$state/.detector-beat") )) -lt 30 ] || fail "detector beat not touched"
   pass "detector: each run touches the detector beat"
 }
 
@@ -261,12 +261,13 @@ test_refuses_without_home_or_label() {
   pass "detector: refuses to guess a home or a forwarder label"
 }
 
-test_hung_restarts_once_then_escalates_then_stays_silent
-test_only_one_stale_beat_is_not_hung
-test_cycle_end_of_the_forwarders_arm_past_60s_is_hung
-test_hand_run_arm_cycle_triggers_nothing
-test_doorbell_down_is_logged
-test_each_run_touches_the_detector_beat
-test_hung_run_is_ended_by_the_alarm
-test_no_forwarder_beat_does_nothing
-test_refuses_without_home_or_label
+fm_test_run \
+  test_hung_restarts_once_then_escalates_then_stays_silent \
+  test_only_one_stale_beat_is_not_hung \
+  test_cycle_end_of_the_forwarders_arm_past_60s_is_hung \
+  test_hand_run_arm_cycle_triggers_nothing \
+  test_doorbell_down_is_logged \
+  test_each_run_touches_the_detector_beat \
+  test_hung_run_is_ended_by_the_alarm \
+  test_no_forwarder_beat_does_nothing \
+  test_refuses_without_home_or_label

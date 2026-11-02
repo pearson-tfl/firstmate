@@ -248,9 +248,44 @@ test_refuses_without_an_explicit_home() {
   pass "forwarder: refuses to guess a home"
 }
 
+# Each forwarder loop checks the detector's beat: one row per stale beat, not
+# one per loop.
+test_loop_sends_one_row_on_a_stale_detector_beat() {
+  local dir state i t
+  dir=$(make_forwarder_case detector-beat)
+  state="$dir/state"
+  : > "$state/.detector-beat"
+  t=$(( $(date +%s) - 1000 ))
+  perl -e 'utime $ARGV[0], $ARGV[0], $ARGV[1] or die' "$t" "$state/.detector-beat"
+  start_forwarder "$dir"
+  wait_for_armed "$state" || fail "forwarder never armed: $(cat "$dir/forwarder.err")"
+  i=0
+  while [ "$i" -lt 50 ] && ! grep -q "detector beat" "$dir/inbox"; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  [ "$(grep -c "detector beat is" "$dir/inbox")" -eq 1 ] \
+    || fail "a stale detector beat gave $(grep -c "detector beat is" "$dir/inbox") rows: $(cat "$dir/inbox")"
+  grep -q "^firstmate forwarder detector in $dir: detector beat is" "$dir/inbox" \
+    || fail "detector row does not name the home: $(cat "$dir/inbox")"
+  # A wake makes the loop run again; the same stale beat sends no second row.
+  append_wake "$state" check startup-network 'check: startup-network detector fixture'
+  i=0
+  while [ "$i" -lt 300 ] && ! grep -q "^firstmate wake in" "$dir/inbox"; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  wait_for_armed "$state" || fail "forwarder did not re-arm after the wake"
+  [ "$(grep -c "detector beat is" "$dir/inbox")" -eq 1 ] \
+    || fail "the next loop sent another row for the same stale beat: $(cat "$dir/inbox")"
+  stop_forwarder "$state"
+  pass "forwarder: the loop sends one row on a detector beat over 900s"
+}
+
 test_one_wake_gives_one_row_and_keeps_the_queue_row
 test_second_copy_exits_without_arming
 test_failing_arm_sends_one_row_per_failure_run
 test_failed_notify_is_retried
 test_term_stops_the_arm_and_watcher
 test_refuses_without_an_explicit_home
+test_loop_sends_one_row_on_a_stale_detector_beat

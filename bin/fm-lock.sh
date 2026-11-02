@@ -36,6 +36,11 @@
 #                             under the claim lock, remove state/.lock and
 #                             state/.lock-session only when line 1 is
 #                             holder:<name>; otherwise exit 1, changing nothing.
+#
+# After a verified acquisition (the re-check a named holder runs before each
+# drain, spawn or merge), a home with config/detector-notify (one argument per
+# line) gets one row through that command when the hung-forwarder detector's
+# beat is stale (bin/fm-forwarder-detector-lib.sh). It never changes the exit.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -309,3 +314,10 @@ fi
 commit_lock_session
 release_claim_lock
 echo "lock acquired: holder $HOLDER_NAME"
+# The re-check also watches the hung-forwarder detector: one row per stale
+# detector beat to the command in config/detector-notify, if the home has one.
+# shellcheck source=bin/fm-forwarder-detector-lib.sh
+. "$SCRIPT_DIR/fm-forwarder-detector-lib.sh"
+if fm_detector_notify_load "$FM_HOME/config/detector-notify"; then
+  fm_detector_beat_check "${FM_DETECTOR_NOTIFY[@]}"
+fi

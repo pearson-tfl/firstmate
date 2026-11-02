@@ -7,7 +7,9 @@
 #   FM_HOME=<home> fm-wake-forwarder.sh [--once] -- <notify-command> [args...]
 #
 # Each loop:
-#   1. Writes state/.forwarder-beat (its mtime is the forwarder's beat).
+#   1. Writes state/.forwarder-beat (its mtime is the forwarder's beat), then
+#      sends one row through <notify-command> when the hung-forwarder
+#      detector's beat is stale (bin/fm-forwarder-detector-lib.sh).
 #   2. Runs bin/fm-watch-arm.sh as a tracked child it waits on and stops on
 #      TERM or INT (never fired and forgotten).
 #      The child records its own pid as `arm_pid=<N>` in the beat before it
@@ -76,6 +78,8 @@ export FM_HOME
 
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
+# shellcheck source=bin/fm-forwarder-detector-lib.sh
+. "$SCRIPT_DIR/fm-forwarder-detector-lib.sh"
 
 ARM=${FM_FORWARDER_ARM:-$SCRIPT_DIR/fm-watch-arm.sh}
 RETRY=${FM_FORWARDER_RETRY_SECONDS:-15}
@@ -112,6 +116,7 @@ failing=0
 while :; do
   printf 'arm_pid=\nforwarder_pid=%s\n' "$$" > "$FORWARDER_BEAT.tmp" \
     && mv -f "$FORWARDER_BEAT.tmp" "$FORWARDER_BEAT"
+  fm_detector_beat_check "$@"
   # The child writes its own pid, then execs the arm in place, so the pid in
   # the beat is the arm's own pid. The forwarder waits on it and signals it on
   # shutdown: a tracked child, never fired and forgotten.
