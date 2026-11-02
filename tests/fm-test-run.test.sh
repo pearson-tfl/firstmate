@@ -361,9 +361,16 @@ test_changed_dependency_selection_and_unmapped_failure() {
   git -C "$repo" add .pi/extensions/lib/fm-operational-input.ts
   git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm operational-input-source-change
 
+  printf '# .agents/skills/harness-adapters\n' >>"$repo/tests/fm-harness-adapter-references.test.sh"
+  git -C "$repo" add tests/fm-harness-adapter-references.test.sh
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm harness-adapter-reader
   printf '\n' >>"$repo/.agents/skills/harness-adapters/references/common/dispatch.md"
   listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
   assert_contains "$listed" "tests/fm-harness-adapter-references.test.sh" "harness adapter reference selects portable structural coverage"
+  case "$listed" in
+    *fm-brief.test.sh*)
+      fail "a harness adapter reference selected contract suites that do not read it: $listed" ;;
+  esac
   assert_contains "$listed" "tests/fm-harness-adapter-instructions-live-e2e.test.sh" "harness adapter reference selects opt-in instruction coverage"
   git -C "$repo" add .agents/skills/harness-adapters
   git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm harness-adapter-reference-change
