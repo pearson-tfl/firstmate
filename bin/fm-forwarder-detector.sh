@@ -79,6 +79,8 @@ export FM_HOME
 
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
+# shellcheck source=bin/fm-forwarder-detector-lib.sh
+. "$SCRIPT_DIR/fm-forwarder-detector-lib.sh"
 
 # The watcher stall bound (900s at the default poll) plus 60s margin.
 HUNG_SECONDS=$(( $(fm_watcher_stall_bound) + 60 ))
