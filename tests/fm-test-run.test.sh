@@ -305,7 +305,7 @@ test_shell_line_ending_policy_selects_runner_contract() {
   pass "shell line-ending policy selects runner coverage"
 }
 
-test_changed_dependency_selection_and_unmapped_failure() {
+test_changed_dependency_selection_and_unmapped_warning() {
   local tmp repo listed rc
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/fm-test-run-changed.XXXXXX")
   repo="$tmp/repo"
@@ -1941,6 +1941,17 @@ probe_beta() {  # calls alpha
 probe_gamma() {
   echo gamma
 }
+probe_short() { echo short; }
+probe_after_short() {
+  echo after
+}
+probe_uncalled() {
+  echo nobody
+}
+probe_cleanup() {
+  echo cleanup
+}
+trap probe_cleanup EXIT
 SH
   printf 'probe_alpha\n' >>"$repo/tests/fm-pr-merge.test.sh"
   printf 'probe_beta\n' >>"$repo/tests/fm-secondmate-safety.test.sh"
@@ -1960,6 +1971,28 @@ SH
     || fail "a line deleted from a lib function must select its callers, got: $listed"
   git -C "$repo" checkout -q -- tests/lib.sh
 
+  # A one-liner closes on its own line, so the next function's body is not
+  # credited to it.
+  printf 'probe_short\n' >>"$repo/tests/fm-backend.test.sh"
+  printf 'probe_after_short\n' >>"$repo/tests/fm-brief.test.sh"
+  git -C "$repo" add .
+  git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -qm one-liner-callers
+  sed -i.bak 's/echo after/echo AFTER/' "$repo/tests/lib.sh" && rm -f "$repo/tests/lib.sh.bak"
+  listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
+  [ "$listed" = "tests/fm-brief.test.sh" ] \
+    || fail "a change after a one-liner must select only its own function's callers, got: $listed"
+  git -C "$repo" checkout -q -- tests/lib.sh
+
+  # A function no suite names, and one a trap runs, keep the whole-file
+  # selection rather than select nothing.
+  for fn_body in 'echo nobody/echo NOBODY' 'echo cleanup/echo CLEANUP'; do
+    sed -i.bak "s/$fn_body/" "$repo/tests/lib.sh" && rm -f "$repo/tests/lib.sh.bak"
+    listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
+    assert_contains "$listed" "tests/fm-backend-orca.test.sh" \
+      "an uncalled or trap-run lib function keeps the whole-file selection ($fn_body)"
+    git -C "$repo" checkout -q -- tests/lib.sh
+  done
+
   sed -i.bak 's/LIB_TOP=1/LIB_TOP=2/' "$repo/tests/lib.sh" && rm -f "$repo/tests/lib.sh.bak"
   listed=$(cd "$repo" && bin/fm-test-run.sh --list --changed --base HEAD)
   assert_contains "$listed" "tests/fm-backend-orca.test.sh" \
@@ -1975,7 +2008,7 @@ test_changed_file_selection_is_conservative
 test_task_marker_refuses_the_primary_checkout
 test_changed_runner_surfaces_select_their_family
 test_shell_line_ending_policy_selects_runner_contract
-test_changed_dependency_selection_and_unmapped_failure
+test_changed_dependency_selection_and_unmapped_warning
 test_changed_bin_reference_selects_per_script_not_per_family
 test_changed_uses_bounded_automatic_concurrency
 test_windows_posix_mode_emulation_does_not_fail_parallel_runs

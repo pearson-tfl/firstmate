@@ -1481,89 +1481,119 @@ families_for_unmapped_bin() {
   [ "$found" -eq 1 ]
 }
 
-# Shell functions owning the lines of <file content on stdin> listed in <lines>
-# (space-separated line numbers). Prints one name per line, or __top__ for a
-# changed line outside every function that is neither blank nor a comment.
-# Assumes the repository's helper layout: a function opens on a `name() {`
-# line and closes on a `}` in column 1.
-functions_owning_lines() {
-  awk -v want=" $1 " '
-    /^[[:space:]]*(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(\)/ && fn == "" {
+# Each line of the shell file on stdin as "<line number> <owner> <text>". The
+# owner is the function whose definition or body holds the line, or - at top
+# level. Assumes the repository's helper layout: a function opens on a
+# `name() {` line and closes on a `}` in column 1, or on its own line when it
+# is a one-liner. Anything else reads as top level, which widens selection.
+function_owner_lines() {
+  awk '
+    fn == "" && /^[[:space:]]*(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(\)/ {
       fn = $0
       sub(/^[[:space:]]*(function[[:space:]]+)?/, "", fn)
       sub(/[[:space:]]*\(\).*/, "", fn)
+      print NR, fn, $0
+      if ($0 ~ /\{.*\}[[:space:]]*(#.*)?$/) fn = ""
+      next
     }
-    index(want, " " NR " ") {
-      if (fn != "") print fn
-      else if ($0 !~ /^[[:space:]]*(#.*)?$/) print "__top__"
-    }
+    { print NR, (fn == "" ? "-" : fn), $0 }
     fn != "" && /^}/ { fn = "" }
   '
 }
 
-# Every function body line of the non-suite shell files under tests/, as
-# "<name> <line>", so callers inside other helpers can be followed.
-helper_function_lines() {
-  local f
-  for f in tests/*.sh; do
-    case "$f" in *.test.sh) continue ;; esac
-    [ -f "$f" ] || continue
-    awk '
-      /^[[:space:]]*(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(\)/ && fn == "" {
-        fn = $0
-        sub(/^[[:space:]]*(function[[:space:]]+)?/, "", fn)
-        sub(/[[:space:]]*\(\).*/, "", fn)
-        next
-      }
-      fn != "" && /^}/ { fn = ""; next }
-      fn != "" { print fn, $0 }
-    ' "$f"
-  done
+# Owners (from function_owner_lines on stdin) of the lines numbered in
+# <lines>, space-separated. A changed top-level line that is neither blank
+# nor a comment prints __top__.
+changed_owners() {
+  awk -v want=" $1 " '
+    index(want, " " $1 " ") {
+      if ($2 != "-") { print $2; next }
+      text = $0
+      sub(/^[0-9]+ - /, "", text)
+      if (text !~ /^[[:space:]]*(#.*)?$/) print "__top__"
+    }
+  '
+}
+
+# Owners (from function_owner_lines on stdin) of the lines naming any word in
+# <names>, space-separated.
+owners_naming() {
+  awk -v names="$1" '
+    BEGIN { n = split(names, a, " "); for (i = 1; i <= n; i++) want[a[i]] = 1 }
+    {
+      text = $0
+      sub(/^[0-9]+ [^ ]+ /, "", text)
+      m = split(text, w, /[^A-Za-z0-9_]+/)
+      for (i = 1; i <= m; i++) if (w[i] in want) { print $2; next }
+    }
+  '
+}
+
+# Succeeds when <file> names any word in <names>, space-separated.
+file_names_any() {
+  awk -v names="$1" '
+    BEGIN { n = split(names, a, " "); for (i = 1; i <= n; i++) want[a[i]] = 1 }
+    {
+      m = split($0, w, /[^A-Za-z0-9_]+/)
+      for (i = 1; i <= m; i++) if (w[i] in want) { found = 1; exit }
+    }
+    END { exit !found }
+  ' "$2"
 }
 
 # A shared test helper changed only inside its functions selects the suites
 # that call those functions, directly or through another helper function, one
-# script each. Fails (so the caller keeps the whole-file selection) when a
-# changed line is live code outside every function, no function changed, or the
-# change cannot be read.
+# script each. Fails, so the caller keeps the whole-file selection, when the
+# change cannot be read, no function changed, a changed line is live code
+# outside every function, a helper names a changed function outside every
+# function (a trap or a top-level call runs it in every suite sourcing that
+# helper), or no suite names a changed function.
 scripts_for_changed_functions() {
-  local path=$1 hunk old_lines="" new_lines="" a b c d i names more s found=0
+  local path=$1 hunk old_start old_len new_start new_len i
+  local old_lines="" new_lines="" names more f s found=0
   local -a parts
   [ -n "${CHANGED_MERGE_BASE:-}" ] || return 1
   while IFS= read -r hunk; do
-    # @@ -a[,b] +c[,d] @@
+    # @@ -old_start[,old_len] +new_start[,new_len] @@
     hunk=${hunk#@@ -}
     hunk=${hunk%% @@*}
     IFS=' ' read -r -a parts <<<"$hunk"
-    a=${parts[0]%%,*}; b=1; case "${parts[0]}" in *,*) b=${parts[0]#*,} ;; esac
-    c=${parts[1]#+}; c=${c%%,*}; d=1; case "${parts[1]}" in *,*) d=${parts[1]#*,} ;; esac
-    for ((i = a; i < a + b; i++)); do old_lines="$old_lines $i"; done
-    for ((i = c; i < c + d; i++)); do new_lines="$new_lines $i"; done
+    old_start=${parts[0]%%,*}; old_len=1
+    case "${parts[0]}" in *,*) old_len=${parts[0]#*,} ;; esac
+    new_start=${parts[1]#+}; new_start=${new_start%%,*}; new_len=1
+    case "${parts[1]}" in *,*) new_len=${parts[1]#*,} ;; esac
+    for ((i = old_start; i < old_start + old_len; i++)); do old_lines="$old_lines $i"; done
+    for ((i = new_start; i < new_start + new_len; i++)); do new_lines="$new_lines $i"; done
   done < <(git -C "$ROOT" diff -U0 "$CHANGED_MERGE_BASE" -- "$path" 2>/dev/null | grep '^@@ ')
   [ -n "$old_lines$new_lines" ] || return 1
   names=$(
     {
-      git -C "$ROOT" show "$CHANGED_MERGE_BASE:$path" 2>/dev/null | functions_owning_lines "$old_lines"
-      [ ! -f "$path" ] || functions_owning_lines "$new_lines" <"$path"
+      git -C "$ROOT" show "$CHANGED_MERGE_BASE:$path" 2>/dev/null \
+        | function_owner_lines | changed_owners "$old_lines"
+      [ ! -f "$path" ] || function_owner_lines <"$path" | changed_owners "$new_lines"
     } | LC_ALL=C sort -u
   )
-  # A comment- or blank-only change keeps the whole-file selection too: the
-  # runner over-selects rather than guess that nothing reads that text.
   case "$names" in ''|*__top__*) return 1 ;; esac
   while :; do
-    more=$(helper_function_lines | grep -wF -f <(printf '%s\n' "$names") | cut -d' ' -f1 || true)
+    more=$(
+      for f in tests/*.sh; do
+        case "$f" in *.test.sh) continue ;; esac
+        [ -f "$f" ] && function_owner_lines <"$f"
+      done | owners_naming "$(printf '%s\n' "$names" | tr '\n' ' ')"
+    )
+    ! printf '%s\n' "$more" | grep -qx -- - || return 1
     more=$(printf '%s\n%s\n' "$names" "$more" | grep -v '^$' | LC_ALL=C sort -u)
     [ "$more" != "$names" ] || break
     names=$more
   done
   while IFS= read -r s; do
     [ -n "$s" ] || continue
-    if grep -qwF -f <(printf '%s\n' "$names") "$s"; then
+    if file_names_any "$(printf '%s\n' "$names" | tr '\n' ' ')" "$s"; then
       printf '__script__:%s\n' "$(basename "$s")"
       found=1
     fi
   done < <(all_repo_tests)
-  [ "$found" -eq 1 ] || true
+  [ "$found" -eq 1 ]
 }
 
 # Conservative path → family map. Over-selects rather than under-selects.
@@ -1940,7 +1970,8 @@ families_for_changed_path() {
       fi
       ;;
     tests/lib.sh|tests/*-helpers.sh|tests/fixtures.sh|tests/*-fixture.sh)
-      # Shared top-level test files, selected by the suites that name them.
+      # Shared top-level test files: a change inside their functions selects
+      # the suites calling them, any other change the suites naming the file.
       # Must stay below the tests/fixtures/*/* arm: a case glob's * spans /, so
       # tests/*-fixture.sh would otherwise swallow a nested
       # tests/fixtures/<dir>/<name>-fixture.sh and scan for its basename
@@ -1951,8 +1982,8 @@ families_for_changed_path() {
       ;;
     bin/*)
       # A deleted script has no consuming suite left to select, the same rule
-      # the fixture case above applies. Refusing on its absent mapping would
-      # make every retirement branch unable to select its changed tests.
+      # the fixture case above applies; warning on its absent mapping would
+      # only add noise to every retirement branch.
       if [ -e "$path" ]; then
         families_for_unmapped_bin "$path" \
           || printf '%s\n' "__unmapped__:$path"
