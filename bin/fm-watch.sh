@@ -3358,12 +3358,15 @@ fi
 # WATCHER_STALL_BOUND. The pid is signalled only while it still proves the
 # lock's own recorded identity (fm_watcher_lock_matches_pid: this home, this
 # script, and the starttime+cmdline proof the lock carries), so a recycled pid
-# is never touched; TERM only, never KILL, and never a name or pattern match.
+# is never touched; TERM then CONT, never KILL, and never a name or pattern
+# match. The CONT goes to the same verified pid so a SIGSTOPped holder acts on
+# its pending TERM instead of keeping the lock through the bounded wait.
 # Succeeds only once the holder has exited within the bounded wait.
 evict_stalled_holder() {
   local pid=$1 i=0
   fm_watcher_lock_matches_pid "$STATE" "$WATCH_PATH" "$pid" "$FM_HOME" || return 1
   kill -TERM "$pid" 2>/dev/null || return 1
+  kill -CONT "$pid" 2>/dev/null || true
   while [ "$i" -lt 50 ] && fm_pid_alive "$pid"; do
     sleep 0.1
     i=$((i + 1))
