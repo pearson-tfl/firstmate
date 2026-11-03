@@ -265,6 +265,58 @@ stop_outside_state_locks() {  # <pid> <state>
   return 1
 }
 
+test_stopped_stalled_watcher_is_evicted_past_hard_bound() {
+  # A real watcher SIGSTOPped while holding the lock (a STOPped process group)
+  # leaves TERM pending forever unless it is continued; the successor must
+  # still evict it and take the lock (#5649 on Agent-Harness-Reconfig).
+  local dir state fakebin old_out new_out old new i lock_pid
+  dir=$(make_case stopped-stalled-lock)
+  state="$dir/state"
+  fakebin="$dir/fakebin"
+  old_out="$dir/old-watch.out"
+  new_out="$dir/new-watch.out"
+  PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" FM_GUARD_GRACE=1 FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$old_out" 2>&1 &
+  old=$!
+  i=0
+  while [ "$i" -lt 100 ] && is_live_non_zombie "$old"; do
+    [ "$(cat "$state/.watch.lock/pid" 2>/dev/null || true)" = "$old" ] && [ -e "$state/.watch.lock/watcher-path" ] && break
+    sleep 0.1
+    i=$((i + 1))
+  done
+  [ "$(cat "$state/.watch.lock/pid" 2>/dev/null || true)" = "$old" ] || fail "first watcher did not claim the lock: $(cat "$old_out")"
+  stop_outside_state_locks "$old" "$state" || fail "could not stop the holder outside its state locks: $(cat "$old_out")"
+  touch -t 200001010000 "$state/.last-watcher-beat"
+  PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" FM_GUARD_GRACE=1 FM_WATCHER_STALL_BOUND=3 FM_POLL=5 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$new_out" 2>&1 &
+  new=$!
+  i=0
+  lock_pid=
+  while [ "$i" -lt 150 ] && is_live_non_zombie "$new"; do
+    lock_pid=$(cat "$state/.watch.lock/pid" 2>/dev/null || true)
+    [ "$lock_pid" = "$new" ] && break
+    sleep 0.1
+    i=$((i + 1))
+  done
+  if is_live_non_zombie "$old"; then
+    # Never strand the holder stopped, whatever the verdict.
+    kill -CONT "$old" 2>/dev/null || true
+    kill "$old" "$new" 2>/dev/null || true
+    wait "$old" "$new" 2>/dev/null || true
+    fail "stopped holder survived the eviction (lock=$lock_pid): $(cat "$new_out")"
+  fi
+  [ "$lock_pid" = "$new" ] || fail "replacement watcher did not take the lock from the stopped holder (holder=$lock_pid): $(cat "$new_out")"
+  i=0
+  while [ "$i" -lt 100 ] && ! grep -E "^watcher: replaced stalled pid $old " "$new_out" >/dev/null; do
+    sleep 0.1
+    i=$((i + 1))
+  done
+  grep -E "^watcher: replaced stalled pid $old " "$new_out" >/dev/null \
+    || fail "watcher did not report replacing the stopped holder: $(cat "$new_out")"
+  kill "$new" 2>/dev/null || true
+  wait "$new" 2>/dev/null || true
+  wait "$old" 2>/dev/null || true
+  pass "a SIGSTOPped watcher holding the lock past the hard bound is evicted and replaced"
+}
+
 # Issue #7801: on a /proc-less host outside UTC, a watcher started before
 # fm_pid_identity pinned TZ=UTC0 recorded its lstart in local time, so after the
 # update its own identity no longer recomputes. A fresh watcher must replace that
@@ -2056,6 +2108,7 @@ test_stale_watch_lock_reclaimed
 test_stale_watch_reclaim_publishes_before_clear
 test_live_stale_watch_lock_is_actionable
 test_live_stalled_watch_lock_is_replaced_past_hard_bound
+test_stopped_stalled_watcher_is_evicted_past_hard_bound
 test_watch_replaces_live_holder_with_legacy_local_time_identity
 test_watch_replaced_holder_stands_down_after_successor_exits
 test_guard_warnings
