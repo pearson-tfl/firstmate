@@ -91,7 +91,7 @@ The full digest updates the completion record in this order:
 
 1. It acquires the lock.
 2. It clears the completion record.
-3. It republishes the lock owner's pid only after every stage completes.
+3. It republishes the lock owner's line 1 identity, `holder:<name>`, only after every stage completes.
 
 So `clear` or `compact` cannot skip startup sweeps after a truncated run.
 

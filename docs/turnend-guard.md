@@ -111,6 +111,15 @@ The exception has these limits:
 - Malformed, absent, or dead lock records do not satisfy this Claude-specific exception and retain the ordinary guard behavior.
 - The session id recorded in `state/.lock-session` adds nothing to the ownership verdict; only the holder name decides it.
 
+### Named holder limits
+
+Main's lock names its holder rather than walking process ancestry: a session claims main by starting with `FM_LOCK_HOLDER=<name>` and hands it back with `release`; the `bin/fm-lock.sh` header owns claim and `release` semantics.
+The holder name is a cooperation guard, not security: any process that sets `FM_LOCK_HOLDER` to main's name owns main, and nothing proves it is the session that name was meant for.
+Only the session-start claim, a caller's own `bin/fm-lock.sh` re-check and this turn-end guard consult it; a hand-run drain, spawn, merge or send is not refused, and two runs under one name both pass.
+A name never expires, so a crashed or wedged holder keeps main until a session under that name runs `release`; nothing recovers it automatically.
+The Pi and omp primaries' extensions still read a pid from lock line 1, so a Pi or omp primary under a holder line loses its own supervision; the Cursor and agy adapters' remaining pid-dependent checks are tracked with them (#5137).
+Under a named holder, trace context stays off, and the pid-line readers the `bin/fm-lock.sh` header lists - the supervision host and its mirror, task leases, the live lab and the rest - stay inert (#5138).
+
 ### Pull-warning verdict by supervision model
 
 `bin/fm-guard.sh`, the pull warning, instead uses the model-aware `fm_watcher_supervision_verdict` from `bin/fm-wake-lib.sh`.
