@@ -3067,8 +3067,8 @@ SH
     "the relaunch should ask the loadout command for the recorded role"
   assert_contains "$(cat "$dir/fake/literal")" "env -u CLAUDE_CODE_DISABLE_WORKFLOWS" \
     "the relaunch should keep the recorded workflows lever on"
-  assert_contains "$(cat "$dir/fake/literal")" "'--tools' 'Bash,Read'" \
-    "the relaunch should start on the role's launch string"
+  assert_contains "$(cat "$dir/fake/literal")" "'--tools' 'Bash,Read,Workflow'" \
+    "the relaunch should start on the role's launch string, with Workflow added by the lever (#5101)"
   assert_equals "implement" "$(meta_field "$dir" rl90 loadout)" "the republished record should keep the role"
   assert_equals "on" "$(meta_field "$dir" rl90 workflows)" "the republished record should keep the lever"
   pass "fm-spawn --relaunch: a loadout worker comes back on its recorded role and workflows lever"
