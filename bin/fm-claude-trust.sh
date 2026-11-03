@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Pre-register Claude Code's workspace trust for the directory a claude spawn is
 # about to launch into - the isolated task worktree of a ship or scout crewmate,
-# or the seeded home of a secondmate - and for the steering inbox a secondmate
-# launch grants with --add-dir, so the agent reaches its brief or charter
+# the seeded home of a secondmate, a primary firstmate home, or the steering
+# inbox a secondmate launch grants with --add-dir, so the agent reaches its
+# brief or charter
 # instead of wedging on the trust dialog. In worktree mode it also carries
 # forward the external-CLAUDE.md-import approval, but only when the primary
 # checkout already holds standing consent for it - see the consent-gating
@@ -13,6 +14,7 @@
 #        fm-claude-trust.sh --secondmate-home <home> <id>
 #        fm-claude-trust.sh --lab-home <home>
 #        fm-claude-trust.sh --secondmate-inbox <inbox> <id>
+#        fm-claude-trust.sh --main-home <home>
 #   <worktree>  the isolated task worktree this spawn launches into
 #   <project>   the primary checkout that worktree belongs to
 #   <home>      the seeded secondmate home this spawn launches into
@@ -24,6 +26,8 @@
 #               for any relauncher that carries that grant onto another profile,
 #               run with CLAUDE_CONFIG_DIR naming the profile the launch will
 #               use, after the inbox and its handled/ directory exist
+#   --main-home the primary firstmate home an unattended launcher starts the
+#               main session in
 # Prints one line naming what it registered; refuses loudly on anything else.
 #
 # WHY THIS EXISTS. Claude Code gates a folder it has never seen behind an
@@ -178,6 +182,20 @@
 # record grants nothing beyond the file access --add-dir already grants.
 # Trust-only, like the other home modes.
 #
+# MAIN-HOME MODE. An unattended launcher starts the main session in the primary
+# firstmate home, which bin/fm-spawn.sh never launches into, so nothing else
+# registers it. The home has two legitimate shapes (docs/configuration.md
+# "FM_HOME"): the code root acting as its own home, accepted only through
+# bin/fm-primary-scope-lib.sh's fm_primary_scope_matches - the predicate the
+# primary-only hooks already use - so a linked worktree is refused; and a
+# separated FM_HOME holding only the operational directories, which must sit
+# in no git repository at all, so a project clone, a worktree, or any
+# directory inside one is refused. Either shape must hold a state/ directory,
+# and every operational directory present must resolve inside the home, the
+# same containment test secondmate-home mode applies. A home carrying a
+# .fm-secondmate-home or lab-home marker, in any form, is refused and pointed
+# at its own mode. It is trust-only for the same reason as a secondmate home.
+#
 # Only the launching user's own store is written. In worktree mode: the
 # projects entries for the worktree path and the resolved canonical project
 # path in ${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json, which must be a regular
@@ -210,6 +228,7 @@ usage() {
   echo "       fm-claude-trust.sh --secondmate-home <home> <id>" >&2
   echo "       fm-claude-trust.sh --lab-home <home>" >&2
   echo "       fm-claude-trust.sh --secondmate-inbox <inbox> <id>" >&2
+  echo "       fm-claude-trust.sh --main-home <home>" >&2
   exit 2
 }
 
@@ -241,6 +260,14 @@ case "${1:-}" in
     PROJ_ARG=
     SCOPE_NOUN="secondmate inbox"
     ;;
+  --main-home)
+    [ "$#" -eq 2 ] || usage
+    MODE=main-home
+    TARGET_ARG=$2
+    SUB_ID=
+    PROJ_ARG=
+    SCOPE_NOUN="primary firstmate home"
+    ;;
   '' | -h | --help)
     usage
     ;;
@@ -256,8 +283,11 @@ esac
 
 refuse() { echo "error: refusing to pre-register Claude trust: $1" >&2; exit 1; }
 
+TRUST_LIB_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=bin/fm-gate-refuse-lib.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/fm-gate-refuse-lib.sh"
+. "$TRUST_LIB_DIR/fm-gate-refuse-lib.sh"
+# shellcheck source=bin/fm-primary-scope-lib.sh
+. "$TRUST_LIB_DIR/fm-primary-scope-lib.sh"
 
 real_dir() { (cd -P -- "$1" 2>/dev/null && pwd -P); }
 
@@ -272,6 +302,27 @@ common_dir_of() {
   local dir=$1 common
   common=$(git -C "$dir" rev-parse --git-common-dir 2>/dev/null) || return 1
   (cd -P -- "$dir" && real_dir "$common")
+}
+
+# Each operational directory a home holds must resolve inside it, so the home's
+# own working surface cannot be borrowed from somewhere else. An ABSENT one is
+# accepted; callers that need one present check it themselves.
+require_operational_dirs_inside() {
+  local home=$1 name dir dir_real
+  for name in data state config projects; do
+    dir="$home/$name"
+    if [ -L "$dir" ] && [ ! -e "$dir" ]; then
+      refuse "'$dir' is a broken symlink, so this home's $name directory cannot be shown to stay inside it"
+    fi
+    [ -e "$dir" ] || continue
+    [ -d "$dir" ] || refuse "'$dir' is not a directory, so '$home' is not a $SCOPE_NOUN"
+    dir_real=$(real_dir "$dir") || true
+    [ -n "$dir_real" ] || refuse "'$dir' cannot be resolved"
+    case "$dir_real" in
+      "$home"/*) ;;
+      *) refuse "'$dir' resolves to '$dir_real', outside the home, so '$home' is not a safe $SCOPE_NOUN" ;;
+    esac
+  done
 }
 
 TARGET_REAL=$(real_dir "$TARGET_ARG") || true
@@ -370,6 +421,26 @@ elif [ "$MODE" = secondmate-inbox ]; then
       refuse "'$TARGET_REAL' carries Claude project configuration ($inbox_cfg), which trusting it would activate"
     fi
   done
+elif [ "$MODE" = main-home ]; then
+  # Markers are refused in any form - file, symlink, or unreadable - because
+  # each names a home that has its own mode and must never be trusted as main.
+  if [ -e "$TARGET_REAL/.fm-secondmate-home" ] || [ -L "$TARGET_REAL/.fm-secondmate-home" ]; then
+    refuse "'$TARGET_REAL' carries a .fm-secondmate-home marker, so it is a secondmate home; use --secondmate-home"
+  fi
+  if [ -e "$TARGET_REAL/$FM_GATE_LAB_MARKER" ] || [ -L "$TARGET_REAL/$FM_GATE_LAB_MARKER" ]; then
+    refuse "'$TARGET_REAL' carries a lab-home marker, so it is a lab home; use --lab-home"
+  fi
+  MAIN_TOP=$(git -C "$TARGET_REAL" rev-parse --show-toplevel 2>/dev/null) || true
+  if [ -n "$MAIN_TOP" ]; then
+    [ "$(real_dir "$MAIN_TOP")" = "$TARGET_REAL" ] \
+      || refuse "'$TARGET_REAL' is inside the git checkout '$MAIN_TOP', not a $SCOPE_NOUN"
+    fm_primary_scope_matches "$TARGET_REAL" "$TARGET_REAL/state" \
+      || refuse "'$TARGET_REAL' is a git checkout but not a primary firstmate checkout with a state/ directory (a linked worktree or a project clone is never a $SCOPE_NOUN)"
+  else
+    [ -d "$TARGET_REAL/state" ] \
+      || refuse "'$TARGET_REAL' has no state/ directory, so it is not a $SCOPE_NOUN"
+  fi
+  require_operational_dirs_inside "$TARGET_REAL"
 elif [ "$MODE" = lab-home ]; then
   LAB_MARKER="$TARGET_REAL/$FM_GATE_LAB_MARKER"
   [ ! -L "$LAB_MARKER" ] || refuse "'$LAB_MARKER' is a symlink; a lab home carries the marker as a regular file"
@@ -404,20 +475,7 @@ else
   [ "$SUB_MARKER_ID" = "$SUB_ID" ] || refuse "'$TARGET_REAL' is marked for secondmate '${SUB_MARKER_ID:-unknown}', not '$SUB_ID'"
   [ -f "$TARGET_REAL/AGENTS.md" ] || refuse "'$TARGET_REAL' has no AGENTS.md, so it is not a firstmate home"
   [ -d "$TARGET_REAL/bin" ] || refuse "'$TARGET_REAL' has no bin/, so it is not a firstmate home"
-  for sub_dir_name in data state config projects; do
-    sub_dir="$TARGET_REAL/$sub_dir_name"
-    if [ -L "$sub_dir" ] && [ ! -e "$sub_dir" ]; then
-      refuse "'$sub_dir' is a broken symlink, so this home's $sub_dir_name directory cannot be shown to stay inside it"
-    fi
-    [ -e "$sub_dir" ] || continue
-    [ -d "$sub_dir" ] || refuse "'$sub_dir' is not a directory, so '$TARGET_REAL' is not a seeded secondmate home"
-    sub_dir_real=$(real_dir "$sub_dir") || true
-    [ -n "$sub_dir_real" ] || refuse "'$sub_dir' cannot be resolved"
-    case "$sub_dir_real" in
-      "$TARGET_REAL"/*) ;;
-      *) refuse "'$sub_dir' resolves to '$sub_dir_real', outside the home, so '$TARGET_REAL' is not a safe secondmate home" ;;
-    esac
-  done
+  require_operational_dirs_inside "$TARGET_REAL"
 fi
 
 # The store write needs node, and a missing interpreter refuses like every other
@@ -473,8 +531,8 @@ fi
 # In worktree mode every flag lands on both the worktree entry and the project
 # entry in the same read-modify-write attempt, so a single rename either
 # records all of it or none of it - there is no state where the worktree entry
-# is fresh and the project entry stale, or the other way round. In
-# secondmate-home mode only the single home entry is written.
+# is fresh and the project entry stale, or the other way round. In every home
+# mode only the single home entry is written.
 #
 # The two external-imports flags (worktree mode only) are gated separately
 # from the trust flag, because they are a CONSENT grant, not a pre-approval
