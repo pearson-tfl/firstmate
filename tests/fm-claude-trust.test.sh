@@ -838,6 +838,137 @@ test_secondmate_spawn_fails_closed_when_home_trust_cannot_be_recorded() {
   pass "fm-spawn.sh: a claude secondmate spawn refuses when home trust cannot be recorded"
 }
 
+# run_main_trust <config> <home> [user-home]: invoke main-home mode against an
+# isolated store.
+run_main_trust() {
+  local config=$1 home=$2 user_home=${3:-$1}
+  CLAUDE_CONFIG_DIR="$config" HOME="$user_home" "$TRUST" --main-home "$home" 2>&1
+}
+
+# store_project_keys <store>: every projects key in the store, one per line.
+store_project_keys() {
+  node -e 'const fs=require("node:fs");if(!fs.existsSync(process.argv[1]))process.exit(0);for(const k of Object.keys(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).projects||{}))console.log(k);' "$1"
+}
+
+# seed_main_home <home>: the separated FM_HOME shape - operational directories
+# only, no code and no git.
+seed_main_home() {
+  mkdir -p "$1/state" "$1/data" "$1/config" "$1/projects"
+}
+
+# Both primary-home shapes are trusted, each as exactly one trust-only entry,
+# because the unattended launcher starts the main session in that one folder.
+test_main_home_is_trusted() {
+  local case_dir config home out
+  case_dir="$TMP_ROOT/main-home"
+  config="$case_dir/claude-config"
+  mkdir -p "$config"
+
+  home="$case_dir/firstmate-homes/main"
+  seed_main_home "$home"
+  out=$(run_main_trust "$config" "$home")
+  expect_code 0 $? "a separated primary home must be trusted: $out"
+  assert_contains "$out" "trusted: $home" "the registration did not name the home"
+  assert_trust_only_no_import_consent "$config/.claude.json" "$home" \
+    "the separated primary home was not registered trust-only"
+  [ "$(store_project_keys "$config/.claude.json")" = "$home" ] \
+    || fail "main-home mode registered something other than exactly the home: $(store_project_keys "$config/.claude.json")"
+
+  # The code root acting as its own home: a plain firstmate checkout with state/.
+  home="$case_dir/code-root"
+  fm_git_init_commit "$home"
+  mkdir -p "$home/bin" "$home/state"
+  printf '# Firstmate\n' > "$home/AGENTS.md"
+  out=$(run_main_trust "$config" "$home")
+  expect_code 0 $? "a code-root primary home must be trusted: $out"
+  assert_trust_only_no_import_consent "$config/.claude.json" "$home" \
+    "the code-root primary home was not registered trust-only"
+  pass "fm-claude-trust.sh: --main-home trusts exactly one primary home, trust-only"
+}
+
+# Every path that is not a genuine primary home is refused and left untrusted.
+test_main_home_trust_refuses_everything_else() {
+  local case_dir config target out
+  case_dir="$TMP_ROOT/main-refusals"
+  config="$case_dir/claude-config"
+  mkdir -p "$config"
+
+  # A seeded secondmate home, even though it has every other home signal.
+  target="$case_dir/secondmate"
+  seed_secondmate_home "$target" mate-n1 clone
+  out=$(run_main_trust "$config" "$target")
+  expect_code 1 $? "a secondmate home must be refused: $out"
+  assert_contains "$out" "secondmate home" "the refusal did not name the secondmate home"
+
+  # A secondmate marker that is a dangling symlink still marks a secondmate home.
+  target="$case_dir/linked-marker"
+  seed_main_home "$target"
+  ln -s "$case_dir/nowhere" "$target/.fm-secondmate-home"
+  out=$(run_main_trust "$config" "$target")
+  expect_code 1 $? "a home with a symlinked secondmate marker must be refused: $out"
+  assert_contains "$out" "secondmate home" "the refusal did not name the secondmate marker"
+
+  # A lab home has its own mode.
+  target="$case_dir/lab"
+  seed_main_home "$target"
+  printf 'fm-lab-home v1\n' > "$target/.fm-lab-home"
+  out=$(run_main_trust "$config" "$target")
+  expect_code 1 $? "a lab home must be refused: $out"
+  assert_contains "$out" "lab home" "the refusal did not name the lab home"
+
+  # A project clone carrying a state/ directory is still not a firstmate home.
+  target="$case_dir/project-clone"
+  fm_git_init_commit "$target"
+  mkdir -p "$target/state"
+  out=$(run_main_trust "$config" "$target")
+  expect_code 1 $? "a project clone must be refused: $out"
+  assert_contains "$out" "not a primary firstmate checkout" "the refusal did not name the project clone"
+
+  # A linked worktree of a firstmate checkout, with every file signal present.
+  target="$case_dir/wt"
+  fm_git_worktree "$case_dir/fm-checkout" "$target" main-wt
+  mkdir -p "$target/bin" "$target/state"
+  printf '# Firstmate\n' > "$target/AGENTS.md"
+  out=$(run_main_trust "$config" "$target")
+  expect_code 1 $? "a linked worktree must be refused: $out"
+  assert_contains "$out" "not a primary firstmate checkout" "the refusal did not name the worktree"
+
+  # A home-shaped directory inside a git checkout.
+  target="$case_dir/project-clone/nested-home"
+  seed_main_home "$target"
+  out=$(run_main_trust "$config" "$target")
+  expect_code 1 $? "a directory inside a git checkout must be refused: $out"
+  assert_contains "$out" "inside the git checkout" "the refusal did not name the enclosing checkout"
+
+  # A directory inside a home, or any plain directory, has no state/.
+  target="$case_dir/firstmate-homes/main"
+  seed_main_home "$target"
+  out=$(run_main_trust "$config" "$target/data")
+  expect_code 1 $? "a directory inside a home must be refused: $out"
+  assert_contains "$out" "no state/ directory" "the refusal did not name the missing state/"
+
+  # A home whose state/ escapes it.
+  target="$case_dir/escaping"
+  mkdir -p "$target" "$case_dir/elsewhere-state"
+  ln -s "$case_dir/elsewhere-state" "$target/state"
+  out=$(run_main_trust "$config" "$target")
+  expect_code 1 $? "a home whose state/ escapes it must be refused: $out"
+  assert_contains "$out" "outside the home" "the refusal did not name the escaping directory"
+
+  # A path that does not exist, and the user's own home directory.
+  out=$(run_main_trust "$config" "$case_dir/missing")
+  expect_code 1 $? "a missing path must be refused: $out"
+  target="$case_dir/user-home"
+  seed_main_home "$target"
+  out=$(run_main_trust "$config" "$target" "$target")
+  expect_code 1 $? "the user's home directory must be refused: $out"
+  assert_contains "$out" "home directory" "the refusal did not name the home directory"
+
+  [ -z "$(store_project_keys "$config/.claude.json")" ] \
+    || fail "a refused main-home registration still wrote: $(store_project_keys "$config/.claude.json")"
+  pass "fm-claude-trust.sh: --main-home refuses everything but a primary firstmate home"
+}
+
 test_fresh_worktree_is_trusted
 test_fresh_worktree_also_trusts_the_project_root_without_import_consent
 test_registration_carries_forward_existing_import_consent
@@ -869,3 +1000,5 @@ test_secondmate_leased_worktree_home_is_trusted
 test_secondmate_home_trust_refuses_everything_unseeded
 test_worktree_mode_still_refuses_a_secondmate_home
 test_secondmate_spawn_fails_closed_when_home_trust_cannot_be_recorded
+test_main_home_is_trusted
+test_main_home_trust_refuses_everything_else
