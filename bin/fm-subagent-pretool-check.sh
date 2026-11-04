@@ -35,6 +35,8 @@
 #   bin/fm-subagent-pretool-check.sh --tool '<tool-name>'
 #
 # Stdin mode extracts .tool_name for Claude and Codex, or .toolName for Grok.
+# Classification is by tool name alone, except the Claude SendMessage
+# peer-reply carve-out below, which also reads .tool_input.
 # CLI mode is for adapters that already hold the tool name (OpenCode, Pi).
 #
 # Exit/output contract (identical shape to bin/fm-cd-pretool-check.sh):
@@ -169,6 +171,31 @@ for stem in $DELEGATION_STEMS; do
   esac
 done
 [ -n "$MATCHED" ] || exit 0
+
+# Peer-reply carve-out, the one input-shaped exception to the name-shape rule.
+# A Claude SendMessage call is allowed only when ALL of these hold in the stdin
+# tool_input: `to` is a `uds:<socket>` address with no whitespace, the form
+# copied from an incoming cross-session message's `from` attribute, so it
+# addresses an existing peer session rather than discovering one by name;
+# `message` is a non-empty plain string, not a protocol object such as a
+# shutdown or plan-approval response; `notify_when_idle` is absent or false,
+# so no idle subscription is registered; and no key outside to, message,
+# summary, and notify_when_idle is present. Every other SendMessage shape stays
+# denied: a name, agent id, `main`, or in-process teammate address; a structured
+# message; any subscription; and the --tool CLI form, which carries no input to
+# inspect. Replying to a peer that already wrote creates no agent, schedule, or
+# workspace for the fleet to lose track of; docs/subagent-guard.md owns the
+# rationale and the content residual this carve-out does not police.
+if [ "$NORMALIZED" = sendmessage ] && [ "$TOOL_SET" -eq 0 ] && [ "$AGY_MODE" -eq 0 ]; then
+  printf '%s' "$PAYLOAD" | jq -e '
+    .tool_input as $i
+    | ($i | type) == "object"
+      and ($i.to | type) == "string" and ($i.to | test("^uds:[^\\s]+$"))
+      and ($i.message | type) == "string" and ($i.message | length) > 0
+      and (($i.notify_when_idle // false) == false)
+      and ((($i | keys) - ["to", "message", "summary", "notify_when_idle"]) | length) == 0
+  ' >/dev/null 2>&1 && exit 0
+fi
 
 # The single deliberate escape hatch. It is an environment variable rather than
 # a flag or a state file so it must be set when the session is launched, which

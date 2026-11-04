@@ -245,6 +245,59 @@ test_stdin_transports_and_output_shapes() {
   pass "both stdin transports classify correctly and Claude's deny keeps stdout empty"
 }
 
+run_send_message() {
+  local input=$1 rc=0
+  : > "$OUT"; : > "$ERR"
+  jq -cn --argjson i "$input" '{tool_name:"SendMessage",tool_input:$i}' \
+    | FM_ROOT_OVERRIDE="$PRIMARY" FM_HOME="$PRIMARY" FM_STATE_OVERRIDE="$STATE" \
+      "$CHECK" --claude > "$OUT" 2> "$ERR" || rc=$?
+  return "$rc"
+}
+
+test_send_message_peer_reply_is_allowed() {
+  # A plain-text reply to a peer session, addressed by the uds: socket copied
+  # from the incoming message's from attribute, creates no work.
+  local input rc
+  for input in \
+    '{"to":"uds:/tmp/claude-peer-1234.sock","message":"received msg-42"}' \
+    '{"to":"uds:/tmp/claude-peer-1234.sock","summary":"receipt","message":"received msg-42","notify_when_idle":false}'; do
+    rc=0
+    run_send_message "$input" || rc=$?
+    [ "$rc" -eq 0 ] || fail "uds: peer reply must allow, got exit $rc for $input: $(cat "$ERR")"
+    [ ! -s "$OUT" ] && [ ! -s "$ERR" ] || fail "uds: peer reply allow wrote output for $input"
+  done
+  pass "a plain-text SendMessage reply to a uds: peer address passes the guard"
+}
+
+test_send_message_other_shapes_stay_denied() {
+  local input rc
+  for input in \
+    '{"to":"researcher","message":"start on task #1"}' \
+    '{"to":"main","message":"hello"}' \
+    '{"to":"a1b2c3-d4e5","message":"hello"}' \
+    '{"to":"worker [3fa9c1]","message":"hello"}' \
+    '{"to":"uds:","message":"hello"}' \
+    '{"to":"uds:/tmp/x.sock extra","message":"hello"}' \
+    '{"to":"UDS:/tmp/x.sock","message":"hello"}' \
+    '{"to":"teammate uds:/tmp/x.sock","message":"hello"}' \
+    '{"to":"uds:/tmp/x.sock","message":{"type":"shutdown_response","request_id":"r1","approve":true}}' \
+    '{"to":"uds:/tmp/x.sock","message":{"type":"plan_approval_response","request_id":"r1","approve":false}}' \
+    '{"to":"uds:/tmp/x.sock","message":""}' \
+    '{"to":"uds:/tmp/x.sock","notify_when_idle":true}' \
+    '{"to":"uds:/tmp/x.sock","message":"hi","notify_when_idle":true}' \
+    '{"to":"uds:/tmp/x.sock","message":"hi","extra":1}' \
+    '{"to":["uds:/tmp/x.sock"],"message":"hi"}'; do
+    rc=0
+    run_send_message "$input" || rc=$?
+    [ "$rc" -eq 2 ] || fail "SendMessage shape must stay denied, got exit $rc for $input"
+    jq -e '.systemMessage | contains("blocked tool: SendMessage")' "$ERR" >/dev/null 2>&1 \
+      || fail "SendMessage deny lost its tool name for $input: $(cat "$ERR")"
+  done
+  # The CLI form carries no tool input, so it can never prove a peer reply.
+  expect_deny "SendMessage without tool input" SendMessage
+  pass "name-addressed, structured, subscribing, and uninspectable SendMessage calls stay denied"
+}
+
 test_malformed_transport_fails_open() {
   local rc payload
   for payload in '{not-json' '' '{}' '{"tool_name":null}'; do
@@ -287,5 +340,7 @@ test_escape_hatch_allows_deliberate_use
 test_task_worktree_and_non_firstmate_repo_are_inert
 test_secondmate_home_is_in_scope
 test_stdin_transports_and_output_shapes
+test_send_message_peer_reply_is_allowed
+test_send_message_other_shapes_stay_denied
 test_malformed_transport_fails_open
 test_missing_jq_stdin_transport_fails_open
