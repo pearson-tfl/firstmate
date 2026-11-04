@@ -47,7 +47,7 @@ agent  subagent  task  workflow  cron  schedul  worktree
 delegate  spawn  dispatch  handoff  remote  sendmessage  monitor
 ```
 
-Three exclusions keep the shape test from producing false positives.
+Four exclusions keep the shape test from producing false positives.
 
 - A name beginning `mcp__` is never classified.
   An MCP server chooses its own tool names, a task or agent noun there is common, and it has no bearing on fleet dispatch.
@@ -61,7 +61,14 @@ Three exclusions keep the shape test from producing false positives.
   So it is not the "work, agent, schedule, or isolated workspace that firstmate would not know about" the guard exists to stop, and the stem match on `task` is a false positive rather than a policy.
   The cost of the false positive was concrete: the primary could not track its own plan, and the deny text told it to run `bin/fm-brief.sh` and `bin/fm-spawn.sh` to create a todo entry.
 
-Both exclusion lists match the whole normalized name, never a substring, so neither can widen by accident: `TaskCreateAgent` and `RemoteTaskCreate` stay denied.
+- The peer-reply carve-out: a Claude `SendMessage` call whose stdin `tool_input` is a plain-text reply to an existing cross-session peer is allowed.
+  It is the only exclusion that reads the tool input rather than the name, and the script header owns the exact rule.
+  In outline, `to` must be a whitespace-free `uds:<socket>` address, the form copied from an incoming message's `from` attribute; `message` must be a non-empty string; `notify_when_idle` must be absent or false; and no other key except `summary` may be present.
+  Every other shape stays denied: a name, agent id, `main`, or in-process teammate address, a protocol object such as a shutdown or plan-approval response, any idle subscription, and the `--tool` CLI form, which carries no input to inspect.
+  The false positive it removes was concrete: a primary asked by a peer session for a one-line receipt could not send it, although answering a peer that already wrote creates no agent, schedule, or workspace the fleet would lose.
+  The carve-out does not judge message content, which has no tool-shape signal; a reply that asks the peer to do project work is the same judgment boundary [Purpose and boundary](#purpose-and-boundary) leaves out of scope.
+
+Both name-exclusion lists match the whole normalized name, never a substring, so neither can widen by accident: `TaskCreateAgent` and `RemoteTaskCreate` stay denied.
 Folding the two lists together would be the drift risk, because the observe-or-stop rationale is not true of a tool that writes.
 
 The shipped guard fires on every delegation-shaped name that reaches it, including future names that no deny list knows about yet.
@@ -113,6 +120,7 @@ In particular `TaskOutput`, `TaskStop`, `TaskGet`, `TaskList`, and `CronList` on
 The hook deliberately allows those five, so the shipped guard can never strand a runaway task with no way to inspect or end it, and it allows `TaskCreate` and `TaskUpdate` too, so it can never be the reason the primary cannot track its own plan.
 The two session-local todo tools are no longer recommended for local denial at all, because they write only the harness's session-local todo list, which has no executor and spawns nothing, so removing them from the schema removes no delegation power.
 Denying them there would instead reproduce at a stronger layer the exact false positive the shipped guard now avoids, leaving anyone who adopts this list verbatim unable to let a primary track its own plan.
+`SendMessage` stays on the list by default, which also removes the peer-reply path the hook allows; a home whose primary must answer peer sessions drops that one entry.
 Narrowing the list further, including the five observe-or-stop names, is the captain's call, and this local list is the only layer that can remove a todo tool from the primary's schema.
 
 `permissions.allow` is a pre-approval list, not an availability list, so there is no fail-closed positive allowlist available.
@@ -363,7 +371,7 @@ The live consequence is confirmed by the shipped-guard result above: Claude hono
 ## Automated validation
 
 `tests/fm-subagent-pretool-check.test.sh` owns the acceptance matrix and is registered in the `pure-contract-unit` family in `bin/fm-test-run.sh`.
-It covers the tracked Claude settings boundary that forbids a `permissions` key; the match-all Claude hook registration; denial of every work-creating delegation tool by shape; denial of twelve hypothetical future tool names that appear on no list; the observe-or-stop, plan-only, and MCP exclusions; the exactness of the plan-only exclusion against six near-miss names a substring or shorter-stem widening would release; the scout-present and scout-absent message variants; the escape hatch including its fail-closed values; inertness in a linked task worktree and in a non-firstmate repo; in-scope enforcement for a marked secondmate home; both stdin transports; the empty-stdout requirement; fail-open transport behavior; and the preserved `Bash` seatbelts and `Stop` guard.
+It covers the tracked Claude settings boundary that forbids a `permissions` key; the match-all Claude hook registration; denial of every work-creating delegation tool by shape; denial of twelve hypothetical future tool names that appear on no list; the observe-or-stop, plan-only, and MCP exclusions; the `SendMessage` peer-reply carve-out, allowing a plain-text `uds:` reply and denying name-addressed, structured, subscribing, and input-less shapes; the exactness of the plan-only exclusion against six near-miss names a substring or shorter-stem widening would release; the scout-present and scout-absent message variants; the escape hatch including its fail-closed values; inertness in a linked task worktree and in a non-firstmate repo; in-scope enforcement for a marked secondmate home; both stdin transports; the empty-stdout requirement; fail-open transport behavior; and the preserved `Bash` seatbelts and `Stop` guard.
 
 Run:
 
