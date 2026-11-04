@@ -1588,7 +1588,7 @@ The global login is never switched, so other sessions and background jobs that u
 `config/claude-account`, or a per-secondmate Claude pin, beside the rules file refuses the launch rather than being used.
 Other runners keep their own pins.
 
-Each line is blank, a `#` comment, `forbid <num>...`, or `project <name> <num>...`, where the numbers are cswap account numbers and `<name>` is the project directory's own name, compared without regard to case.
+Each line is blank, a `#` comment, `forbid <num>...`, or `project <name> <num>...`, where the numbers are cswap account numbers and `<name>` is the project directory's own name (for a secondmate, its home directory's name), compared without regard to case.
 For example, `forbid 3` and `project bb-signal-prototype 5 4` keep account 3 out of every launch and keep that project's workers on accounts 5 and 4.
 A project with no line chooses from every account, and a forbid always wins.
 Among the allowed accounts the one with the lowest current usage wins, an account at its limit is skipped, and an account whose usage cswap cannot report ranks last.

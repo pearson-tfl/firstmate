@@ -3455,6 +3455,15 @@ if [ "$HARNESS" = kiro ]; then
     kiro_hook_path_validate "$STATE" "$ID" || exit 1
   fi
 fi
+resolved_existing_dir() {
+  local path=$1
+  [ -d "$path" ] || {
+    echo "error: firstmate home does not exist or is not a directory: $path" >&2
+    return 1
+  }
+  cd "$path" && pwd -P
+}
+
 secondmate_registry_value() {
   secondmate_registry_field "$DATA/secondmates.md" "$1" "$2"
 }
@@ -3485,8 +3494,8 @@ WORKER_ACCOUNT_MATE=
 # A secondmate's account-rules project is its home's folder name, resolved the
 # way the recorded project= is, so spawn, respawn, relaunch, and the
 # fm-control.sh relaunch pre-check all match the same `project` lines.
-if [ "$KIND" = secondmate ]; then
-  WORKER_ACCOUNT_PROJECT=$(fm_worker_account_project "$( (cd "$FIRSTMATE_HOME" 2>/dev/null && pwd -P) || printf '%s' "$FIRSTMATE_HOME")")
+if [ "$KIND" = secondmate ] && [ -n "$FIRSTMATE_HOME" ]; then
+  WORKER_ACCOUNT_PROJECT=$(fm_worker_account_project "$(resolved_existing_dir "$FIRSTMATE_HOME" 2>/dev/null || printf '%s' "$FIRSTMATE_HOME")")
 else
   WORKER_ACCOUNT_PROJECT=$(fm_worker_account_project "$PROJ")
 fi
@@ -4038,15 +4047,6 @@ claude_add_dirs_flag() {  # <kind> <state-dir> <data-dir> <code-root> <task-id>
     out="$out--add-dir $(shell_quote "$d") "
   done
   printf '%s' "$out"
-}
-
-resolved_existing_dir() {
-  local path=$1
-  [ -d "$path" ] || {
-    echo "error: firstmate home does not exist or is not a directory: $path" >&2
-    return 1
-  }
-  cd "$path" && pwd -P
 }
 
 resolve_project_dir_arg() {
