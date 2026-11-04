@@ -388,6 +388,37 @@ test_relaunch_under_account_rules_reports_the_switch() {
   pass "a relaunch under account rules switches to an allowed account with headroom and reports it once"
 }
 
+test_secondmate_relaunch_pre_check_and_launch_match_the_same_project_rule() {
+  local dir out rc sm id=signal
+  dir=$(new_case acct-mate "$id")
+  add_ship_task "$dir" "$id" claude
+  fm_test_cswap_fakes "$dir/fakebin" "$dir"
+  fm_test_cswap_accounts "$dir" 1 1:1:5 2:2:6 3:0:0 4:30:40 5:10:20
+  sm="$dir/homes/signal"
+  mkdir -p "$sm/state" "$sm/data" "$sm/bin" "$dir/home/config"
+  git init -q -b main "$sm"
+  printf '%s\n' "$id" > "$sm/.fm-secondmate-home"
+  printf '# agents\n' > "$sm/AGENTS.md"
+  printf '# charter\n' > "$sm/data/charter.md"
+  printf 'claude\n' > "$dir/home/config/secondmate-harness"
+  { printf 'window=fmses:fm-%s\nendpoint_task_id=%s\n' "$id" "$id"
+    printf 'worktree=%s\nproject=%s\nhome=%s\n' "$sm" "$sm" "$sm"
+    printf 'harness=claude\nkind=secondmate\nmode=secondmate\nyolo=off\nmodel=default\neffort=default\naccount=cswap:5\n'
+  } > "$dir/home/state/$id.meta"
+  printf '%s' "$sm" > "$dir/fake/cwd"
+  mkdir -p "$dir/user-home/.claude"
+  printf '{}\n' > "$dir/user-home/.claude/.credentials.json"
+  printf '%s\n' 'forbid 3' 'project signal 5 4' > "$dir/home/config/account-rules"
+  bash -c '. "$1/bin/fm-worker-account-lib.sh"; fm_account_rules_fingerprint "$2"' _ "$ROOT" \
+    "$dir/home/config/account-rules" > "$dir/home/config/account-rules.approved"
+  out=$(run_control "$dir" "$id" relaunch --note "account rules"); rc=$?
+  expect_code 0 "$rc" "a secondmate relaunch under a project rule should succeed"$'\n'"$out"
+  [ "$(meta_field "$dir" "$id" account)" = cswap:5 ] || fail "the relaunch should land on the project's account: $out"
+  # The pre-check and the launch each prepare an account; both must be 5.
+  [ "$(tr '\n' ' ' < "$dir/cswap-runs")" = "5 5 " ] || fail "pre-check and launch should prepare the same account: $(cat "$dir/cswap-runs")"
+  pass "a secondmate relaunch's pre-check and launch match the same project rule"
+}
+
 # --- 1. same-harness relaunch -----------------------------------------------
 
 test_same_harness_relaunch_keeps_identity_and_reuses_the_endpoint() {
@@ -3079,6 +3110,7 @@ test_exit_and_relaunch_remove_the_dialog_file
 test_exit_removes_the_dialog_file_before_releasing_the_lock
 test_same_harness_relaunch_keeps_identity_and_reuses_the_endpoint
 test_relaunch_under_account_rules_reports_the_switch
+test_secondmate_relaunch_pre_check_and_launch_match_the_same_project_rule
 test_relaunch_refuses_before_exit_when_the_composer_holds_pending_text
 test_relaunch_refuses_before_exit_when_the_composer_state_is_unproven
 test_relaunch_from_linked_home_preserves_recorded_worktree

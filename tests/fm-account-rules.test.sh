@@ -218,6 +218,33 @@ test_the_default_login_account_launches_on_the_default_login() {
   pass "the default login's account launches with the Claude root unset, as cswap runs it"
 }
 
+test_a_project_rule_binds_a_secondmate_by_its_home_folder_on_spawn_and_respawn() {
+  local out rc sm
+  new_case mate-project
+  fm_test_cswap_accounts "$CASE" 1 1:1:5 2:2:6 3:0:0 4:30:40 5:10:20
+  write_rules 'forbid 3' 'project signal 5 4'
+  sm="$CASE/homes/signal"
+  mkdir -p "$sm/bin" "$sm/data" "$sm/config"
+  git init -q -b main "$sm"
+  printf '# Firstmate\n' > "$sm/AGENTS.md"
+  printf 'signal\n' > "$sm/.fm-secondmate-home"
+  printf 'charter\n' > "$sm/data/charter.md"
+  out=$(HOME="$HOME_DIR/user-home" FM_FAKE_LAUNCH_LOG="$CASE/launch.log" \
+    fm_test_run_spawn "$HOME_DIR" "$WT" "$FAKEBIN" signal "$sm" --secondmate); rc=$?
+  expect_code 0 "$rc" "a secondmate spawn under a project rule should succeed: $out"
+  assert_contains "$out" "account=cswap:5" "the project rule should match the secondmate's home folder on a fresh spawn"
+  # Liveness respawn: the endpoint is gone and no home is passed, so the home
+  # comes from the task record.
+  rm -f "$FAKEBIN/.spawn-window"
+  : > "$CASE/cswap-runs"
+  out=$(HOME="$HOME_DIR/user-home" FM_FAKE_LAUNCH_LOG="$CASE/launch.log" \
+    fm_test_run_spawn "$HOME_DIR" "$WT" "$FAKEBIN" signal --secondmate); rc=$?
+  expect_code 0 "$rc" "a secondmate respawn under a project rule should succeed: $out"
+  assert_contains "$out" "account=cswap:5" "the project rule should match the secondmate's home folder on a respawn"
+  [ "$(tr '\n' ' ' < "$CASE/cswap-runs")" = "5 " ] || fail "the respawn should prepare only account 5: $(cat "$CASE/cswap-runs")"
+  pass "a project rule binds a secondmate by its home folder on spawn and respawn"
+}
+
 test_rules_pick_the_least_used_allowed_account_and_never_a_forbidden_one
 test_a_project_rule_limits_the_choice_to_its_accounts
 test_the_per_home_claude_setting_is_refused_under_rules
@@ -225,5 +252,6 @@ test_a_rules_change_without_john_approval_refuses
 test_malformed_rules_refuse
 test_no_headroom_refuses_and_unmeasured_ranks_last
 test_the_default_login_account_launches_on_the_default_login
+test_a_project_rule_binds_a_secondmate_by_its_home_folder_on_spawn_and_respawn
 
 echo "# all fm-account-rules tests passed"

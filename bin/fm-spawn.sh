@@ -3455,6 +3455,34 @@ if [ "$HARNESS" = kiro ]; then
     kiro_hook_path_validate "$STATE" "$ID" || exit 1
   fi
 fi
+resolved_existing_dir() {
+  local path=$1
+  [ -d "$path" ] || {
+    echo "error: firstmate home does not exist or is not a directory: $path" >&2
+    return 1
+  }
+  cd "$path" && pwd -P
+}
+
+secondmate_registry_value() {
+  secondmate_registry_field "$DATA/secondmates.md" "$1" "$2"
+}
+
+# The secondmate home is resolved here, ahead of the worker account selection
+# below, which needs its folder name; validation follows further down.
+if [ "$KIND" = secondmate ]; then
+  if [ -z "$FIRSTMATE_HOME" ] && { [ -e "$STATE/$ID.meta" ] || [ -L "$STATE/$ID.meta" ]; }; then
+    fm_backlog_record_present "$STATE/$ID.meta" "task record" "$STATE" || {
+      echo "error: secondmate task record is unsafe: $FM_BACKLOG_TRANSITION_ERROR" >&2
+      exit 1
+    }
+    FIRSTMATE_HOME=$(grep '^home=' "$STATE/$ID.meta" | cut -d= -f2- || true)
+  fi
+  if [ -z "$FIRSTMATE_HOME" ]; then
+    FIRSTMATE_HOME=$(secondmate_registry_value "$ID" home || true)
+  fi
+fi
+
 # Worker account pin (header above): resolved before any endpoint, worktree, or
 # record exists. An absent pin selects nothing and leaves every later launch
 # step exactly as it was. A pinned Claude root is exported here as well, so the
@@ -3463,7 +3491,14 @@ RAW_COMMAND=
 [ "$RAW_LAUNCH" = 0 ] || RAW_COMMAND=$ARG3
 WORKER_ACCOUNT_MATE=
 [ "$KIND" != secondmate ] || WORKER_ACCOUNT_MATE=$ID
-WORKER_ACCOUNT_PROJECT=$(fm_worker_account_project "$PROJ")
+# A secondmate's account-rules project is its home's folder name, resolved the
+# way the recorded project= is, so spawn, respawn, relaunch, and the
+# fm-control.sh relaunch pre-check all match the same `project` lines.
+if [ "$KIND" = secondmate ] && [ -n "$FIRSTMATE_HOME" ]; then
+  WORKER_ACCOUNT_PROJECT=$(fm_worker_account_project "$(resolved_existing_dir "$FIRSTMATE_HOME" 2>/dev/null || printf '%s' "$FIRSTMATE_HOME")")
+else
+  WORKER_ACCOUNT_PROJECT=$(fm_worker_account_project "$PROJ")
+fi
 WORKER_ACCOUNT=$(fm_worker_account_select "$HARNESS" "$CONFIG" "$MODEL" "${PI_BIN:-$HARNESS}" "$RAW_COMMAND" "$WORKER_ACCOUNT_MATE" "$WORKER_ACCOUNT_PROJECT") || exit 1
 WORKER_ACCOUNT_FROM=
 [ "$RELAUNCH" -eq 0 ] || WORKER_ACCOUNT_FROM=$(fm_meta_get "$RELAUNCH_META" account)
@@ -3505,10 +3540,6 @@ if [ -n "$WORKER_ACCOUNT" ] && [ "$HARNESS" = claude ]; then
     unset CLAUDE_CONFIG_DIR
   fi
 fi
-
-secondmate_registry_value() {
-  secondmate_registry_field "$DATA/secondmates.md" "$1" "$2"
-}
 
 resolve_kimi_binary() {
   local candidate dir fallback
@@ -4018,15 +4049,6 @@ claude_add_dirs_flag() {  # <kind> <state-dir> <data-dir> <code-root> <task-id>
   printf '%s' "$out"
 }
 
-resolved_existing_dir() {
-  local path=$1
-  [ -d "$path" ] || {
-    echo "error: firstmate home does not exist or is not a directory: $path" >&2
-    return 1
-  }
-  cd "$path" && pwd -P
-}
-
 resolve_project_dir_arg() {
   local path=$1
   case "$path" in
@@ -4130,19 +4152,6 @@ validate_firstmate_operational_dirs() {
     fi
   done
 }
-
-if [ "$KIND" = secondmate ]; then
-  if [ -z "$FIRSTMATE_HOME" ] && { [ -e "$STATE/$ID.meta" ] || [ -L "$STATE/$ID.meta" ]; }; then
-    fm_backlog_record_present "$STATE/$ID.meta" "task record" "$STATE" || {
-      echo "error: secondmate task record is unsafe: $FM_BACKLOG_TRANSITION_ERROR" >&2
-      exit 1
-    }
-    FIRSTMATE_HOME=$(grep '^home=' "$STATE/$ID.meta" | cut -d= -f2- || true)
-  fi
-  if [ -z "$FIRSTMATE_HOME" ]; then
-    FIRSTMATE_HOME=$(secondmate_registry_value "$ID" home || true)
-  fi
-fi
 
 if [ "$KIND" = secondmate ]; then
   [ -n "$FIRSTMATE_HOME" ] || {
