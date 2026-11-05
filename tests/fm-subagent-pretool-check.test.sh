@@ -84,6 +84,9 @@ test_guard_denies_every_currently_known_delegation_tool() {
     esac
     expect_deny "known delegation tool" "$tool"
   done
+  # Grok's child-message tool can resume a finished subagent, so it remains
+  # delegation rather than gaining the Claude peer-message allowance.
+  expect_deny "Grok child-message delegation" send_subagent_message
   pass "the guard independently denies every work-creating delegation tool by shape"
 }
 
@@ -93,7 +96,7 @@ test_guard_denies_hypothetical_future_tools() {
   local tool
   for tool in SubagentCreate SpawnWorker DelegateTask AgentPool WorkflowRun \
               ScheduleJob CronSchedule CreateWorktree DispatchAgent TaskHandoff \
-              RemoteExec BackgroundAgent; do
+              RemoteExec BackgroundAgent ListAgentsAndSpawn ListAgentsTask; do
     expect_deny "future delegation tool" "$tool"
   done
   pass "the guard denies delegation-shaped tools that no deny list knows about yet"
@@ -106,7 +109,7 @@ test_guard_allows_ordinary_and_observe_only_tools() {
   done
   # Observing or stopping work that already exists is not creating unaccounted
   # work, and blocking it would strand a runaway task with no way to end it.
-  for tool in TaskOutput TaskStop TaskGet TaskList CronList BashOutput KillShell; do
+  for tool in TaskOutput TaskStop TaskGet TaskList CronList BashOutput KillShell ListAgents; do
     expect_allow "observe-or-stop tool" "$tool"
   done
   pass "the guard leaves ordinary tools and observe-or-stop operations alone"
@@ -228,7 +231,7 @@ test_stdin_transports_and_output_shapes() {
 
   rc=0
   : > "$OUT"; : > "$ERR"
-  printf '%s' '{"toolName":"Agent"}' \
+  printf '%s' '{"toolName":"send_subagent_message"}' \
     | FM_ROOT_OVERRIDE="$PRIMARY" FM_HOME="$PRIMARY" FM_STATE_OVERRIDE="$STATE" \
       "$CHECK" > "$OUT" 2> "$ERR" || rc=$?
   [ "$rc" -eq 2 ] || fail "Grok-shaped stdin must deny, got exit $rc"
@@ -254,39 +257,47 @@ run_send_message() {
   return "$rc"
 }
 
-test_send_message_peer_reply_is_allowed() {
-  # A plain-text reply to a peer session, addressed by the uds: socket copied
-  # from the incoming message's from attribute, creates no work.
+test_send_message_peer_message_is_allowed() {
+  # Current Claude peers use ListAgents names; legacy uds: addresses remain
+  # accepted. Recipient validation is only a string with no CR or LF.
   local input rc
   for input in \
+    '{"to":"researcher","message":"received msg-42"}' \
+    '{"to":"main","message":"hello"}' \
+    '{"to":"a1b2c3-d4e5","message":"hello"}' \
+    '{"to":"worker [3fa9c1]","message":"hello"}' \
+    '{"to":"","message":"hello"}' \
     '{"to":"uds:/tmp/claude-peer-1234.sock","message":"received msg-42"}' \
-    '{"to":"uds:/tmp/claude-peer-1234.sock","summary":"receipt","message":"received msg-42","notify_when_idle":false}'; do
+    '{"to":"uds:/tmp/claude-peer-1234.sock","summary":"receipt","message":"received msg-42","notify_when_idle":false}' \
+    '{"to":"researcher","summary":"receipt","message":"hello\nthere","notify_when_idle":true}'; do
     rc=0
     run_send_message "$input" || rc=$?
-    [ "$rc" -eq 0 ] || fail "uds: peer reply must allow, got exit $rc for $input: $(cat "$ERR")"
-    [ ! -s "$OUT" ] && [ ! -s "$ERR" ] || fail "uds: peer reply allow wrote output for $input"
+    [ "$rc" -eq 0 ] || fail "plain peer message must allow, got exit $rc for $input: $(cat "$ERR")"
+    [ ! -s "$OUT" ] && [ ! -s "$ERR" ] || fail "plain peer message allow wrote output for $input"
   done
-  pass "a plain-text SendMessage reply to a uds: peer address passes the guard"
+  pass "plain-text SendMessage to named or legacy uds: peers passes with either idle notification value"
 }
 
 test_send_message_other_shapes_stay_denied() {
   local input rc
   for input in \
-    '{"to":"researcher","message":"start on task #1"}' \
-    '{"to":"main","message":"hello"}' \
-    '{"to":"a1b2c3-d4e5","message":"hello"}' \
-    '{"to":"worker [3fa9c1]","message":"hello"}' \
-    '{"to":"uds:","message":"hello"}' \
-    '{"to":"uds:/tmp/x.sock extra","message":"hello"}' \
-    '{"to":"UDS:/tmp/x.sock","message":"hello"}' \
-    '{"to":"teammate uds:/tmp/x.sock","message":"hello"}' \
-    '{"to":"uds:/tmp/x.sock","message":{"type":"shutdown_response","request_id":"r1","approve":true}}' \
+    '{"to":"researcher\nother","message":"hello"}' \
+    '{"to":"researcher\rother","message":"hello"}' \
+    '{"to":"researcher\n","message":"hello"}' \
+    '{"to":"researcher","message":{"type":"shutdown_response","request_id":"r1","approve":true}}' \
     '{"to":"uds:/tmp/x.sock","message":{"type":"plan_approval_response","request_id":"r1","approve":false}}' \
-    '{"to":"uds:/tmp/x.sock","message":""}' \
-    '{"to":"uds:/tmp/x.sock","notify_when_idle":true}' \
-    '{"to":"uds:/tmp/x.sock","message":"hi","notify_when_idle":true}' \
-    '{"to":"uds:/tmp/x.sock","message":"hi","extra":1}' \
-    '{"to":["uds:/tmp/x.sock"],"message":"hi"}'; do
+    '{"to":"researcher","message":""}' \
+    '{"to":"researcher","notify_when_idle":true}' \
+    '{"to":"researcher","message":null}' \
+    '{"to":"researcher","message":42}' \
+    '{"to":"researcher","message":["hi"]}' \
+    '{"to":"researcher","message":"hi","extra":1}' \
+    '{"to":["researcher"],"message":"hi"}' \
+    '{"to":42,"message":"hi"}' \
+    '{"to":null,"message":"hi"}' \
+    '{"message":"hi"}' \
+    'null' \
+    '[]'; do
     rc=0
     run_send_message "$input" || rc=$?
     [ "$rc" -eq 2 ] || fail "SendMessage shape must stay denied, got exit $rc for $input"
@@ -295,7 +306,35 @@ test_send_message_other_shapes_stay_denied() {
   done
   # The CLI form carries no tool input, so it can never prove a peer reply.
   expect_deny "SendMessage without tool input" SendMessage
-  pass "name-addressed, structured, subscribing, and uninspectable SendMessage calls stay denied"
+  pass "multiline recipients, structured or missing messages, extra keys, and uninspectable SendMessage calls stay denied"
+}
+
+test_peer_messaging_scope_is_unchanged() {
+  local root payload rc expected
+  for root in "$PRIMARY" "$TMP_ROOT/second" "$TMP_ROOT/child"; do
+    for payload in \
+      '{"tool_name":"SendMessage","tool_input":{"to":"researcher","message":"receipt","notify_when_idle":true}}' \
+      '{"tool_name":"ListAgents","tool_input":{}}' \
+      '{"tool_name":"SendMessage","tool_input":{"to":"researcher","message":{"type":"shutdown_response"}}}' \
+      '{"tool_name":"Agent","tool_input":{"prompt":"go"}}'; do
+      expected=0
+      if [ "$root" != "$TMP_ROOT/child" ]; then
+        case "$payload" in
+          *shutdown_response*|*'"tool_name":"Agent"'*) expected=2 ;;
+        esac
+      fi
+      rc=0
+      printf '%s' "$payload" \
+        | FM_ROOT_OVERRIDE="$root" FM_HOME="$root" FM_STATE_OVERRIDE="$root/state" \
+          "$CHECK" --claude > "$OUT" 2> "$ERR" || rc=$?
+      [ "$rc" -eq "$expected" ] || fail "scope $root expected $expected, got $rc for $payload"
+      [ ! -s "$OUT" ] || fail "Claude scope case wrote stdout for $payload"
+      if [ "$expected" -eq 0 ]; then
+        [ ! -s "$ERR" ] || fail "scope allow wrote stderr for $payload"
+      fi
+    done
+  done
+  pass "primary and secondmate enforce peer-message safety; worker hook stays inert without changing its status/inbox-only role contract"
 }
 
 test_malformed_transport_fails_open() {
@@ -340,7 +379,8 @@ test_escape_hatch_allows_deliberate_use
 test_task_worktree_and_non_firstmate_repo_are_inert
 test_secondmate_home_is_in_scope
 test_stdin_transports_and_output_shapes
-test_send_message_peer_reply_is_allowed
+test_send_message_peer_message_is_allowed
 test_send_message_other_shapes_stay_denied
+test_peer_messaging_scope_is_unchanged
 test_malformed_transport_fails_open
 test_missing_jq_stdin_transport_fails_open

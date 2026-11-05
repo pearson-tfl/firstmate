@@ -36,7 +36,7 @@
 #
 # Stdin mode extracts .tool_name for Claude and Codex, or .toolName for Grok.
 # Classification is by tool name alone, except the Claude SendMessage
-# peer-reply carve-out below, which also reads .tool_input.
+# peer-message carve-out below, which also reads .tool_input.
 # CLI mode is for adapters that already hold the tool name (OpenCode, Pi).
 #
 # Exit/output contract (identical shape to bin/fm-cd-pretool-check.sh):
@@ -65,7 +65,7 @@ DELEGATION_STEMS='agent subagent task workflow cron schedul worktree delegate sp
 # or end it. A local Claude deny list may still remove these from the
 # schema; this shipped guard deliberately stays narrower so it can never be the
 # reason a runaway task cannot be stopped.
-OBSERVE_ONLY_TOOLS='taskoutput taskstop taskget tasklist cronlist bashoutput killshell managesubagents managetask'
+OBSERVE_ONLY_TOOLS='taskoutput taskstop taskget tasklist cronlist bashoutput killshell managesubagents managetask listagents'
 
 # Exact lowercase tool names that match a stem above but create no RUNNABLE
 # work. These write only the harness's session-local todo list, which has no
@@ -172,27 +172,23 @@ for stem in $DELEGATION_STEMS; do
 done
 [ -n "$MATCHED" ] || exit 0
 
-# Peer-reply carve-out, the one input-shaped exception to the name-shape rule.
+# Peer-message carve-out, the one input-shaped exception to the name-shape rule.
 # A Claude SendMessage call is allowed only when ALL of these hold in the stdin
-# tool_input: `to` is a `uds:<socket>` address with no whitespace, the form
-# copied from an incoming cross-session message's `from` attribute, so it
-# addresses an existing peer session rather than discovering one by name;
-# `message` is a non-empty plain string, not a protocol object such as a
-# shutdown or plan-approval response; `notify_when_idle` is absent or false,
-# so no idle subscription is registered; and no key outside to, message,
-# summary, and notify_when_idle is present. Every other SendMessage shape stays
-# denied: a name, agent id, `main`, or in-process teammate address; a structured
-# message; any subscription; and the --tool CLI form, which carries no input to
-# inspect. Replying to a peer that already wrote creates no agent, schedule, or
+# tool_input: `to` is any single-line string (no CR or LF), including a peer name
+# discovered with ListAgents or a legacy uds:<socket> address; `message` is a
+# non-empty plain string, not a protocol object such as a shutdown or
+# plan-approval response; and no key outside to, message, summary, and
+# notify_when_idle is present. Either notify_when_idle value is allowed.
+# Structured messages and the --tool CLI form, which carries no input to
+# inspect, stay denied. Messaging an existing peer creates no agent or
 # workspace for the fleet to lose track of; docs/subagent-guard.md owns the
 # rationale and the content residual this carve-out does not police.
 if [ "$NORMALIZED" = sendmessage ] && [ "$TOOL_SET" -eq 0 ] && [ "$AGY_MODE" -eq 0 ]; then
   printf '%s' "$PAYLOAD" | jq -e '
     .tool_input as $i
     | ($i | type) == "object"
-      and ($i.to | type) == "string" and ($i.to | test("^uds:[^\\s]+$"))
+      and ($i.to | type) == "string" and ($i.to | test("[\\r\\n]") | not)
       and ($i.message | type) == "string" and ($i.message | length) > 0
-      and (($i.notify_when_idle // false) == false)
       and ((($i | keys) - ["to", "message", "summary", "notify_when_idle"]) | length) == 0
   ' >/dev/null 2>&1 && exit 0
 fi
