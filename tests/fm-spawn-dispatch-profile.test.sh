@@ -164,6 +164,105 @@ assert_meta_profile() {
   assert_grep "effort=$effort" "$meta" "meta missing effort=$effort"
 }
 
+# Observe the tmux command boundary without touching the real terminal server.
+# The stopped-shell read permits the exact-session relaunch path after the
+# synthetic fresh launch; title mutations must use only the resolved pane id.
+install_lane_tmux_probe() {
+  mv "$FAKEBIN_DIR/tmux" "$FAKEBIN_DIR/tmux-fixture"
+  cat > "$FAKEBIN_DIR/tmux" <<'SH'
+#!/usr/bin/env bash
+failure=$(cat "$(dirname "$0")/title-failure" 2>/dev/null) || failure=
+case "$*" in
+  *'#{pane_current_command}'*) printf 'bash\n'; exit 0 ;;
+  *'#{pane_id}'*)
+    [ "$failure" != identity ] || { printf 'not-a-pane\n'; exit 0; }
+    ;;
+esac
+case "$1" in
+  set-option|select-pane)
+    printf '%s\n' "$*" >> "$(dirname "$0")/lane-title.log"
+    [ "$failure" != "$1" ] || exit 1
+    ;;
+esac
+exec "$(dirname "$0")/tmux-fixture" "$@"
+SH
+  chmod +x "$FAKEBIN_DIR/tmux"
+}
+
+assert_lane_launch() {  # <id> <harness> <session-flag> <session-id>
+  local id=$1 harness=$2 flag=$3 sid=$4 launch command name='' session=''
+  launch=$(cat "$LAUNCH_LOG")
+  command=$(fm_test_launch_command "$launch")
+  eval "set -- $command"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --name) shift; name=$1 ;;
+      --session-id|--resume) session="$1 $2"; shift ;;
+    esac
+    shift
+  done
+  [ "$harness" != claude ] || assert_equals "$id" "$name" "Claude display name must be the lane id"
+  assert_equals "$flag $sid" "$session" "launch must retain the exact agent session"
+  assert_equals "set-option -p -t %901 allow-set-title off
+select-pane -t %901 -T $id" "$(cat "$FAKEBIN_DIR/lane-title.log")" \
+    "title and title policy must target only the resolved pane id"
+}
+
+test_lane_titles_for_fresh_and_resumed_workers_and_secondmates() {
+  local harness kind rec id dest out status sid flag
+  for harness in claude pi; do
+    for kind in worker secondmate; do
+      id="lane-$harness-$kind"
+      rec=$(make_spawn_case "$id" "$harness" "$id")
+      read_case_record "$rec"
+      install_lane_tmux_probe
+      dest=$WT_DIR
+      if [ "$kind" = secondmate ]; then
+        dest="$CASE_DIR/secondmate-home"
+        make_seeded_secondmate_home "$dest" "$id"
+        out=$(run_spawn "$HOME_DIR" "$dest" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$dest" --secondmate)
+      else
+        out=$(run_ship_spawn "$HOME_DIR" "$dest" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+      fi
+      status=$?
+      expect_code 0 "$status" "$harness $kind fresh launch should succeed: $out"
+      sid=$(sed -n 's/^agent_session_id=//p' "$HOME_DIR/state/$id.meta")
+      [ -n "$sid" ] || fail "fresh $harness $kind launch must record a session id"
+      assert_lane_launch "$id" "$harness" --session-id "$sid"
+
+      : > "$FAKEBIN_DIR/lane-title.log"
+      printf 'Continue the same task.\n' > "$CASE_DIR/resume-prompt"
+      out=$(run_spawn "$HOME_DIR" "$dest" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" --relaunch --resume-session "$CASE_DIR/resume-prompt")
+      status=$?
+      expect_code 0 "$status" "$harness $kind exact-session resume should succeed: $out"
+      flag=--resume
+      [ "$harness" != pi ] || flag=--session-id
+      assert_lane_launch "$id" "$harness" "$flag" "$sid"
+    done
+  done
+  pass "fresh and resumed Claude/Pi workers and secondmates keep lane titles and exact session identity"
+}
+
+test_lane_title_failure_stops_before_harness_launch() {
+  local failure rec id out status
+  for failure in identity set-option select-pane; do
+    id="lane-title-failure-$failure"
+    rec=$(make_spawn_case "$id" claude "$id")
+    read_case_record "$rec"
+    install_lane_tmux_probe
+    printf '%s\n' "$failure" > "$FAKEBIN_DIR/title-failure"
+    out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+    status=$?
+    [ "$status" -ne 0 ] || fail "a title $failure failure must stop the launch: $out"
+    assert_contains "$out" "tmux pane" "title failure must identify the affected pane"
+    assert_not_contains "$(cat "$LAUNCH_LOG")" ' claude ' "failed title setup must not start Claude"
+    if [ "$failure" = identity ]; then
+      [ ! -e "$FAKEBIN_DIR/lane-title.log" ] || fail "an invalid pane id must not mutate titles"
+    fi
+  done
+  pass "invalid pane identity and failed title setup stop before launching the harness"
+}
+
 test_no_profile_keeps_claude_profile_defaults() {
   local rec id out status expected launch
   id=profile-off-z1
@@ -1837,7 +1936,7 @@ test_claude_forwards_firstmate_config_dir_when_set() {
   status=$?
   expect_code 0 "$status" "claude spawn with CLAUDE_CONFIG_DIR set should succeed"
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "CLAUDE_CONFIG_DIR='$CASE_DIR/claude-work' env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER CLAUDE_CODE_DISABLE_WORKFLOWS=1 CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions $(claude_worker_add_dirs "$HOME_DIR" "$id")--settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false},\"disableWorkflows\":true}'" \
+  assert_contains "$launch" "CLAUDE_CONFIG_DIR='$CASE_DIR/claude-work' env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER CLAUDE_CODE_DISABLE_WORKFLOWS=1 CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions $(claude_worker_add_dirs "$HOME_DIR" "$id")--name '$id' --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false},\"disableWorkflows\":true}'" \
     "claude launch did not forward firstmate's CLAUDE_CONFIG_DIR to the crewmate pane"
   pass "claude forwards firstmate's CLAUDE_CONFIG_DIR so the crewmate uses the same credential store"
 }
@@ -2462,7 +2561,7 @@ claude_expected_launch() {  # <launch> <home> <id> <permission-flag>
   # Every Claude spawn fixes its agent session id; the canonical launch carries
   # the one the task record holds, just before the launch prompt.
   session=$(recorded_session_flag "$2/state/$3.meta")
-  printf '%s' "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$2" "$3")unset FM_LOCK_HOLDER; $(fm_test_launch_git_prefix "$1")env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER CLAUDE_CODE_DISABLE_WORKFLOWS=1 CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude $4 $(claude_worker_add_dirs "$2" "$3")--settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false},\"disableWorkflows\":true}' $CLAUDE_CONTROL_CHANNEL_FLAG $session$quoted"
+  printf '%s' "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$2" "$3")unset FM_LOCK_HOLDER; $(fm_test_launch_git_prefix "$1")env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER CLAUDE_CODE_DISABLE_WORKFLOWS=1 CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude $4 $(claude_worker_add_dirs "$2" "$3")--name '$3' --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false},\"disableWorkflows\":true}' $CLAUDE_CONTROL_CHANNEL_FLAG $session$quoted"
 }
 
 test_claude_permission_mode_absent_defaults_to_bypass() {
@@ -2726,6 +2825,8 @@ test_codex_permission_invalid_refuses_before_mutation
 test_codex_permission_does_not_change_other_harnesses
 test_launch_preserves_inherited_git_config
 test_worker_launch_delivers_role_scope
+test_lane_titles_for_fresh_and_resumed_workers_and_secondmates
+test_lane_title_failure_stops_before_harness_launch
 test_no_profile_keeps_claude_profile_defaults
 test_claude_launch_brief_publishes_record_doorbell
 test_claude_secondmate_launch_brief_publishes_into_its_own_home

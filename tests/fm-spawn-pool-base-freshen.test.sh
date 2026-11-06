@@ -793,6 +793,7 @@ done
 case "$cmd" in
   display-message)
     case "$text" in
+      *pane_id*) printf '%%901\n' ;;
       *pane_current_path*) cat "$world/$(window_name "$target").path" 2>/dev/null ;;
       *) printf 'firstmate\n' ;;
     esac

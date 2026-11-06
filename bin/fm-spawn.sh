@@ -509,6 +509,7 @@
 #   relaunch, and recovery re-reads the file; an absent file changes nothing.
 #   Launch templates live in launch_template() below; placeholders replaced before launch:
 #     __BRIEF__    absolute path to data/<task-id>/brief.md
+#     __CLAUDENAME__ the shell-quoted task or secondmate id for Claude's display name
 #     __CLAUDEPERMFLAG__ the claude permission flag selected by config/claude-permission-mode
 #     __CLAUDEADDDIRS__ quoted --add-dir flags granting exactly this task's
 #                  Firstmate channel directories (claude_add_dirs_flag below;
@@ -2868,7 +2869,7 @@ launch_template() {
   # project and fetched content. A persistent secondmate receives its own
   # supervisor contract instead, so this task-worker statement does not apply.
   claude)
-    printf '%s' '__CLAUDEWORKFLOWS__CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude __CLAUDEPERMFLAG__ __CLAUDEADDDIRS__--settings __CLAUDESETTINGS__ __CLAUDELOADOUT__'
+    printf '%s' '__CLAUDEWORKFLOWS__CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude __CLAUDEPERMFLAG__ __CLAUDEADDDIRS__--name __CLAUDENAME__ --settings __CLAUDESETTINGS__ __CLAUDELOADOUT__'
     if [ "$kind" != secondmate ]; then
       printf '%s' "--append-system-prompt '$(spawn_claude_task_channel_statement)' "
     fi
@@ -6132,6 +6133,23 @@ fi
 spawn_enter_recorded_worktree
 spawn_assert_agent_worktree
 
+# All tmux-hosted harnesses share the lane title, including exact-session
+# resumes. Resolve the owned window to a pane id before either mutation:
+# application OSC titles must not replace the lane, and sibling panes must
+# retain their own title policy. Other backends do not own tmux panes.
+if [ "$BACKEND" = tmux ]; then
+  lane_pane=$(tmux display-message -p -t "$WT_TARGET" '#{pane_id}') || exit 1
+  if [[ ! "$lane_pane" =~ ^%[0-9]+$ ]]; then
+    echo "error: could not resolve task $ID's tmux pane id; refusing title changes" >&2
+    exit 1
+  fi
+  if ! tmux set-option -p -t "$lane_pane" allow-set-title off ||
+    ! tmux select-pane -t "$lane_pane" -T "$ID"; then
+    echo "error: could not set task $ID's tmux pane title" >&2
+    exit 1
+  fi
+fi
+
 # Pre-register Claude's workspace trust for the directory this launch starts in,
 # at the first point that directory is known and before any per-task state is
 # created below. The dialog gates the pane before the brief is ever read, and it
@@ -7426,6 +7444,7 @@ true) LAUNCH=${LAUNCH//__CLAUDEWORKFLOWS__/'CLAUDE_CODE_DISABLE_WORKFLOWS=1 '} ;
 esac
 LAUNCH=${LAUNCH//__CLAUDELOADOUT__/${CLAUDE_LOADOUT_ARGS:-}}
 LAUNCH=${LAUNCH//__CLAUDEPERMFLAG__/$CLAUDE_PERM_FLAG}
+LAUNCH=${LAUNCH//__CLAUDENAME__/$(shell_quote "$ID")}
 LAUNCH=${LAUNCH//__CODEXAPPROVALFLAG__/$CODEX_APPROVAL_FLAG}
 if [ "$KEEP_AI_TRAILERS" = 1 ]; then
   LAUNCH=${LAUNCH//__CLAUDEATTRIBUTION__/}

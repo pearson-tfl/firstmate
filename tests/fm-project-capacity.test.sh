@@ -96,7 +96,9 @@ case "$*" in
     ;;
 esac
 case "${1:-}" in
-  display-message) printf 'firstmate\n' ;;
+  display-message)
+    case "$*" in *'#{pane_id}'*) printf '%%901\n' ;; *) printf 'firstmate\n' ;; esac
+    ;;
   list-windows) [ ! -s "$window_file" ] || cat "$window_file" ;;
   new-window)
     name=

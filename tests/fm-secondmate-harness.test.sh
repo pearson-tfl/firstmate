@@ -603,7 +603,9 @@ make_noop_tmux() {
 #!/usr/bin/env bash
 window_file="$(dirname "$0")/.spawn-window"
 case "${1:-}" in
-  display-message) printf 'firstmate\n' ;;
+  display-message)
+    case "$*" in *'#{pane_id}'*) printf '%%901\n' ;; *) printf 'firstmate\n' ;; esac
+    ;;
   list-windows) [ ! -s "$window_file" ] || cat "$window_file" ;;
   new-window)
     name=
@@ -847,7 +849,9 @@ case "$*" in
 esac
 window_file="$(dirname "$0")/.spawn-window"
 case "${1:-}" in
-  display-message) printf 'firstmate\n'; exit 0 ;;
+  display-message)
+    case "$*" in *'#{pane_id}'*) printf '%%901\n' ;; *) printf 'firstmate\n' ;; esac
+    exit 0 ;;
   list-windows) [ ! -s "$window_file" ] || cat "$window_file"; exit 0 ;;
   new-window)
     name=
@@ -1010,7 +1014,7 @@ test_spawn_secondmate_harness_model_token() {
   [ "$(meta_field "$meta" model)" = opus ] || fail "model-token: meta model not opus (got '$(meta_field "$meta" model)')"
   [ "$(meta_field "$meta" effort)" = default ] || fail "model-token: meta effort not default (got '$(meta_field "$meta" effort)')"
   launch=$(cat "$launchlog")
-  assert_contains "$launch" "claude --dangerously-skip-permissions $(sm_claude_add_dir "$w" sm)--settings '$(sm_claude_settings "$w" sm)' --model 'opus'" \
+  assert_contains "$launch" "claude --dangerously-skip-permissions $(sm_claude_add_dir "$w" sm)--name 'sm' --settings '$(sm_claude_settings "$w" sm)' --model 'opus'" \
     "model-token: launch did not carry --model opus"
   jq -e '.feedbackDrafts == "off" and .attribution.commit == "" and .attribution.pr == "" and .attribution.sessionUrl == false and .hooks.UserPromptSubmit' \
     "$(sm_claude_settings "$w" sm)" >/dev/null \
@@ -1035,7 +1039,7 @@ test_spawn_secondmate_harness_model_and_effort_tokens() {
   [ "$(meta_field "$meta" model)" = opus ] || fail "model-effort-tokens: meta model not opus"
   [ "$(meta_field "$meta" effort)" = high ] || fail "model-effort-tokens: meta effort not high (got '$(meta_field "$meta" effort)')"
   launch=$(cat "$launchlog")
-  assert_contains "$launch" "claude --dangerously-skip-permissions $(sm_claude_add_dir "$w" sm)--settings '$(sm_claude_settings "$w" sm)' --model 'opus' --effort 'high'" \
+  assert_contains "$launch" "claude --dangerously-skip-permissions $(sm_claude_add_dir "$w" sm)--name 'sm' --settings '$(sm_claude_settings "$w" sm)' --model 'opus' --effort 'high'" \
     "model-effort-tokens: launch did not carry both --model opus and --effort high"
   pass "C4 spawn: config/secondmate-harness's model+effort tokens thread into the launch and meta"
 }
@@ -1704,7 +1708,7 @@ test_spawn_secondmate_claude_permission_mode_auto() {
   meta="$w/home/state/sm.meta"
   [ "$(meta_field "$meta" harness)" = claude ] || fail "permmode: meta harness not claude"
   launch=$(cat "$launchlog")
-  assert_contains "$launch" "claude --permission-mode auto $(sm_claude_add_dir "$w" sm)--settings '$(sm_claude_settings "$w" sm)' --model 'opus'" \
+  assert_contains "$launch" "claude --permission-mode auto $(sm_claude_add_dir "$w" sm)--name 'sm' --settings '$(sm_claude_settings "$w" sm)' --model 'opus'" \
     "permmode: secondmate launch did not swap the permission flag while keeping --model"
   assert_not_contains "$launch" "--dangerously-skip-permissions" "permmode: secondmate launch must not request bypass mode"
   pass "C2b spawn: config/claude-permission-mode=auto reaches a Claude secondmate launch"
