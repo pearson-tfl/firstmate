@@ -137,6 +137,29 @@ zsh
 A persistent parent shell waiting for a child remained reported as the parent process, while a shell that directly execed a simple command changed identity with the process itself.
 Pi and pi-signed 0.82.0 were reverified on 2026-07-27 through real isolated `fm-spawn.sh` launches.
 
+### Lane pane titles
+
+Verified on macOS on 2026-11-06 with tmux 3.7b, Claude Code 2.1.319, and Pi 1.2.0.
+`bin/fm-spawn.sh` owns the common tmux launch policy: resolve the lane's stable window id to its pane id, disable application title updates on that pane only, and set its title to the lane id before starting any harness.
+Claude also receives its lane id through `--name` on fresh and exact-session resume launches, including secondmates.
+The README's primary Claude launch names the main seat explicitly.
+Other backends do not receive tmux title mutations.
+
+The behavioral regression is `bash bin/fm-test-run.sh tests/fm-spawn-dispatch-profile.test.sh`.
+It covers shell-parsed Claude names, pane-id-only mutations, fresh and resumed Claude/Pi workers and secondmates, and refusal before launch when pane identity or title setup fails.
+For a live refresh, use a private tmux socket and scratch panes, start Claude with `--name ahrfmname-claude` and Pi, submit one simple prompt to each, and read `#{pane_title}` before and after the following pane-scoped commands (with `PANE` resolved to the scratch pane's `%` id and `LANE` set to its test lane id):
+
+```sh
+tmux -S "$SOCKET" set-option -p -t "$PANE" allow-set-title off
+tmux -S "$SOCKET" select-pane -t "$PANE" -T "$LANE"
+tmux -S "$SOCKET" display-message -p -t "$PANE" '#{pane_title}'
+```
+
+Observed with application title updates enabled: Claude showed `✳ ahrfmname-claude` after replying `LANE_TITLE_PROOF_OK`, while Pi showed `π - ahrfmname`.
+With the pane policy applied, the exact titles were `ahrfmname-claude` and `ahrfmname-pi`, including after Pi replied `PI_TITLE_PROOF_OK`.
+A shell emitting `printf '\033]0;application-overwrite\007'` could not overwrite the protected title `ahrfmname-osc`, while a sibling pane in that same window retained application title updates and became `application-overwrite`.
+No existing fleet panes or window names were changed for this verification.
+
 ### Agent liveness name sources
 
 The earlier record that every harness is observed under its own `#{pane_current_command}` no longer holds and has been replaced by the per-harness evidence below.

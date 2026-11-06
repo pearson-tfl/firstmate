@@ -92,7 +92,7 @@ Then launch one of the co-primary harnesses; AGENTS.md takes over from there:
 **Claude Code**
 
 ```sh
-claude
+claude --name main
 ```
 
 **Grok**

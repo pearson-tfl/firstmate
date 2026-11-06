@@ -144,6 +144,7 @@ fake_opencode_launched() {
 }
 case "$*" in
   *"#{pane_current_path}"*) printf '%s\n' "${FM_FAKE_PANE_PATH:-}"; exit 0 ;;
+  *"#{pane_id}"*) printf '%%901\n'; exit 0 ;;
 esac
 fake_opencode_composer_drawn() {
   local reads
