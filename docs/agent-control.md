@@ -15,7 +15,7 @@ The failure repeated across harnesses and homes, and the workaround (remember to
 
 `bin/fm-control-lib.sh` is the single executable owner of three capability tables, which have no side effects, so they can be read as a contract:
 
-- The **verb allowlist**: `interrupt`, `exit`, `relaunch`, `resume`.
+- The **verb allowlist**: `interrupt`, `exit`, `relaunch`, `resume`, `account`.
   There is no arbitrary-text and no generic raw-key entry point.
   A caller either names an allowlisted verb or is refused.
 - **Per-harness mechanics**: the key that cancels a running turn, how many times it must be delivered, whether the composer needs clearing afterwards, the command that exits the agent, and which task kinds the adapter is verified to run.
@@ -74,9 +74,38 @@ One exception is a Herdr-backed Pi relaunch that keeps the pane's bound session 
 T3 Code cannot host a fresh replacement agent in a thread, so `relaunch` refuses before stopping anything.
 A relaunch does take one session reference when the endpoint's own runtime recorded it - see [the relaunch transaction](#transactional-relaunch) - but that is a relaunch input, not a caller-facing verb.
 
+## Claude subscription account moves
+
+```sh
+FM_HOME=/path/to/home bin/fm-control.sh <task-id> account <cswap-number>
+```
+
+`account` moves a local Claude worker or secondmate to that subscription without starting a new conversation or submitting a prompt.
+It requires an idle native Claude session, a recorded session ID, a shared transcript, and a backend with verified clean-exit and editor-key delivery (tmux, Herdr, or Rex).
+The account number is a positive cswap slot number, not a login command.
+It preserves the recorded harness, model, and effort rather than re-resolving a secondmate's runtime pin.
+
+Before stopping anything, it validates the target account and rules, verifies the live session ID and process generation, and saves pending composer text byte-for-byte through Claude's external editor.
+It then performs the ordinary verified clean exit, resumes the identical ID through `cswap run <num> --share-history --`, and checks the native session ID plus the authenticated email and organization against cswap's account list.
+The saved text is restored through the editor and read back exactly, without Enter or any automatically submitted startup prompt.
+An empty saved draft remains empty.
+Claude ignores Ctrl-G on an empty composer, so restoration briefly inserts an unsubmitted nonce; the editor replaces only that exact nonce and refuses if any other text appeared.
+
+Every new Claude launch, fresh or resumed, installs this transparent editor bridge inline in its launch command.
+Ordinary Ctrl-G delegates to the original `VISUAL` or `EDITOR` (or `vi` when neither is set).
+**Compatibility boundary:** an older session without the bridge can move only with an empty composer.
+If it holds text, the move refuses untouched with one line saying it waits for an empty composer or the lane's next relaunch; screen scraping is never used to capture it.
+If cswap defers shared-history migration because another live session uses a nonshared profile, the move refuses before stopping a session whose transcript is not shared.
+
+Success records `account_override=cswap:<num>` in that lane's metadata for future launches; it does not switch the global login or change other lanes.
+Malformed account rules still refuse, but an explicit move selects the requested account rather than ranking it against the rules' automatic candidates.
+A failure stops the operation, retains the resumable session and any saved text, and reports the named backup at `state/<id>.composer.<unique>.txt`.
+If failure occurs after clean exit, the session may be stopped or the replacement may already be running; the transaction record identifies which, and no successful move is claimed.
+Keep the backup until recovery is complete; it is not a prompt to submit.
+
 ## Transactional relaunch
 
-`relaunch` is the only verb that changes durable records, so it runs as a transaction with a journal at `state/<id>.control-relaunch`, the prior record preserved beside it, and a ship or scout's prior instructions preserved when a progress note is appended.
+`relaunch`, `resume`, and `account` change durable records, so they run as a transaction with a journal at `state/<id>.control-relaunch`, the prior record preserved beside it, and a ship or scout's prior instructions preserved when a progress note is appended.
 
 1. **Resolve the profile.**
    An explicit `--harness`, `--model`, or `--effort` wins.

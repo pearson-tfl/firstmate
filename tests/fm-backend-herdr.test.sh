@@ -3924,6 +3924,7 @@ test_normalize_key() {
     [ "$(fm_backend_herdr_normalize_key Escape)" = escape ] || exit 1
     [ "$(fm_backend_herdr_normalize_key C-c)" = ctrl+c ] || exit 1
     [ "$(fm_backend_herdr_normalize_key ctrl+c)" = ctrl+c ] || exit 1
+    [ "$(fm_backend_herdr_normalize_key C-g)" = ctrl+g ] || exit 1
   ) || fail "fm_backend_herdr_normalize_key did not map firstmate's key vocabulary to herdr's verified names"
   pass "fm_backend_herdr_normalize_key: Enter/Escape/C-c map to herdr's verified enter/escape/ctrl+c"
 }
@@ -3987,6 +3988,10 @@ test_send_key_normalizes_and_targets_pane() {
     bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_send_key default:w1:p2 Escape' "$ROOT"
   expect_code 0 $? "send_key should succeed"
   assert_contains "$(cat "$log")" $'\x1f''pane'$'\x1f''send-keys'$'\x1f''w1:p2'$'\x1f''escape' "send_key did not normalize Escape to escape"
+  PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_send_key default:w1:p2 C-g' "$ROOT"
+  expect_code 0 $? "editor shortcut should send"
+  assert_contains "$(cat "$log")" $'\x1f''pane'$'\x1f''send-keys'$'\x1f''w1:p2'$'\x1f''ctrl+g' "editor key must target the right pane"
   pass "fm_backend_herdr_send_key: normalizes the key and targets the right pane"
 }
 

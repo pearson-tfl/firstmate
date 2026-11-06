@@ -559,6 +559,7 @@ fm_backend_rex_key_name() {  # <key>
     Tab) printf 'tab' ;;
     C-c) printf 'ctrl+c' ;;
     C-u) printf 'ctrl+u' ;;
+    C-g) printf 'ctrl+g' ;;
     *) return 1 ;;
   esac
 }

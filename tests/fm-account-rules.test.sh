@@ -37,19 +37,9 @@ new_case() {
   : > "$CASE/launch.log"
 }
 
-# write_rules <line>...: writes config/account-rules and records it approved,
-# the way bin/fm-account-rules.sh approve does after John confirms.
+# Valid rules apply immediately, including from a process without a terminal.
 write_rules() {
   printf '%s\n' "$@" > "$HOME_DIR/config/account-rules"
-  approve_rules
-}
-
-# approve_rules: John's confirmation at a real terminal, driven through a pty.
-approve_rules() {
-  local out
-  out=$(HOME="$HOME_DIR/user-home" FM_HOME="$HOME_DIR" python3 -I "$ROOT_DIR/tests/fixtures/account-rules/pty-answer.py" \
-    --answer-from-prompt "$ROOT_DIR/bin/fm-account-rules.sh" approve 2>&1) \
-    || fail "approving the rules at a terminal should succeed: $out"
 }
 
 spawn_ship() {
@@ -90,7 +80,7 @@ test_rules_pick_the_least_used_allowed_account_and_never_a_forbidden_one() {
   fm_test_cswap_accounts "$CASE" 1 1:10:40 2:5:30 3:0:0 4:2:16
   write_rules '# John owns this file' 'forbid 3'
   out=$(spawn_ship "$id"); rc=$?
-  expect_code 0 "$rc" "a spawn under approved rules should succeed: $out"
+  expect_code 0 "$rc" "a spawn under valid rules should succeed: $out"
   assert_contains "$out" "account=cswap:4" "the spawn should report the least-used allowed account"
   assert_grep "account=cswap:4" "$HOME_DIR/state/$id.meta" "the task record should carry the chosen account"
   assert_no_grep '^3$' "$CASE/cswap-runs" "a forbidden account must never be prepared through cswap"
@@ -134,46 +124,40 @@ test_the_per_home_claude_setting_is_refused_under_rules() {
   pass "the per-home Claude account setting is refused, not used, when rules exist"
 }
 
-test_a_rules_change_without_john_approval_refuses() {
-  local out rc id=rules-unapproved
-  new_case unapproved
-  fm_test_cswap_accounts "$CASE" 1 1:0:0 2:0:0 3:0:0
+test_rules_apply_without_terminal_approval() {
+  local out rc
+  new_case no-approval
+  fm_test_cswap_accounts "$CASE" 1 1:20:20 2:0:0 3:10:10
   write_rules 'forbid 3'
+  # A stale artifact from the removed mechanism must have no authority.
+  printf 'obsolete-fingerprint\n' > "$HOME_DIR/config/account-rules.approved"
   printf 'forbid 2\n' > "$HOME_DIR/config/account-rules"
-  out=$(spawn_ship "$id" 2>&1); rc=$?
-  expect_code 1 "$rc" "an edited, unapproved rules file should refuse: $out"
-  assert_refused_before_launch "$id" "$out" "config/account-rules has changed since the captain approved it"
-  assert_absent "$CASE/cswap-runs" "an unapproved rules file must not prepare any account"
-
-  rm -f "$HOME_DIR/config/account-rules.approved"
-  out=$(spawn_ship "$id" 2>&1); rc=$?
-  expect_code 1 "$rc" "a never-approved rules file should refuse: $out"
-  assert_refused_before_launch "$id" "$out" "config/account-rules has changed since the captain approved it"
-
-  # No controlling terminal: the approval cannot be given from a tool shell.
+  out=$(spawn_ship rules-edited 2>&1); rc=$?
+  expect_code 0 "$rc" "edited valid rules apply without a terminal: $out"
+  assert_contains "$out" "account=cswap:3" "the edited rules, not the artifact, choose the account"
+  run_pane
+  assert_grep "CLAUDE_CONFIG_DIR=$CASE/sessions/3" "$CASE/claude-worker" "the actual launch also traverses cswap with shared history"
+  assert_grep 'EDITOR=/tmp/fm-rules-edited/claude-editor.' "$CASE/claude-worker" "the editor is inline on the executed launch, not only in the caller environment"
+  local editor directory
+  editor=$(awk -F= '$1 == "EDITOR" {print $2}' "$CASE/claude-worker")
+  directory=$(awk -F= '$1 == "FM_CLAUDE_DRAFT_DIR" {print $2}' "$CASE/claude-worker")
+  [ -x "$editor" ] || fail "the inline editor must be an absolute executable"
+  # Model Claude's space-splitting editor parser: only argv[0] is executable.
+  printf 'exact editor launch proof  \nsecond line' > "$CASE/editor-text"
+  local nonce
+  nonce=$(python3 "$ROOT_DIR/bin/fm-claude-draft.py" prepare "$directory" take "$CASE/editor-backup") || fail "prepare bridge request"
+  FM_CLAUDE_DRAFT_DIR="$directory" "$editor" "$CASE/editor-text" || fail "Claude-style editor launch"
+  python3 "$ROOT_DIR/bin/fm-claude-draft.py" wait "$directory" "$nonce" || fail "inline bridge acknowledgement"
+  [ ! -s "$CASE/editor-text" ] || fail "inline bridge did not consume the request"
+  assert_grep 'exact editor launch proof  ' "$CASE/editor-backup" "inline editor preserved whitespace"
   out=$(FM_HOME="$HOME_DIR" perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' \
-    "$ROOT_DIR/bin/fm-account-rules.sh" approve </dev/null 2>&1); rc=$?
-  expect_code 1 "$rc" "approval with no terminal should refuse: $out"
-  assert_contains "$out" "needs the captain at a terminal" "the refusal should say approval needs a terminal"
-  assert_absent "$HOME_DIR/config/account-rules.approved" "a refused approval must not record a fingerprint"
-
-  # A wrong confirmation at a terminal is refused too.
-  out=$(FM_HOME="$HOME_DIR" python3 -I "$ROOT_DIR/tests/fixtures/account-rules/pty-answer.py" \
-    --answer yes "$ROOT_DIR/bin/fm-account-rules.sh" approve 2>&1); rc=$?
-  expect_code 1 "$rc" "a wrong confirmation should refuse: $out"
-  assert_absent "$HOME_DIR/config/account-rules.approved" "a wrong confirmation must not record a fingerprint"
-
-  approve_rules
-  out=$(spawn_ship "$id" 2>&1); rc=$?
-  expect_code 0 "$rc" "the same rules should launch once John approves them: $out"
-  assert_contains "$out" "account=cswap:1" "the approved rules should now govern the choice"
-
-  # Removing the rules file while its approval remains is a change too.
-  rm -f "$HOME_DIR/config/account-rules" "$CASE/cswap-runs"
-  out=$(spawn_ship rules-removed 2>&1); rc=$?
-  expect_code 1 "$rc" "a removed rules file with its approval left should refuse: $out"
-  assert_refused_before_launch rules-removed "$out" "config/account-rules was removed while the captain's approval of it remains"
-  pass "a rules change launches nothing until John approves it at a terminal"
+    "$ROOT_DIR/bin/fm-account-rules.sh" status </dev/null 2>&1); rc=$?
+  expect_code 0 "$rc" "status validates without a terminal: $out"
+  assert_contains "$out" 'valid: applies' "status reports validation instead of approval"
+  mv "$HOME_DIR/config/account-rules" "$CASE/retired-rules"
+  out=$(spawn_ship rules-retired 2>&1); rc=$?
+  expect_code 0 "$rc" "obsolete approval does not prevent retiring rules: $out"
+  pass "valid edits apply immediately and obsolete approval artifacts are ignored"
 }
 
 test_malformed_rules_refuse() {
@@ -248,7 +232,7 @@ test_a_project_rule_binds_a_secondmate_by_its_home_folder_on_spawn_and_respawn()
 test_rules_pick_the_least_used_allowed_account_and_never_a_forbidden_one
 test_a_project_rule_limits_the_choice_to_its_accounts
 test_the_per_home_claude_setting_is_refused_under_rules
-test_a_rules_change_without_john_approval_refuses
+test_rules_apply_without_terminal_approval
 test_malformed_rules_refuse
 test_no_headroom_refuses_and_unmeasured_ranks_last
 test_the_default_login_account_launches_on_the_default_login

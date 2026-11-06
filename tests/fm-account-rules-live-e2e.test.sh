@@ -50,7 +50,6 @@ mkdir -p "$TMP_ROOT/config"
 printf '%s\n' "$LIST" | jq -r --argjson n "$NUM" \
   '"forbid " + ([.accounts[].number | select(. != $n) | tostring] | join(" "))' \
   > "$TMP_ROOT/config/account-rules"
-fm_account_rules_fingerprint "$TMP_ROOT/config/account-rules" > "$TMP_ROOT/config/account-rules.approved"
 PICKED=$(fm_account_rules_pick "$TMP_ROOT/config" live-project) || fail "cswap $CSWAP_VERSION: the rules could not pick from the real account list"
 [ "$PICKED" = "$NUM" ] || fail "cswap $CSWAP_VERSION: the rules picked $PICKED, but only $NUM is allowed"
 pass "cswap $CSWAP_VERSION: the real account list parses and the rules pick the one allowed account"

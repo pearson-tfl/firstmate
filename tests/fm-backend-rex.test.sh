@@ -166,7 +166,7 @@ case "$cmd:$sub" in
     printf '%s\n' "$p0" >>"$D/sent" ;;
   send-key:)
     has_block "$sid" "$bid" || notfound "block"
-    case "$p0" in enter|escape|tab|ctrl+c|ctrl+u) ;; *) exit 2 ;; esac
+    case "$p0" in enter|escape|tab|ctrl+c|ctrl+u|ctrl+g) ;; *) exit 2 ;; esac
     printf '%s\n' "$p0" >>"$D/keys" ;;
   do:)
     has_session "$sid" || notfound "session"
@@ -648,10 +648,10 @@ test_send_literal_and_keys() {
   : >"$dir/fake/log"
   rex_env "$dir" "fm_backend_rex_send_literal '$t' ''" || fail "empty input must succeed"
   assert_no_grep "send" "$dir/fake/log" "empty input must make no call"
-  for k in Enter Escape Tab C-c C-u; do
+  for k in Enter Escape Tab C-c C-u C-g; do
     rex_env "$dir" "fm_backend_send_key rex '$t' $k" || fail "key $k must send"
   done
-  assert_equals "enter escape tab ctrl+c ctrl+u" "$(tr '\n' ' ' <"$dir/fake/keys" | sed 's/ $//')" "keys must map to Rex names"
+  assert_equals "enter escape tab ctrl+c ctrl+u ctrl+g" "$(tr '\n' ' ' <"$dir/fake/keys" | sed 's/ $//')" "keys must map to Rex names"
   : >"$dir/fake/log"
   rex_env "$dir" "fm_backend_send_key rex '$t' F5" 2>/dev/null && fail "an unmapped key must be refused"
   assert_no_grep "send-key" "$dir/fake/log" "an unmapped key must make no call"

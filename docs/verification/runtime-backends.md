@@ -759,9 +759,10 @@ The guard submits prompts and spends tokens, so it is opt-in; rerun it after eve
 
 ## Account rules through cswap
 
-`bin/fm-worker-account-lib.sh` takes a rules-chosen account's Claude root from what the real `cswap run <num>` hands the `claude` it execs, and the account list from `cswap list --json` schemaVersion 1.
+`bin/fm-worker-account-lib.sh` takes a rules-chosen account's Claude root from what the real `cswap run <num> --share-history --` hands the `claude` it execs, and the account list from `cswap list --json` schemaVersion 1.
+The actual launch also runs through cswap with `--share-history`, rather than launching Claude directly on the prepared root.
 `tests/fm-account-rules-live-e2e.test.sh` asks the real cswap and Claude under the operator's own `HOME`, where the cswap accounts live.
-For a non-default account the recorded root is signed in and `claude auth status --json` there reports the email cswap lists for that number; for the default login's account cswap runs plain `claude`, so the recorded root is empty and the launch unsets `CLAUDE_CONFIG_DIR`.
+For a non-default account the prepared root is signed in and `claude auth status --json` there reports the email cswap lists for that number; for the default login's account cswap runs plain `claude`, so the prepared root is empty and the launch unsets `CLAUDE_CONFIG_DIR`.
 Claude keys its macOS Keychain lookup to `USER`, so a read of the served account with `USER` cleared reports `loggedIn: false` for a root that is signed in.
 
 Verified 2026-10-31 on cswap 0.27.0b1+estate.1 and Claude Code 2.1.316 on macOS.
@@ -779,6 +780,27 @@ ok - the default login stayed on account 1
 ```
 
 The guard submits no prompt, but `cswap run` may refresh the chosen account's stored login and prepares its profile, so it is opt-in; rerun it after every cswap or Claude upgrade.
+
+### In-place account move and exact draft restoration
+
+Verified 2026-11-06 on macOS with Claude Code 2.1.319 and cswap 0.27.0b1+estate.1.
+A throwaway tmux lane, not an existing worker or seat, established session `fbafab01-a822-4495-9571-a4e0c6602876` on account 3.
+Its composer contained `unsubmitted move proof λ`, a newline, and `second line with spaces` followed by two spaces.
+The public `fm-control.sh proof account 3` and then `fm-control.sh proof account 2` completed after an initial recovery exercise.
+The final move verified the same native session ID, a live process-generation match, account 2's authenticated email and organization, and exact editor-file readback against the retained backup.
+No startup prompt or saved draft was submitted.
+
+The first failure exercise proved that a replacement-launch refusal retains the exact saved text and leaves the original session resumable.
+The installed CLI revealed two editor constraints: it ignores Ctrl-G on empty input, and a shell-quoted multiword `EDITOR` command did not execute the bridge even though its environment arrived intact.
+The launch now supplies a single absolute private executable inline for both `EDITOR` and `VISUAL`; that executable invokes the bridge with an absolute interpreter and shell-quoted paths.
+Restoration uses an exact nonce placeholder and refuses concurrent input rather than overwriting it.
+`tests/fm-account-rules.test.sh` executes the generated launch and its editor executable; `tests/fm-claude-draft.test.sh` covers byte preservation, placeholder matching, refusals, and normal editor delegation.
+
+Authentication verification preserves `USER` and `LOGNAME`: on this Mac, clearing them falsely reported the ordinary account signed out, while restoring them identified account 2 without any login action.
+A signed-in result is not by itself proof of the requested account; the move compares both email and organization.
+The test did not log out or re-login any real account, and private credential backups preceded cswap activity.
+History migration can be deferred when another live session uses an old nonshared profile; an account move requires the shared transcript before clean exit and otherwise leaves the session running.
+Herdr and Rex receive the editor shortcut through their existing key adapters, but this live proof covers tmux only.
 
 ## Secondmate busy contract
 

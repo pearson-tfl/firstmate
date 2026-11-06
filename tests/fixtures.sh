@@ -464,7 +464,8 @@ if [ "\${1:-}" = auth ] && [ "\${2:-}" = status ]; then
   [ -f "\${CLAUDE_CONFIG_DIR:-\$HOME/.claude}/.credentials.json" ]
   exit
 fi
-printf 'CLAUDE_CONFIG_DIR=%s\n' "\${CLAUDE_CONFIG_DIR-unset}" > '$dir/claude-worker'
+printf 'CLAUDE_CONFIG_DIR=%s\nEDITOR=%s\nVISUAL=%s\nFM_CLAUDE_DRAFT_DIR=%s\n' \
+  "\${CLAUDE_CONFIG_DIR-unset}" "\${EDITOR-unset}" "\${VISUAL-unset}" "\${FM_CLAUDE_DRAFT_DIR-unset}" > '$dir/claude-worker'
 SH
   cat > "$fakebin/cswap" <<SH
 #!/usr/bin/env bash
@@ -476,6 +477,8 @@ case "\${1:-}" in
   run)
     num=\$2
     shift 2
+    [ "\${1:-}" = --share-history ] || { echo 'missing --share-history' >&2; exit 2; }
+    shift
     [ "\${1:-}" != -- ] || shift
     printf '%s\n' "\$num" >> '$dir/cswap-runs'
     echo "Launching Account-\$num [session mode]"

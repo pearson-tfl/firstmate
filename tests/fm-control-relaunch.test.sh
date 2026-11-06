@@ -83,14 +83,25 @@ case "${1:-}" in
           printf 'zsh' > "$D/command"
           [ -z "${FM_FAKE_EXIT_TRANSPORT_FAIL_AFTER_STOP:-}" ] || exit 1
           ;;
-        *'encode launch-brief'* | *'Firstmate operational input waiting: read'*)
+        *'encode launch-brief'* | *'Firstmate operational input waiting: read'* | *'--resume '*)
           cat "$D/becomes" > "$D/command"
           [ -z "${FM_FAKE_LAUNCH_TRANSPORT_FAIL_AFTER_START:-}" ] || exit 1
+          ;;
+        *)
+          if [ -n "${FM_FAKE_EDITOR_HELPER:-}" ]; then
+            printf '%s' "$payload" >> "$D/composer"
+          fi
           ;;
       esac
     else
       printf '%s\n' "$payload" >> "$D/keys"
       case "$payload" in
+        C-g)
+          if [ -n "${FM_FAKE_EDITOR_HELPER:-}" ]; then
+            directory=$(awk -F= '$1 == "claude_draft_dir" {print $2}' "$FM_HOME/state/$FM_FAKE_ACCOUNT_ID.meta")
+            FM_CLAUDE_DRAFT_DIR="$directory" python3 "$FM_FAKE_EDITOR_HELPER" edit "$D/composer" || exit 1
+          fi
+          ;;
         'export GOTMPDIR='*)
           if [ -n "${FM_FAKE_TRACE_PREPARE:-}" ]; then
             : > "$FM_FAKE_TRACE_PREPARE"
@@ -120,6 +131,10 @@ case "${1:-}" in
     printf 'fakepane\n'; exit 0 ;;
   capture-pane)
     [ -z "${FM_FAKE_COMPOSER_READ_FAIL:-}" ] || exit 1
+    if [ -n "${FM_FAKE_EDITOR_HELPER:-}" ]; then
+      printf '────────────────────────\n❯ %s\n────────────────────────\n' "$(cat "$D/composer")"
+      exit 0
+    fi
     if [ -s "$D/composer" ]; then
       printf '╭────╮\n│ %s  │\n╰────╯\n' "$(cat "$D/composer")"
     else
@@ -374,8 +389,6 @@ test_relaunch_under_account_rules_reports_the_switch() {
   fm_test_cswap_fakes "$dir/fakebin" "$dir"
   mkdir -p "$dir/home/config"
   printf 'forbid 3\n' > "$dir/home/config/account-rules"
-  bash -c '. "$1/bin/fm-worker-account-lib.sh"; fm_account_rules_fingerprint "$2"' _ "$ROOT" \
-    "$dir/home/config/account-rules" > "$dir/home/config/account-rules.approved"
   printf 'account=cswap:1\n' >> "$dir/home/state/rla.meta"
   # Account 1 is near its limit and account 3 is forbidden, so 2 is chosen.
   fm_test_cswap_accounts "$dir" 1 1:99:60 2:50:50 3:0:0
@@ -410,8 +423,6 @@ test_secondmate_relaunch_pre_check_and_launch_match_the_same_project_rule() {
   mkdir -p "$dir/user-home/.claude"
   printf '{}\n' > "$dir/user-home/.claude/.credentials.json"
   printf '%s\n' 'forbid 3' 'project signal 5 4' > "$dir/home/config/account-rules"
-  bash -c '. "$1/bin/fm-worker-account-lib.sh"; fm_account_rules_fingerprint "$2"' _ "$ROOT" \
-    "$dir/home/config/account-rules" > "$dir/home/config/account-rules.approved"
   out=$(run_control "$dir" "$id" relaunch --note "account rules"); rc=$?
   expect_code 0 "$rc" "a secondmate relaunch under a project rule should succeed"$'\n'"$out"
   [ "$(meta_field "$dir" "$id" account)" = cswap:5 ] || fail "the relaunch should land on the project's account: $out"
@@ -3282,6 +3293,82 @@ test_resume_refuses_before_stop_without_a_session_or_resume_form() {
   assert_contains "$out" "apply to 'relaunch' only" "profile axes belong to relaunch"
   pass "fm-control resume: refuses before stopping anything without a recorded session or a resume form"
 }
+
+test_account_move_resumes_restores_and_persists() {
+  local dir id=account-proof out rc sid=8c7ad320-1111-4222-8333-444455558888 root
+  dir=$(new_case account-move "$id")
+  add_ship_task "$dir" "$id" claude
+  fm_test_cswap_fakes "$dir/fakebin" "$dir"
+  fm_test_cswap_accounts "$dir" 1 1:10:10 4:0:0
+  root="$dir/user-home/.claude"
+  mkdir -p "$root/sessions" "$root/projects/test" "$dir/sessions/4/sessions" "$dir/bridge"
+  printf '{}\n' > "$root/projects/test/$sid.jsonl"
+  printf 'retained draft  ' > "$dir/fake/composer"
+  cp "$dir/fake/composer" "$dir/expected-draft"
+  printf '%s\n' "agent_session_id=$sid" 'account=ordinary' "account_root=$root" "claude_draft_dir=$dir/bridge" >> "$dir/home/state/$id.meta"
+  # Real live parent PID; only ps's platform-dependent labels are synthetic.
+  python3 - "$root" "$dir/sessions/4" "$$" "$sid" "$dir/wt" <<'PY'
+import json,pathlib,sys
+root,target,pid,sid,cwd=sys.argv[1:]
+record={'pid':int(pid),'sessionId':sid,'cwd':cwd,'status':'idle','procStart':'Fri Nov 6 10:00:00 2026'}
+for directory in (root,target):
+    pathlib.Path(directory,'sessions',pid+'.json').write_text(json.dumps(record))
+PY
+  cat > "$dir/fakebin/ps" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  *"-p $FM_FAKE_NATIVE_PID -o comm="*) printf '/synthetic/claude\n' ;;
+  *"-p $FM_FAKE_NATIVE_PID -o lstart="*) printf 'Fri Nov 6 10:00:00 2026\n' ;;
+  *) exec /bin/ps "$@" ;;
+esac
+SH
+  cat > "$dir/fakebin/claude" <<'SH'
+#!/usr/bin/env bash
+[ -n "${USER:-}" ] && [ -n "${LOGNAME:-}" ] || exit 1
+[ -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json" ] || exit 1
+email=a4@example.test
+[ ! -f "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/wrong-account" ] || email=wrong@example.test
+printf '{"loggedIn":true,"authMethod":"claude.ai","email":"%s","orgId":null}\n' "$email"
+SH
+  chmod +x "$dir/fakebin/ps" "$dir/fakebin/claude"
+  export FM_FAKE_EDITOR_HELPER="$ROOT/bin/fm-claude-draft.py" FM_FAKE_ACCOUNT_ID="$id" FM_FAKE_NATIVE_PID=$$
+  out=$(run_control "$dir" "$id" account 4); rc=$?
+  expect_code 0 "$rc" "account move should succeed: $out"
+  assert_contains "$out" 'account-moved' "success follows verification"
+  assert_grep "agent_session_id=$sid" "$dir/home/state/$id.meta" "account move keeps the session"
+  assert_grep 'account_override=cswap:4' "$dir/home/state/$id.meta" "future launches keep the chosen account"
+  assert_grep "--resume '$sid'" "$dir/fake/literal" "the actual replacement resumes the original ID"
+  assert_not_contains "$(cat "$dir/fake/literal")" 'Firstmate operational input waiting:' "account moves submit no startup prompt"
+  cmp -s "$dir/expected-draft" "$dir/fake/composer" || fail "restored draft differs"
+  local backup
+  backup=$(find "$dir/home/state" -name "$id.composer.*.txt" -print -quit)
+  cmp -s "$dir/expected-draft" "$backup" || fail "retained backup differs"
+  cp "$dir/home/state/$id.meta" "$dir/meta-with-bridge"
+  awk -F= '$1 != "claude_draft_dir"' "$dir/meta-with-bridge" > "$dir/home/state/$id.meta"
+  out=$(run_control "$dir" "$id" account 4); rc=$?
+  expect_code 1 "$rc" "legacy composer text refuses: $out"
+  assert_contains "$out" "move waits for an empty composer or the lane's next relaunch" "legacy compatibility boundary"
+  cmp -s "$dir/expected-draft" "$dir/fake/composer" || fail "legacy refusal changed text"
+  cp "$dir/meta-with-bridge" "$dir/home/state/$id.meta"
+  : > "$dir/fake/composer"
+  out=$(run_control "$dir" "$id" account 4); rc=$?
+  expect_code 0 "$rc" "empty composer does not require opening the editor: $out"
+  [ ! -s "$dir/fake/composer" ] || fail "empty draft gained text"
+  cp "$dir/expected-draft" "$dir/fake/composer"
+  : > "$dir/sessions/4/wrong-account"
+  out=$(run_control "$dir" "$id" account 4); rc=$?
+  mv "$dir/sessions/4/wrong-account" "$dir/sessions/4/verified-wrong-account"
+  expect_code 1 "$rc" "wrong authenticated identity is not a successful move"
+  assert_contains "$out" "authenticated identity does not match" "identity mismatch is explicit"
+  assert_contains "$out" "draft retained" "failed move names its saved draft"
+  for backup in "$dir/home/state/$id.composer."*.txt; do
+    [ ! -s "$backup" ] || cmp -s "$dir/expected-draft" "$backup" || fail "failure lost saved text"
+  done
+  unset FM_FAKE_EDITOR_HELPER FM_FAKE_ACCOUNT_ID FM_FAKE_NATIVE_PID
+  pass "fm-control account: same session, exact draft, no prompt, durable pin, legacy/empty paths, failure recovery"
+}
+
+test_account_move_resumes_restores_and_persists
 
 test_missing_worktree_refuses_before_stopping_anything
 test_missing_instructions_refuse_before_stopping_anything
