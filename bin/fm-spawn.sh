@@ -2869,7 +2869,7 @@ launch_template() {
   # project and fetched content. A persistent secondmate receives its own
   # supervisor contract instead, so this task-worker statement does not apply.
   claude)
-    printf '%s' '__CLAUDEWORKFLOWS__CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude __CLAUDEPERMFLAG__ __CLAUDEADDDIRS__--name __CLAUDENAME__ --settings __CLAUDESETTINGS__ __CLAUDELOADOUT__'
+    printf '%s' '__CLAUDEWORKFLOWS__CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 __CLAUDEBIN__ __CLAUDEPERMFLAG__ __CLAUDEADDDIRS__--name __CLAUDENAME__ --settings __CLAUDESETTINGS__ __CLAUDELOADOUT__'
     if [ "$kind" != secondmate ]; then
       printf '%s' "--append-system-prompt '$(spawn_claude_task_channel_statement)' "
     fi
@@ -3500,7 +3500,11 @@ if [ "$KIND" = secondmate ] && [ -n "$FIRSTMATE_HOME" ]; then
 else
   WORKER_ACCOUNT_PROJECT=$(fm_worker_account_project "$PROJ")
 fi
-WORKER_ACCOUNT=$(fm_worker_account_select "$HARNESS" "$CONFIG" "$MODEL" "${PI_BIN:-$HARNESS}" "$RAW_COMMAND" "$WORKER_ACCOUNT_MATE" "$WORKER_ACCOUNT_PROJECT") || exit 1
+WORKER_ACCOUNT_OVERRIDE=${FM_CONTROL_ACCOUNT:-}
+if [ -z "$WORKER_ACCOUNT_OVERRIDE" ] && [ "$RELAUNCH" -eq 1 ]; then
+  WORKER_ACCOUNT_OVERRIDE=$(fm_meta_get "$RELAUNCH_META" account_override)
+fi
+WORKER_ACCOUNT=$(fm_worker_account_select "$HARNESS" "$CONFIG" "$MODEL" "${PI_BIN:-$HARNESS}" "$RAW_COMMAND" "$WORKER_ACCOUNT_MATE" "$WORKER_ACCOUNT_PROJECT" "$WORKER_ACCOUNT_OVERRIDE") || exit 1
 WORKER_ACCOUNT_FROM=
 [ "$RELAUNCH" -eq 0 ] || WORKER_ACCOUNT_FROM=$(fm_meta_get "$RELAUNCH_META" account)
 WORKER_ACCOUNT_DECLARED=${WORKER_ACCOUNT%%$'\t'*}
@@ -7172,6 +7176,11 @@ fi
 AGENT_SESSION_ID=
 AGENT_SESSION_FLAG=
 agent_session_args || exit 1
+CLAUDE_DRAFT_DIR=
+if [ "$HARNESS" = claude ] && [ "$BACKEND" != t3code ]; then
+  CLAUDE_DRAFT_DIR="$STATE_REAL/$ID.claude-draft.${BASHPID:-$$}.$RANDOM"
+  (umask 077; mkdir "$CLAUDE_DRAFT_DIR") || exit 1
+fi
 
 META_WINDOW=$T
 [ "$BACKEND" = orca ] && META_WINDOW=$W
@@ -7193,7 +7202,7 @@ SPAWN_META_PATH=$SPAWN_META_TMP
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness kind mode yolo branch tasktmp base_branch upstream_consent forge backup_remote backup_prefix model effort opencode_version account account_provider omp_profile busy_gen spawn_gen approval_mode traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id paseo_terminal_id paseo_workspace_id rex_server rex_session_id rex_window_id rex_block_id t3_thread_id t3_project_id tern_session_id tern_tab_id tern_block_id hc_session hc_terminal home projects control_relaunch_tx polytoken_session polytoken_port polytoken_credential agent_session_id", keys, " ")
+      split("window endpoint_task_id worktree project harness kind mode yolo branch tasktmp base_branch upstream_consent forge backup_remote backup_prefix model effort opencode_version account account_provider omp_profile busy_gen spawn_gen approval_mode traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id paseo_terminal_id paseo_workspace_id rex_server rex_session_id rex_window_id rex_block_id t3_thread_id t3_project_id tern_session_id tern_tab_id tern_block_id hc_session hc_terminal home projects control_relaunch_tx polytoken_session polytoken_port polytoken_credential agent_session_id account_override account_root claude_draft_dir", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
@@ -7236,6 +7245,11 @@ preserve_relaunch_meta() {
   # task record stays byte-identical.
   [ -z "$WORKER_ACCOUNT" ] || echo "account=$WORKER_ACCOUNT_DECLARED"
   [ -z "$WORKER_ACCOUNT_PROVIDER" ] || echo "account_provider=$WORKER_ACCOUNT_PROVIDER"
+  if [ "$HARNESS" = claude ]; then
+    [ -z "$WORKER_ACCOUNT_OVERRIDE" ] || echo "account_override=$WORKER_ACCOUNT_OVERRIDE"
+    echo "account_root=${WORKER_ACCOUNT_ROOT:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
+    [ -z "$CLAUDE_DRAFT_DIR" ] || echo "claude_draft_dir=$CLAUDE_DRAFT_DIR"
+  fi
   # The per-secondmate omp profile pin, only when one applies, so every other
   # task record stays byte-identical.
   [ -z "$OMP_PROFILE_PIN" ] || echo "omp_profile=$OMP_PROFILE_PIN"
@@ -7535,6 +7549,10 @@ fi
 LAUNCH=${LAUNCH//__FMLOCKHOLDER__/$LOCK_HOLDER_ENV}
 # A record-backed launch brief is published into the state dir of the pane
 # receiving it, which for a secondmate is its own home, not this primary's.
+if [ "${FM_CONTROL_ACCOUNT:-}" != '' ] && [ "$RESUME_SESSION" -eq 1 ]; then
+  # An account-only move resumes idle: no injected prompt, no submitted draft.
+  LAUNCH=${LAUNCH//__BRIEFDOORBELL__/}
+fi
 case "$LAUNCH" in
 *__BRIEFDOORBELL__*)
   case "$KIND" in
@@ -7572,6 +7590,20 @@ esac
 # A home's worker account pin replaces that forwarding: the launch names the
 # pinned root (or unsets the variable for the ordinary Claude account) and
 # sheds the environment credentials Claude ranks above the root's login.
+if [ "$HARNESS" = claude ] && [ "$BACKEND" != t3code ]; then
+  claude_command=claude
+  case "$WORKER_ACCOUNT_DECLARED" in
+    cswap:*) claude_command="env -u CLAUDE_CONFIG_DIR cswap run ${WORKER_ACCOUNT_DECLARED#cswap:} --share-history --" ;;
+  esac
+  LAUNCH=${LAUNCH//__CLAUDEBIN__/$claude_command}
+  # Claude's editor parser splits on spaces without shell unquoting. Give it
+  # one absolute executable; the private wrapper handles quoted paths itself.
+  draft_editor="$TASK_TMP/claude-editor.${BASHPID:-$$}.$RANDOM"
+  (umask 077; printf '#!/bin/sh\nexec %s %s edit "$@"\n' \
+    "$(shell_quote "$(command -v python3)")" "$(shell_quote "$FM_ROOT/bin/fm-claude-draft.py")" > "$draft_editor" \
+    && chmod 700 "$draft_editor") || exit 1
+  LAUNCH="env FM_CLAUDE_DRAFT_DIR=$(shell_quote "$CLAUDE_DRAFT_DIR") FM_CLAUDE_REAL_EDITOR=$(shell_quote "${FM_CLAUDE_REAL_EDITOR:-${VISUAL:-${EDITOR:-vi}}}") EDITOR=$(shell_quote "$draft_editor") VISUAL=$(shell_quote "$draft_editor") CLAUDE_CODE_RESUME_THRESHOLD_MINUTES=1000000000 $LAUNCH"
+fi
 if [ -n "$WORKER_ACCOUNT" ]; then
   case "$HARNESS" in
   claude)

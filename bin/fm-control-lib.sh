@@ -54,12 +54,13 @@ interrupt
 exit
 relaunch
 resume
+account
 EOF
 }
 
 fm_control_verb_allowed() {  # <verb>
   case "${1-}" in
-    interrupt|exit|relaunch|resume) return 0 ;;
+    interrupt|exit|relaunch|resume|account) return 0 ;;
   esac
   return 1
 }
@@ -364,6 +365,7 @@ fm_control_agent_session_flag() {  # <harness> <fresh|resume>
 # turn interrupt (bin/backends/t3code.sh's fm_backend_t3code_send_key).
 fm_control_backend_supports_key() {  # <backend> <key>
   local backend=${1-} key=${2-}
+  case "$backend:$key" in tmux:C-g|herdr:C-g|rex:C-g) return 0 ;; esac
   case "$backend" in
     tmux|herdr|zellij|cmux|paseo|rex|tern|hc)
       case "$key" in Escape|Enter|C-c|C-u) return 0 ;; esac

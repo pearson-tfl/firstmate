@@ -8,6 +8,16 @@
 #                                         [--effort <level>]
 #                                         (--note <text> | --note-file <path>)
 #        fm-control.sh <task-id> resume [--note <text> | --note-file <path>]
+#        fm-control.sh <task-id> account <cswap-number>
+#
+# account resumes the identical Claude conversation on the chosen subscription,
+# using the verified clean exit and relaunch transaction. The native session
+# record and authenticated email/org must match before success. Its exact draft
+# is saved privately through Claude's external editor and restored without Enter.
+# The saved file is retained and named even on failure. New Claude launches and
+# resumes install the transparent editor bridge; legacy sessions can move only
+# with an empty composer. No rendered text is scraped. account_override in the
+# task record makes later launches retain this explicit choice over rules.
 #
 # Why this exists, and how it differs from fm-send.sh. bin/fm-send.sh is the
 # DATA plane: conversational text for the agent to read, always routing-marked
@@ -241,6 +251,9 @@ RELAUNCH_PHASE=start
 
 control_cleanup() {
   local status=$?
+  if [ -n "${ACCOUNT_BACKUP:-}" ] && [ -f "$ACCOUNT_BACKUP" ]; then
+    echo "composer backup retained: $ACCOUNT_BACKUP" >&2
+  fi
   if [ "$RELAUNCH_ACTIVE" = 1 ] \
      && declare -F relaunch_rollback >/dev/null 2>&1; then
     relaunch_rollback || true
@@ -284,6 +297,15 @@ MODEL_SET=0
 EFFORT_SET=0
 NOTE=
 NOTE_SET=0
+ACCOUNT_NUMBER=
+ACCOUNT_BACKUP=
+TARGET_ACCOUNT_ROOT=
+if [ "$VERB" = account ]; then
+  ACCOUNT_NUMBER=${1:-}
+  case "$ACCOUNT_NUMBER" in ''|0*|*[!0-9]*) die "account requires a positive cswap account number" ;; esac
+  shift
+  [ "$#" -eq 0 ] || die "account accepts only a cswap account number"
+fi
 control_want_value=
 for control_arg in "$@"; do
   if [ -n "$control_want_value" ]; then
@@ -329,7 +351,7 @@ fi
 
 case "$VERB" in
   relaunch) ;;
-  resume)
+  resume|account)
     [ "$HARNESS_SET" = 0 ] && [ "$MODEL_SET" = 0 ] && [ "$EFFORT_SET" = 0 ] \
       || die "--harness, --model, and --effort apply to 'relaunch' only; 'resume' keeps the recorded session's profile"
     ;;
@@ -1002,7 +1024,7 @@ resolve_relaunch_profile() {
   CONFIG_HARNESS=
   CONFIG_MODEL=
   CONFIG_EFFORT=
-  if [ "$KIND" = secondmate ] && [ "$HARNESS_SET" = 0 ]; then
+  if [ "$KIND" = secondmate ] && [ "$HARNESS_SET" = 0 ] && [ -z "$ACCOUNT_NUMBER" ]; then
     # A secondmate's harness, model, and effort are a durable configured pin
     # that every respawn re-resolves (the secondmate-provisioning contract), so
     # a relaunch with no explicit harness picks up a newly configured one
@@ -1076,8 +1098,13 @@ resolve_relaunch_profile() {
   [ "$account_model" != default ] || account_model=
   [ "$KIND" != secondmate ] || account_mate=$ID
   account_project=$(fm_worker_account_project "$(fm_meta_get "$META" project)")
-  fm_worker_account_select "$TARGET_HARNESS" "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" \
-    "$account_model" "$TARGET_HARNESS" "" "$account_mate" "$account_project" >/dev/null || return 1
+  local account_override account_selection
+  account_override=$(fm_meta_get "$META" account_override)
+  [ -z "$ACCOUNT_NUMBER" ] || account_override="cswap:$ACCOUNT_NUMBER"
+  account_selection=$(fm_worker_account_select "$TARGET_HARNESS" "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" \
+    "$account_model" "$TARGET_HARNESS" "" "$account_mate" "$account_project" "$account_override") || return 1
+  TARGET_ACCOUNT_ROOT=${account_selection#*$'\t'}
+  TARGET_ACCOUNT_ROOT=${TARGET_ACCOUNT_ROOT%%$'\t'*}
   fm_omp_profile_select "$TARGET_HARNESS" "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" \
     "$account_mate" >/dev/null || return 1
   # Likewise polytoken's launch profile and wiring refusals
@@ -1247,6 +1274,85 @@ write_resume_prompt() {
   } > "$RESUME_PROMPT" || die "could not write task $ID's resume prompt at $RESUME_PROMPT"
 }
 
+# Use the native editor file, including exact whitespace and trailing newlines.
+account_draft() {  # <take|restore|read>
+  local operation=$1 directory nonce placeholder=
+  directory=$(fm_meta_get "$META" claude_draft_dir)
+  [ -n "$directory" ] || die "task $ID has no Claude editor bridge"
+  if [ "$operation" = restore ]; then
+    [ "$(fm_backend_composer_state "$BACKEND" "$T" "$LABEL")" = empty ] || return 1
+    # Claude ignores Ctrl-G on an empty composer. Insert only a nonce; the
+    # editor replaces it only when every byte matches. Never send Enter.
+    placeholder="fm-draft-${BASHPID:-$$}-$RANDOM-$RANDOM"
+  fi
+  nonce=$(python3 "$SCRIPT_DIR/fm-claude-draft.py" prepare "$directory" "$operation" "$ACCOUNT_BACKUP" "$placeholder") || return 1
+  if [ -n "$placeholder" ]; then
+    fm_backend_source "$BACKEND" || return 1
+    "fm_backend_${BACKEND}_send_literal" "$T" "$placeholder" "$LABEL" || return 1
+  fi
+  fm_backend_send_key "$BACKEND" "$T" C-g "$LABEL" || return 1
+  python3 "$SCRIPT_DIR/fm-claude-draft.py" wait "$directory" "$nonce" || return 1
+  sleep "$POLL"
+}
+
+account_preflight() {
+  local source_root source_account composer directory
+  [ "$HARNESS" = claude ] || die "account moves require a canonical Claude session"
+  fm_control_backend_supports_key "$BACKEND" C-g \
+    || die "account moves require a backend with verified clean exit and editor-key delivery"
+  source_root=$(fm_meta_get "$META" account_root)
+  source_account=$(fm_meta_get "$META" account)
+  if [ -z "$source_root" ]; then
+    case "$source_account" in
+      cswap:*) source_root=$(fm_account_rules_profile "${source_account#cswap:}" claude) || return 1 ;;
+      /*) source_root=$source_account ;;
+      ordinary) source_root=$HOME/.claude ;;
+      *) source_root=${CLAUDE_CONFIG_DIR:-$HOME/.claude} ;;
+    esac
+  elif [[ "$source_account" == cswap:* ]]; then
+    # Migrate a legacy profile's local transcript into the shared store too.
+    fm_account_rules_profile "${source_account#cswap:}" claude >/dev/null || return 1
+  fi
+  python3 "$SCRIPT_DIR/fm-claude-session.py" "${source_root:-$HOME/.claude}" "$RESUME_SESSION_ID" "$WT" idle >/dev/null || return 1
+  composer=$(fm_backend_composer_state "$BACKEND" "$T" "$LABEL") || composer=unknown
+  directory=$(fm_meta_get "$META" claude_draft_dir)
+  if [ -z "$directory" ]; then
+    [ "$composer" = empty ] || die "move waits for an empty composer or the lane's next relaunch; existing text is untouched"
+  else
+    case "$composer" in empty|pending) ;; *) die "Claude composer is not ready for an account move ($composer)" ;; esac
+  fi
+  # Require the shared transcript before stopping, not merely --resume argv.
+  find "$HOME/.claude/projects" -name "$RESUME_SESSION_ID.jsonl" -type f -print -quit 2>/dev/null | grep -q . \
+    || die "session $RESUME_SESSION_ID has no shared transcript; the session remains running"
+  ACCOUNT_BACKUP="$STATE/$ID.composer.$(date +%s).${BASHPID:-$$}.$RANDOM.txt"
+  if [ -n "$directory" ] && [ "$composer" = pending ]; then
+    account_draft take || die "could not save the composer; any saved text is retained at $ACCOUNT_BACKUP"
+  else
+    (umask 077; set -C; : > "$ACCOUNT_BACKUP") || return 1
+  fi
+}
+
+account_verify() {
+  local elapsed=0 root=${TARGET_ACCOUNT_ROOT:-$HOME/.claude} expected actual
+  while ! python3 "$SCRIPT_DIR/fm-claude-session.py" "$root" "$RESUME_SESSION_ID" "$WT" idle >/dev/null 2>&1; do
+    awk -v e="$elapsed" -v t="$LAUNCH_WAIT" 'BEGIN{exit !(e < t)}' || die "resumed Claude session identity could not be verified; draft retained at $ACCOUNT_BACKUP"
+    sleep "$POLL"
+    elapsed=$(awk -v e="$elapsed" -v p="$POLL" 'BEGIN{print e+p}')
+  done
+  expected=$(fm_run_timed "$FM_ACCOUNT_RULES_CSWAP_SECONDS" cswap list --json | jq -cer --argjson n "$ACCOUNT_NUMBER" '.accounts[] | select(.number == $n) | [.email, .organizationUuid]') || return 1
+  local -a clean=(env -i "HOME=$HOME" "PATH=$PATH" "USER=${USER:-$(id -un)}" "LOGNAME=${LOGNAME:-$(id -un)}")
+  [ -z "$TARGET_ACCOUNT_ROOT" ] || clean+=("CLAUDE_CONFIG_DIR=$TARGET_ACCOUNT_ROOT")
+  actual=$(fm_run_timed "$FM_WORKER_ACCOUNT_CHECK_SECONDS" "${clean[@]}" claude auth status --json | jq -cer 'select(.loggedIn == true and .authMethod == "claude.ai") | [.email, .orgId]') || return 1
+  [ "$actual" = "$expected" ] || die "resumed session's authenticated identity does not match cswap account $ACCOUNT_NUMBER; draft retained at $ACCOUNT_BACKUP"
+  if [ -s "$ACCOUNT_BACKUP" ]; then
+    account_draft restore || die "could not restore the composer; saved text retained at $ACCOUNT_BACKUP"
+    account_draft read || die "could not verify restored composer; saved text retained at $ACCOUNT_BACKUP"
+  else
+    [ "$(fm_backend_composer_state "$BACKEND" "$T" "$LABEL")" = empty ] \
+      || die "resumed composer is not empty; saved empty draft retained at $ACCOUNT_BACKUP"
+  fi
+}
+
 do_relaunch() {
   local exit_result state note_line
   local -a spawn_args
@@ -1287,13 +1393,14 @@ do_relaunch() {
     note_line="note=none"
   fi
   safe_checkpoint
+  [ -z "$ACCOUNT_NUMBER" ] || account_preflight
   cp -p "$META" "$META_PRIOR" || die "could not preserve task $ID's durable record before relaunching"
   RELAUNCH_ACTIVE=1
   journal_write checkpoint "${CHECKPOINT_LINES[@]}" "$note_line"
 
   record_note
   if [ "$RESUME" = 1 ]; then
-    write_resume_prompt
+    if [ -z "$ACCOUNT_NUMBER" ]; then write_resume_prompt; else : > "$RESUME_PROMPT"; fi
     note_line="$note_line"$'\n'"resume_session=$RESUME_SESSION_ID"
   fi
   journal_write noted "${CHECKPOINT_LINES[@]}" "$note_line"
@@ -1310,7 +1417,7 @@ do_relaunch() {
   [ "$TARGET_MODEL" = default ] || spawn_args+=(--model "$TARGET_MODEL")
   [ "$TARGET_EFFORT" = default ] || spawn_args+=(--effort "$TARGET_EFFORT")
   [ "$RESUME" = 0 ] || spawn_args+=(--resume-session "$RESUME_PROMPT")
-  if FM_CONTROL_RELAUNCH_TX="$RELAUNCH_TX" \
+  if FM_CONTROL_RELAUNCH_TX="$RELAUNCH_TX" FM_CONTROL_ACCOUNT="${ACCOUNT_NUMBER:+cswap:$ACCOUNT_NUMBER}" \
       "$SCRIPT_DIR/fm-spawn.sh" "${spawn_args[@]}" >/dev/null; then
     RELAUNCH_META_PUBLISHED=1
     # $T was resolved from the record before the launch. When the recorded
@@ -1340,9 +1447,14 @@ do_relaunch() {
     die "the replacement agent for $ID did not come up within ${LAUNCH_WAIT}s (endpoint reads '$state')"
   }
   RELAUNCH_AGENT_CONFIRMED=1
+  [ -z "$ACCOUNT_NUMBER" ] || account_verify
 
   journal_write complete "${CHECKPOINT_LINES[@]}" "$note_line" "exit_result=$exit_result"
   RELAUNCH_ACTIVE=0
+  if [ -n "$ACCOUNT_NUMBER" ]; then
+    echo "account-moved $ID account=cswap:$ACCOUNT_NUMBER session=$RESUME_SESSION_ID composer_backup=$ACCOUNT_BACKUP"
+    return 0
+  fi
   if [ "$RESUME" = 1 ]; then
     echo "resumed $ID harness=$TARGET_HARNESS session=$RESUME_SESSION_ID model=$TARGET_MODEL effort=$TARGET_EFFORT backend=$BACKEND endpoint=$T worktree=$WT"
     return 0
@@ -1376,7 +1488,7 @@ case "$VERB" in
   relaunch)
     do_relaunch
     ;;
-  resume)
+  account|resume)
     RESUME=1
     do_relaunch
     ;;

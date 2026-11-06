@@ -1936,7 +1936,7 @@ test_claude_forwards_firstmate_config_dir_when_set() {
   status=$?
   expect_code 0 "$status" "claude spawn with CLAUDE_CONFIG_DIR set should succeed"
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "CLAUDE_CONFIG_DIR='$CASE_DIR/claude-work' env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER CLAUDE_CODE_DISABLE_WORKFLOWS=1 CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions $(claude_worker_add_dirs "$HOME_DIR" "$id")--name '$id' --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false},\"disableWorkflows\":true}'" \
+  assert_contains "$launch" "CLAUDE_CONFIG_DIR='$CASE_DIR/claude-work' $(claude_editor_env "$launch" "$HOME_DIR" "$id")env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER CLAUDE_CODE_DISABLE_WORKFLOWS=1 CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude --dangerously-skip-permissions $(claude_worker_add_dirs "$HOME_DIR" "$id")--name '$id' --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false},\"disableWorkflows\":true}'" \
     "claude launch did not forward firstmate's CLAUDE_CONFIG_DIR to the crewmate pane"
   pass "claude forwards firstmate's CLAUDE_CONFIG_DIR so the crewmate uses the same credential store"
 }
@@ -2552,8 +2552,25 @@ recorded_session_flag() {
   [ -z "$id" ] || printf -- "--session-id '%s' " "$id"
 }
 
+claude_editor_env() {  # <launch> <home> <id>
+  python3 - "$1" "$2/state/$3.meta" "${FM_CLAUDE_REAL_EDITOR:-${VISUAL:-${EDITOR:-vi}}}" <<'PY'
+import os, pathlib, shlex, sys
+args = shlex.split(sys.argv[1])
+meta = dict(line.split('=', 1) for line in pathlib.Path(sys.argv[2]).read_text().splitlines())
+editor = next(arg.split('=', 1)[1] for arg in args if arg.startswith('EDITOR='))
+assert os.path.isabs(editor) and os.access(editor, os.X_OK), 'editor bridge must be an absolute executable'
+assert pathlib.Path(meta['claude_draft_dir']).is_dir(), 'recorded private draft directory must exist'
+def quote(value):
+    return "'" + value.replace("'", "'\\''") + "'"
+print('env FM_CLAUDE_DRAFT_DIR=' + quote(meta['claude_draft_dir']) +
+      ' FM_CLAUDE_REAL_EDITOR=' + quote(sys.argv[3]) + ' EDITOR=' + quote(editor) +
+      ' VISUAL=' + quote(editor) + ' CLAUDE_CODE_RESUME_THRESHOLD_MINUTES=1000000000 ', end='')
+PY
+}
+
 claude_expected_launch() {  # <launch> <home> <id> <permission-flag>
-  local doorbell quoted session
+  local doorbell quoted session editor_env
+  editor_env=$(claude_editor_env "$1" "$2" "$3") || fail "invalid inline Claude editor environment"
   doorbell=$(claude_launch_brief_arg "$1")
   [ "$(printf '%s' "$doorbell" | "$ROOT/bin/fm-operational-input.sh" doorbell-kind)" = launch-brief ] \
     || doorbell="not a launch-brief doorbell"
@@ -2561,7 +2578,7 @@ claude_expected_launch() {  # <launch> <home> <id> <permission-flag>
   # Every Claude spawn fixes its agent session id; the canonical launch carries
   # the one the task record holds, just before the launch prompt.
   session=$(recorded_session_flag "$2/state/$3.meta")
-  printf '%s' "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$2" "$3")unset FM_LOCK_HOLDER; $(fm_test_launch_git_prefix "$1")env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER CLAUDE_CODE_DISABLE_WORKFLOWS=1 CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude $4 $(claude_worker_add_dirs "$2" "$3")--name '$3' --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false},\"disableWorkflows\":true}' $CLAUDE_CONTROL_CHANNEL_FLAG $session$quoted"
+  printf '%s' "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$2" "$3")unset FM_LOCK_HOLDER; $(fm_test_launch_git_prefix "$1")${editor_env}env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER CLAUDE_CODE_DISABLE_WORKFLOWS=1 CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude $4 $(claude_worker_add_dirs "$2" "$3")--name '$3' --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false},\"disableWorkflows\":true}' $CLAUDE_CONTROL_CHANNEL_FLAG $session$quoted"
 }
 
 test_claude_permission_mode_absent_defaults_to_bypass() {

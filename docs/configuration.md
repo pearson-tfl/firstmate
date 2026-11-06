@@ -1573,7 +1573,7 @@ An empty, malformed, unreadable, or unusable per-secondmate pin refuses with its
 
 For example, `config/secondmate-accounts/work/claude-account` containing `/home/me/.claude-work` selects that existing Claude login for the local secondmate named `work`.
 Removing that file restores the primary home's account selection on the next launch.
-Every spawn, control-plane relaunch, and automatic recovery reads the durable setting again, never a previous task record or ambient account choice.
+Every spawn, control-plane relaunch, and automatic recovery reads the durable setting again, except that an explicit [in-place Claude account move](agent-control.md#claude-subscription-account-moves) persists a lane-specific override in its task record.
 After changing a live mate's pin, use `bin/fm-control.sh <id> relaunch` to apply it.
 The relaunch checks the selected pin before stopping the current agent.
 
@@ -1583,7 +1583,8 @@ A matching primary-side per-secondmate pin for a remote route refuses before rem
 ### Account rules (config/account-rules)
 
 A home whose Claude workers spread across several subscriptions held by the `cswap` account switcher can let a rules file choose each worker's account instead of pinning one.
-When `config/account-rules` exists, every Claude spawn and relaunch from that home picks its account from `cswap list --json` and launches on the profile `cswap run <num>` prepares for it.
+When `config/account-rules` exists, every fresh Claude spawn from that home picks its account from `cswap list --json`; relaunches do the same unless an explicit account move pinned that lane.
+Both profile preparation and the actual Claude launch use `cswap run <num> --share-history --`, including secondmates and resumed sessions.
 The global login is never switched, so other sessions and background jobs that use their own saved tokens are unaffected.
 `config/claude-account`, or a per-secondmate Claude pin, beside the rules file refuses the launch rather than being used.
 Other runners keep their own pins.
@@ -1593,15 +1594,14 @@ For example, `forbid 3` and `project bb-signal-prototype 5 4` keep account 3 out
 A project with no line chooses from every account, and a forbid always wins.
 Among the allowed accounts the one with the lowest current usage wins, an account at its limit is skipped, and an account whose usage cswap cannot report ranks last.
 
-The file is the captain's.
-`bin/fm-account-rules.sh approve`, run by the captain at a terminal, shows the file and records its fingerprint in `config/account-rules.approved` after a typed confirmation read from the controlling terminal, so a tool shell without one cannot approve.
-The fingerprint is not a secret, so this stops an unattended approval, not a process that writes `config/account-rules.approved` itself or drives an attached terminal.
-A missing or stale fingerprint refuses every Claude launch until the current file is approved, and so does a rules file removed while its approval remains; retiring the rules means removing `config/account-rules.approved` too.
-`bin/fm-account-rules.sh status` shows the file and whether it is approved.
+Valid rules edits apply at the next launch without terminal approval.
+Malformed or unreadable rules still refuse the launch, even when the lane has an account-move override.
+`bin/fm-account-rules.sh status` shows and validates the file; it does not approve it.
+The former fingerprint-approval command has been removed, and any old `config/account-rules.approved` file is ignored.
 
 Every account choice appends one line to `data/account-switches.log` naming the task, the account it ran on before (`none` for a first launch), and the account chosen, and the spawn prints the same line.
 The spawn reports the choice as `account=cswap:<num>` and records it in the task record.
-This section owns the format, the ranking, the approval, and the report; [`bin/fm-worker-account-lib.sh`](../bin/fm-worker-account-lib.sh) owns the cswap mechanics, and [runtime backend verification](verification/runtime-backends.md#account-rules-through-cswap) records the live check against the real cswap and Claude.
+This section owns the format, the ranking, validation, and the report; [`bin/fm-worker-account-lib.sh`](../bin/fm-worker-account-lib.sh) owns the cswap mechanics, and [runtime backend verification](verification/runtime-backends.md#account-rules-through-cswap) records the live check against the real cswap and Claude.
 
 ### Per-secondmate omp profile
 

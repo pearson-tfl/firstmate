@@ -251,13 +251,25 @@ fm_worker_account_check() {
 # endpoint exists, and bin/fm-control.sh before a relaunch stops the live
 # agent.
 fm_worker_account_select() {
-  local harness=$1 config=$2 model=$3 executable=$4 raw=${5:-} mate=${6:-} project=${7:-}
+  local harness=$1 config=$2 model=$3 executable=$4 raw=${5:-} mate=${6:-} project=${7:-} account=${8:-}
   local selection declared root providers word provider='' selected_config setting
   selected_config=$(fm_worker_account_config "$harness" "$config" "$mate") || return 1
   setting="config/$(fm_worker_account_file "$harness")"
   [ "$selected_config" = "$config" ] || setting="$selected_config/$(fm_worker_account_file "$harness")"
-  if [ "$harness" = claude ] && { [ -e "$config/account-rules" ] || [ -L "$config/account-rules" ] ||
-    [ -e "$config/account-rules.approved" ] || [ -L "$config/account-rules.approved" ]; }; then
+  if [ "$harness" = claude ] && [ -n "$account" ]; then
+    case "$account" in
+      cswap:[1-9]*)
+        case "${account#cswap:}" in *[!0-9]*) echo "error: malformed lane account $account" >&2; return 1 ;; esac
+        ;;
+      *) echo "error: malformed lane account $account" >&2; return 1 ;;
+    esac
+    if [ -e "$config/account-rules" ] || [ -L "$config/account-rules" ]; then
+      fm_account_rules_parse "$config/account-rules" >/dev/null || return 1
+    fi
+    root=$(fm_account_rules_profile "${account#cswap:}" "$executable") || return 1
+    selection=$(printf '%s\t%s\t' "$account" "$root")
+    setting="lane account $account"
+  elif [ "$harness" = claude ] && { [ -e "$config/account-rules" ] || [ -L "$config/account-rules" ]; }; then
     setting=config/account-rules
     selection=$(fm_account_rules_resolve "$config" "$project" "$executable" "$selected_config") || return 1
   else
@@ -273,6 +285,10 @@ fm_worker_account_select() {
   providers=${root#*$'\t'}
   root=${root%%$'\t'*}
   if [ "$harness" = claude ]; then
+    if [ -n "$raw" ] && [[ "$declared" == cswap:* ]]; then
+      echo "error: cswap account selection requires the canonical Claude launch, not a raw command" >&2
+      return 1
+    fi
     for word in $raw; do
       case "$word" in
       [A-Za-z_]*=*)
@@ -321,7 +337,7 @@ fm_worker_account_claude_shed() {
 
 # --- Rules-based Claude account selection through cswap -------------------
 # docs/configuration.md "Account rules (config/account-rules)" owns the rules
-# format, the ranking, the approval, and the report line; this block owns the
+# format, the ranking, and the report line; this block owns the
 # mechanics. The account list is `cswap list --json` schemaVersion 1. `cswap
 # run <num>` prepares that account's profile root and execs the `claude` on
 # PATH, so a probe `claude` placed first on PATH records the root it receives
@@ -331,18 +347,6 @@ fm_worker_account_claude_shed() {
 # as a pinned one does. Nothing here runs `cswap switch`.
 
 FM_ACCOUNT_RULES_CSWAP_SECONDS=${FM_ACCOUNT_RULES_CSWAP_SECONDS:-60}
-
-# fm_account_rules_fingerprint <file>
-# Prints the SHA-256 hex digest of the file's bytes.
-fm_account_rules_fingerprint() {
-  local digest
-  if command -v shasum >/dev/null 2>&1; then
-    digest=$(shasum -a 256 < "$1") || return 1
-  else
-    digest=$(sha256sum < "$1") || return 1
-  fi
-  printf '%s\n' "${digest%% *}"
-}
 
 # fm_account_rules_parse <file>
 # Validates the rules file and prints its directives, one per line, with
@@ -373,24 +377,8 @@ fm_account_rules_parse() {
   ' -- "$1"
 }
 
-# fm_account_rules_approved <config-dir>
-# Returns 0 when config/account-rules.approved holds the fingerprint of the
-# current rules file; otherwise prints one error and returns 1.
-fm_account_rules_approved() {
-  local config=$1 want have
-  have=$(fm_account_rules_fingerprint "$config/account-rules") || {
-    echo "error: cannot fingerprint config/account-rules" >&2
-    return 1
-  }
-  want=$(cat "$config/account-rules.approved" 2>/dev/null) || want=
-  if [ "$want" != "$have" ]; then
-    echo "error: config/account-rules has changed since the captain approved it, so no Claude worker launches until the captain runs bin/fm-account-rules.sh approve at a terminal" >&2
-    return 1
-  fi
-}
-
 # fm_account_rules_pick <config-dir> <project-name>
-# Prints the cswap account number the approved rules choose for the project.
+# Prints the cswap account number the valid rules choose for the project.
 # On refusal prints one error and returns 1.
 fm_account_rules_pick() {
   local config=$1 project=$2 rules forbidden='' allowed='' list picked line name want
@@ -457,7 +445,7 @@ fm_account_rules_profile() {
   for name in TMPDIR USER LOGNAME; do
     [ -z "${!name:-}" ] || clean+=("$name=${!name}")
   done
-  fm_run_timed "$FM_ACCOUNT_RULES_CSWAP_SECONDS" "${clean[@]}" cswap run "$num" \
+  fm_run_timed "$FM_ACCOUNT_RULES_CSWAP_SECONDS" "${clean[@]}" cswap run "$num" --share-history -- \
     >/dev/null 2>"$probe/err" </dev/null
   rc=$?
   if [ "$rc" -ne 0 ] || [ ! -f "$probe/root" ]; then
@@ -479,11 +467,6 @@ fm_account_rules_resolve() {
     echo "error: config/account-rules replaces the per-home Claude account setting, so $pin_config/claude-account must be removed" >&2
     return 1
   fi
-  if [ ! -e "$config/account-rules" ] && [ ! -L "$config/account-rules" ]; then
-    echo "error: config/account-rules was removed while the captain's approval of it remains, so no Claude worker launches; retiring the rules means removing config/account-rules.approved too" >&2
-    return 1
-  fi
-  fm_account_rules_approved "$config" || return 1
   num=$(fm_account_rules_pick "$config" "$project") || return 1
   root=$(fm_account_rules_profile "$num" "$executable") || return 1
   printf 'cswap:%s\t%s\t\n' "$num" "$root"
