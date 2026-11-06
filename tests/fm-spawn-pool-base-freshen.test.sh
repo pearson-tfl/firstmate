@@ -812,7 +812,7 @@ case "$cmd" in
     rm -f "$world/$w.id" "$world/$w.path"
     ;;
   send-keys)
-    if [ "$text" = "treehouse get Enter" ]; then
+    if [[ "$text" == "treehouse get --root "*" Enter" ]]; then
       w=$(window_name "$target")
       for slot in "$slots"/*/project; do
         grep -qxF -- "$slot" "$world"/*.path 2>/dev/null && continue
@@ -1378,6 +1378,126 @@ test_opt_in_still_refuses_an_unclean_slot_first() {
   pass "with the opt-in an unclean slot is still refused, untouched, before any base is chosen"
 }
 
+test_clone_scoped_treehouse_requests() {
+  local rec id out status root other alias log request actual
+  id='pool-clone-scope'
+  rec=$(make_case "clone scope's alias" "$id")
+  read_case_record "$rec"
+  root=$(bash -c '. "$1"; fm_treehouse_clone_root "$2"' _ "$ROOT/bin/fm-wake-lib.sh" "$PROJECT_DIR") \
+    || fail "could not resolve clone root"
+  other="$CASE_DIR/other-home/project"
+  git clone --quiet "file://$CASE_DIR/origin.git" "$other" || fail "could not clone second fixture"
+  [ "$root" != "$(bash -c '. "$1"; fm_treehouse_clone_root "$2"' _ "$ROOT/bin/fm-wake-lib.sh" "$other")" ] \
+    || fail "independent clones share a root"
+  alias="$CASE_DIR/project-alias"
+  ln -s "$PROJECT_DIR" "$alias" || fail "could not create alias"
+  for alias in "$alias" "$POOL_DIR"; do
+    [ "$root" = "$(bash -c '. "$1"; fm_treehouse_clone_root "$2"' _ "$ROOT/bin/fm-wake-lib.sh" "$alias")" ] \
+      || fail "one clone's alias or linked worktree resolved another root"
+  done
+  log="$CASE_DIR/pane.log"
+  out=$(FM_FAKE_PANE_LOG="$log" run_spawn "$id" --scout)
+  status=$?
+  expect_code 0 "$status" "clone-scoped spawn failed"$'\n'"$out"
+  # Evaluate the actual pane request against an argv recorder, including a
+  # quote and space in the project path, rather than inspecting source bytes.
+  request=$(grep '^treehouse get ' "$log") || fail "no Treehouse request reached the pane"
+  actual=$(bash -c 'treehouse() { printf "%s\\n" "$@"; }; eval "$1"' _ "$request") \
+    || fail "pane request was not valid shell"
+  [ "$actual" = "$(printf 'get\n--root\n%s' "$root")" ] \
+    || fail "pane request lost the clone root or its quoting: $actual"
+  pass "Treehouse requests distinguish clones and preserve linked copies and quoted aliases"
+}
+
+test_foreign_clone_slot_is_untouched() {
+  local rec id out status foreign before
+  id='pool-foreign-clone'
+  rec=$(make_case foreign-clone "$id")
+  read_case_record "$rec"
+  foreign="$CASE_DIR/other-home/project"
+  git clone --quiet "file://$CASE_DIR/origin.git" "$foreign" || fail "could not clone other home"
+  git -C "$foreign" worktree add --quiet --detach "$CASE_DIR/foreign-slot" HEAD || fail "could not create foreign slot"
+  POOL_DIR="$CASE_DIR/foreign-slot"
+  printf 'uncommitted foreign work\n' > "$POOL_DIR/precious.txt"
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+  out=$(run_spawn "$id" --scout)
+  status=$?
+  [ "$status" -ne 0 ] || fail "foreign-clone slot was accepted"
+  assert_contains "$out" "not a worktree of project" "foreign-clone refusal did not explain ownership"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] || fail "foreign HEAD changed"
+  assert_grep 'uncommitted foreign work' "$POOL_DIR/precious.txt" "foreign work changed"
+  [ ! -e "$foreign/.git/FETCH_HEAD" ] || fail "foreign clone was fetched"
+  [ ! -e "$POOL_DIR/.codex" ] || fail "foreign slot got worker configuration"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "foreign spawn published task metadata"
+  pass "an isolated slot of another clone is refused before refresh or worker configuration"
+}
+
+test_treehouse_without_root_refuses_before_endpoint() {
+  local rec id out status log
+  id='pool-old-treehouse'
+  rec=$(make_case old-treehouse "$id")
+  read_case_record "$rec"
+  cat > "$FAKEBIN_DIR/treehouse" <<'SH'
+#!/usr/bin/env bash
+printf 'unknown flag: --root\n' >&2
+exit 1
+SH
+  chmod +x "$FAKEBIN_DIR/treehouse"
+  log="$CASE_DIR/pane.log"
+  out=$(FM_FAKE_PANE_LOG="$log" run_spawn "$id" --scout)
+  status=$?
+  [ "$status" -ne 0 ] || fail "unsupported Treehouse was accepted"
+  assert_contains "$out" 'Treehouse must support --root' "unsupported tool refusal was not actionable"
+  [ ! -s "$log" ] || fail "unsupported tool opened an endpoint"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "unsupported tool published task metadata"
+  pass "Treehouse without native --root is refused before opening an endpoint"
+}
+
+test_real_treehouse_clones_lease_disjoint_pools() {
+  local rec id fixture treehouse_bin home a b ar br legacy aw bw common state
+  fm_live_gate default-on FM_TREEHOUSE_CLONE_LIVE_E2E treehouse || return 0
+  treehouse_bin=$(command -v treehouse)
+  if ! TREEHOUSE_NO_UPDATE_CHECK=1 "$treehouse_bin" get --root /unused --help >/dev/null 2>&1; then
+    [ "${FM_TREEHOUSE_CLONE_LIVE_E2E:-${FM_LIVE:-}}" != 1 ] || fail "live clone test requires Treehouse v2.2+"
+    skip "native clone-pool integration requires Treehouse v2.2+ (--root)"
+    return 0
+  fi
+  id='pool-native-clones'
+  rec=$(make_case native-clones "$id")
+  read_case_record "$rec"
+  fixture="$CASE_DIR/native"
+  home="$fixture/user"
+  a="$fixture/home-a/projects/repo"
+  b="$fixture/home-b/projects/repo"
+  mkdir -p "$home"
+  git clone --quiet "file://$CASE_DIR/origin.git" "$a" || fail "clone A failed"
+  git clone --quiet "file://$CASE_DIR/origin.git" "$b" || fail "clone B failed"
+  ar=$(bash -c '. "$1"; fm_treehouse_clone_root "$2"' _ "$ROOT/bin/fm-wake-lib.sh" "$a") || fail "root A failed"
+  br=$(bash -c '. "$1"; fm_treehouse_clone_root "$2"' _ "$ROOT/bin/fm-wake-lib.sh" "$b") || fail "root B failed"
+  # First leave a live fixture lease in the legacy global pool. New allocation
+  # must neither reuse nor migrate it. HOME suppresses real user hooks/config.
+  legacy=$(cd "$a" && HOME="$home" TREEHOUSE_ROOT='' TREEHOUSE_NO_UPDATE_CHECK=1 "$treehouse_bin" get --lease --lease-holder legacy) || fail "legacy fixture lease failed"
+  state="$(dirname "$(dirname "$legacy")")/treehouse-state.json"
+  cp "$state" "$fixture/legacy-state.json" || fail "could not snapshot legacy state"
+  aw=$(cd "$a" && HOME="$home" TREEHOUSE_ROOT="$fixture/wrong-root" TREEHOUSE_NO_UPDATE_CHECK=1 "$treehouse_bin" get --root "$ar" --lease --lease-holder home-a) || fail "lease A failed"
+  bw=$(cd "$b" && HOME="$home" TREEHOUSE_ROOT="$fixture/wrong-root" TREEHOUSE_NO_UPDATE_CHECK=1 "$treehouse_bin" get --root "$br" --lease --lease-holder home-b) || fail "lease B failed"
+  [ "$(dirname "$(dirname "$aw")")" != "$(dirname "$(dirname "$bw")")" ] || fail "clones leased from one pool"
+  for home in a b; do
+    if [ "$home" = a ]; then common=$a; else common=$b; fi
+    if [ "$home" = a ]; then fixture=$aw; else fixture=$bw; fi
+    [ "$(git -C "$fixture" rev-parse --path-format=absolute --git-common-dir)" = "$common/.git" ] \
+      || fail "lease $home belongs to the other clone"
+  done
+  [ "$aw" != "$legacy" ] || fail "legacy slot was reused"
+  cmp -s "$state" "$CASE_DIR/native/legacy-state.json" || fail "legacy pool changed"
+  printf '# native Treehouse %s: two independent clone leases own their Git common dirs; legacy lease unchanged\n' "$("$treehouse_bin" --version)"
+  pass "native Treehouse leases disjoint clone pools without touching an existing global lease"
+}
+
+test_clone_scoped_treehouse_requests
+test_foreign_clone_slot_is_untouched
+test_treehouse_without_root_refuses_before_endpoint
+test_real_treehouse_clones_lease_disjoint_pools
 test_remote_seeded_home_spawns_from_treehouse_pool
 test_pool_slot_claim_follows_the_spawn_outcome
 test_refused_launch_leaves_the_pool_for_a_retry_and_a_second_task
