@@ -538,6 +538,12 @@
 #   its cswap account through the same seam instead of config/claude-account,
 #   records account=cswap:<num>, and appends one data/account-switches.log
 #   line per choice; docs/configuration.md "Account rules" owns the contract.
+# Claude secondmate seat plugins (config/secondmate-seat-plugins):
+#   Optional seat-map pointer, read only for standard Claude secondmate launches
+#   (fresh and resume); fm-secondmate-seat-plugins.sh owns its format and merge.
+#   Other harnesses, raw commands, provider-owned T3 launches, ships, and scouts
+#   never read this file.
+#
 # Per-secondmate omp profile (config/secondmate-accounts/<id>/omp-profile):
 #   Opt-in, and read only for a local secondmate's own omp agent;
 #   bin/fm-omp-profile-lib.sh owns the file and its refusals. A pinned launch
@@ -552,6 +558,7 @@
 #     __CLAUDEADDDIRS__ quoted --add-dir flags granting exactly this task's
 #                  Firstmate channel directories (claude_add_dirs_flag below;
 #                  supplies its own trailing space, empty never used)
+#     __CLAUDESEATPLUGINS__ optional quoted --plugin-dir flags for a secondmate
 #     __CLAUDESETTINGS__ the single claude --settings value: a quoted inline
 #                  JSON object for a crewmate or scout, or a quoted path to
 #                  state/<task-id>.claude-settings.json for a secondmate
@@ -2945,7 +2952,7 @@ launch_template() {
   # from the shell that launched firstmate and its pane keeps the dim styling
   # the shared composer guard reads.
   claude)
-    printf '%s' 'env -u NO_COLOR -u FORCE_COLOR __CLAUDEWORKFLOWS__CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 __CLAUDEBIN__ __CLAUDEPERMFLAG__ __CLAUDEADDDIRS__--name __CLAUDENAME__ --settings __CLAUDESETTINGS__ __CLAUDELOADOUT__'
+    printf '%s' 'env -u NO_COLOR -u FORCE_COLOR __CLAUDEWORKFLOWS__CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 __CLAUDEBIN__ __CLAUDEPERMFLAG__ __CLAUDEADDDIRS__--name __CLAUDENAME__ --settings __CLAUDESETTINGS__ __CLAUDESEATPLUGINS____CLAUDELOADOUT__'
     if [ "$kind" != secondmate ]; then
       printf '%s' "--append-system-prompt '$(spawn_claude_task_channel_statement)' "
     fi
@@ -6689,6 +6696,9 @@ BUSY_GEN=
         session_keys='"feedbackDrafts":"off","attribution":{"commit":"","pr":"","sessionUrl":false},'
       fi
       printf '{%s%s}\n' "$session_keys" "$hooks_json" >"$STATE_REAL/$ID.claude-settings.json"
+      if [ "$RAW_LAUNCH" -eq 0 ] && [ "$BACKEND" != t3code ]; then
+        CLAUDE_SEAT_PLUGIN_ARGS=$(bash "$SCRIPT_DIR/fm-secondmate-seat-plugins.sh" "$CONFIG" "$ID" "$STATE_REAL/$ID.claude-settings.json") || exit 1
+      fi
     else
       mkdir -p "$WT/.claude"
       printf '{%s}\n' "$hooks_json" >"$WT/.claude/settings.local.json"
@@ -7612,6 +7622,7 @@ false) LAUNCH=${LAUNCH//__CLAUDEWORKFLOWS__/'env -u CLAUDE_CODE_DISABLE_WORKFLOW
 true) LAUNCH=${LAUNCH//__CLAUDEWORKFLOWS__/'CLAUDE_CODE_DISABLE_WORKFLOWS=1 '} ;;
 *) LAUNCH=${LAUNCH//__CLAUDEWORKFLOWS__/} ;;
 esac
+LAUNCH=${LAUNCH//__CLAUDESEATPLUGINS__/"${CLAUDE_SEAT_PLUGIN_ARGS:-}"}
 LAUNCH=${LAUNCH//__CLAUDELOADOUT__/${CLAUDE_LOADOUT_ARGS:-}}
 LAUNCH=${LAUNCH//__CLAUDEPERMFLAG__/$CLAUDE_PERM_FLAG}
 LAUNCH=${LAUNCH//__CLAUDENAME__/$(shell_quote "$ID")}
