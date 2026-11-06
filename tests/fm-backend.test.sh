@@ -1024,7 +1024,9 @@ set -u
 { printf 'tmux'; for a in "\$@"; do printf '\\x1f%s' "\$a"; done; printf '\\n'; } >> "\${FM_TMUX_LOG:?}"
 case "\${1:-}" in
   display-message)
-    for a in "\$@"; do case "\$a" in *pane_current_path*) printf '%s\\n' "$wt"; exit 0 ;; esac; done
+    for a in "\$@"; do case "\$a" in
+      *pane_id*) printf '%%901\\n'; exit 0 ;;
+      *pane_current_path*) printf '%s\\n' "$wt"; exit 0 ;; esac; done
     printf 'firstmate\\n'; exit 0 ;;
   new-window)
     _name=
@@ -1104,7 +1106,9 @@ set -u
 { printf 'tmux'; for a in "\$@"; do printf '\\x1f%s' "\$a"; done; printf '\\n'; } >> "\${FM_TMUX_LOG:?}"
 case "\${1:-}" in
   display-message)
-    for a in "\$@"; do case "\$a" in *pane_current_path*)
+    for a in "\$@"; do case "\$a" in
+      *pane_id*) printf '%%901\\n'; exit 0 ;;
+      *pane_current_path*)
       printf x >> "$counter"
       if [ "\$(wc -c < "$counter")" -le 1 ]; then
         printf '%s\\n' "$initial_path"

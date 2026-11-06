@@ -62,7 +62,9 @@ case "$*" in
   *"#{cursor_y}"*) fake_cursor_y; exit 0 ;;
 esac
 case "${1:-}" in
-  display-message) printf 'firstmate\n'; exit 0 ;;
+  display-message)
+    case "$*" in *'#{pane_id}'*) printf '%%901\n' ;; *) printf 'firstmate\n' ;; esac
+    exit 0 ;;
   list-windows)
     [ ! -s "$FM_FAKE_ROVO_STATE.window" ] || cat "$FM_FAKE_ROVO_STATE.window"
     exit 0 ;;

@@ -603,7 +603,9 @@ make_noop_tmux() {
 #!/usr/bin/env bash
 window_file="$(dirname "$0")/.spawn-window"
 case "${1:-}" in
-  display-message) printf 'firstmate\n' ;;
+  display-message)
+    case "$*" in *'#{pane_id}'*) printf '%%901\n' ;; *) printf 'firstmate\n' ;; esac
+    ;;
   list-windows) [ ! -s "$window_file" ] || cat "$window_file" ;;
   new-window)
     name=
@@ -847,7 +849,9 @@ case "$*" in
 esac
 window_file="$(dirname "$0")/.spawn-window"
 case "${1:-}" in
-  display-message) printf 'firstmate\n'; exit 0 ;;
+  display-message)
+    case "$*" in *'#{pane_id}'*) printf '%%901\n' ;; *) printf 'firstmate\n' ;; esac
+    exit 0 ;;
   list-windows) [ ! -s "$window_file" ] || cat "$window_file"; exit 0 ;;
   new-window)
     name=
