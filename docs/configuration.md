@@ -1328,6 +1328,20 @@ Those inherited values are defaults and rules only; `fm-spawn` still permits a c
 
 `config/secondmate-harness` is not inherited because secondmates do not launch secondmates.
 
+### Claude secondmate seat plugins (config/secondmate-seat-plugins)
+
+The primary can opt its Claude secondmates into an existing per-seat plugin map by putting that map's absolute JSON path in the local, gitignored `config/secondmate-seat-plugins` file.
+[`fm-secondmate-seat-plugins.sh`](../bin/fm-secondmate-seat-plugins.sh)'s header owns the map format, seat-key convention, argument quoting, and settings merge.
+This is a data-only integration: no external launcher is imported and no external repository path is built into Firstmate.
+For example, a Mac operator using a local loadout seat map can point the file at that map without copying its entries or changing shared Claude settings.
+The pointer belongs to the launching home, is not inherited, and is read on each standard Claude secondmate launch, including relaunch and resume.
+An absent pointer or unmapped seat leaves the launch unchanged; invalid configured input refuses the launch with a diagnostic.
+Ships, scouts, raw commands, other harnesses, and provider-owned T3 launches are unchanged.
+This option supports command-line launches only; T3 does not consume these Claude CLI arguments.
+Remote routes resolve the pointer on the remote launching host; a Mac-only map should stay configured only on the Mac.
+Changing this configuration does not restart any running seat; schedule the next launch separately.
+Regression coverage is in [`fm-secondmate-harness.test.sh`](../tests/fm-secondmate-harness.test.sh) and [`fm-control-relaunch.test.sh`](../tests/fm-control-relaunch.test.sh).
+
 ### Installed hooks and launch details
 
 For grok, `fm-spawn.sh` installs one firstmate-owned global turn-end hook under `$GROK_HOME/hooks/`, or `~/.grok/hooks/` when `GROK_HOME` is unset, and drops a per-task `.fm-grok-turnend` pointer in the worktree, with teardown removing the task token and pointer.

@@ -3251,6 +3251,48 @@ test_resume_returns_the_recorded_session() {
   pass "fm-control resume: claude and pi relaunch onto the recorded session, not a fresh one"
 }
 
+test_secondmate_plugins_survive_relaunch_and_resume() {
+  local dir sm out rc verb label lit id=seat-trial sid=0f9e8d7c-1111-4222-8333-444455557788
+  for verb in relaunch resume; do
+    for label in mapped unmapped; do
+      dir=$(new_case "seat-$verb-$label" "$id")
+      sm="$dir/smhome"
+      mkdir -p "$sm/bin" "$sm/data" "$sm/state" "$dir/home/config" "$dir/home/data/$id"
+      git -C "$sm" init -q -b main || fail "could not initialize scratch secondmate"
+      printf '%s\n' "$id" > "$sm/.fm-secondmate-home"
+      printf '# Firstmate\n' > "$sm/AGENTS.md"
+      printf '# charter\n' > "$sm/data/charter.md"
+      printf '# charter\n' > "$dir/home/data/$id/brief.md"
+      printf 'claude\n' > "$dir/home/config/secondmate-harness"
+      printf '%s' "$sm" > "$dir/fake/cwd"
+      {
+        printf 'window=fmses:fm-%s\nendpoint_task_id=%s\n' "$id" "$id"
+        printf 'home=%s\nworktree=%s\nproject=%s\n' "$sm" "$sm" "$sm"
+        printf 'harness=claude\nkind=secondmate\nmode=secondmate\nyolo=off\nmodel=default\neffort=default\nagent_session_id=%s\n' "$sid"
+      } > "$dir/home/state/$id.meta"
+      printf '%s\n' "$dir/map.json" > "$dir/home/config/secondmate-seat-plugins"
+      node - "$dir/map.json" "$label" <<'JS' || fail "could not write seat map"
+const fs = require('fs');
+const [file, label] = process.argv.slice(2);
+fs.writeFileSync(file, JSON.stringify({seats: {[label === 'mapped' ? 'fm-seat-trial' : 'fm-other']: {launch: {plugin_dirs: ['/plugins/seat trial'], settings: {env: {TRIAL_VERSION: 'v5'}}}}}}));
+JS
+      out=$(run_control "$dir" "$id" "$verb"); rc=$?
+      expect_code 0 "$rc" "secondmate $label $verb should succeed: $out"
+      lit=$(cat "$dir/fake/literal")
+      if [ "$label" = mapped ]; then
+        assert_contains "$lit" "--plugin-dir '/plugins/seat trial'" "seat plugin must reach the new Claude command"
+        assert_equals v5 "$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).env.TRIAL_VERSION' "$dir/home/state/$id.claude-settings.json")" "seat env must survive lifecycle replacement"
+      else
+        assert_not_contains "$lit" '--plugin-dir' "unmapped seat must stay unchanged"
+      fi
+      if [ "$verb" = resume ]; then
+        assert_contains "$lit" "--resume '$sid'" "plugin launch must still resume the recorded session"
+      fi
+    done
+  done
+  pass "secondmate seat plugins survive relaunch and exact-session resume; unmapped seats stay unchanged"
+}
+
 test_resume_of_a_stopped_agent_relaunches_its_session() {
   local dir out rc id=rs-stopped sid=0f9e8d7c-1111-4222-8333-444455557777
   dir=$(new_case resume-stopped "$id")
@@ -3413,6 +3455,7 @@ test_away_branch_relaunch_accepts_existing_dispatchable_items
 test_relaunch_fixes_a_fresh_session_id_in_launch_and_record
 test_pi_relaunch_fixes_a_fresh_session_id
 test_resume_returns_the_recorded_session
+test_secondmate_plugins_survive_relaunch_and_resume
 test_resume_of_a_stopped_agent_relaunches_its_session
 test_resume_refuses_before_stop_without_a_session_or_resume_form
 test_relaunch_reuses_recorded_loadout_and_workflows
