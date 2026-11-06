@@ -19,6 +19,7 @@ make_fakebin() {  # <dir>
 window_file="$(dirname "$0")/.spawn-window"
 case "$*" in
   *"#{pane_current_path}"*) printf '%s\n' "${FM_FAKE_PANE_PATH:-}"; exit 0 ;;
+  *'#{pane_id}'*) printf '%%901\n'; exit 0 ;;
 esac
 case "${1:-}" in
   display-message) printf 'firstmate\n' ;;
