@@ -1,5 +1,12 @@
 # Contributing
 
+## Work on John's fork
+
+John's own work targets `main` in [`pearson-tfl/firstmate`](https://github.com/pearson-tfl/firstmate).
+The parent-repository flow below applies only to an upstream contribution John has approved.
+
+---
+
 Thanks for wanting to contribute.
 One rule up front:
 
