@@ -1423,3 +1423,32 @@ test_watcher_retry_keeps_a_newer_mark
 test_watcher_escalates_once_after_budget
 test_watcher_dead_pane_escalates_once_without_ringing
 test_watcher_dead_pane_ignores_stale_busy_state
+
+# Escalation names the guard that blocked delivery. A subsequent verified empty
+# composer permits one ring, without treating that attempt as acknowledgement.
+test_composer_block_recovery() {
+  local dir capture rec i
+  dir=$(busy_case composer-recovery)
+  capture="$dir/protected.capture"
+  printf '╭──────────────────╮\n│ captain draft    │\n╰──────────────────╯\n' > "$capture"
+  rec="$dir/state/t1.inbox/001.msg"
+  for i in 1 2 3 4; do busy_steer_check "$dir" "$capture"; done
+  grep -q 'composer-blocked' "$dir/state/.wake-queue" || fail "composer block was not named"
+  [ ! -s "$dir/send.log" ] || fail "protected composer was typed into"
+  busy_steer_check "$dir" "$capture"
+  [ ! -s "$dir/send.log" ] || fail "escalated protected composer was typed into"
+  printf 'unreadable fixture\n' > "$dir/unknown.capture"
+  busy_steer_check "$dir" "$dir/unknown.capture"
+  [ ! -s "$dir/send.log" ] || fail "unknown composer counted as recovery"
+  busy_steer_check "$dir" "$(idle_capture "$dir")"
+  grep -q 'Firstmate instruction waiting' "$dir/send.log" || fail "empty composer did not receive recovery ring"
+  [ -f "$rec" ] || fail "ring was treated as acknowledgement"
+  : > "$dir/send.log"
+  busy_steer_check "$dir" "$(idle_capture "$dir")"
+  [ ! -s "$dir/send.log" ] || fail "recovery ring repeated after budget spent"
+  mv "$rec" "$dir/state/t1.inbox/handled/"
+  busy_steer_check "$dir" "$(idle_capture "$dir")"
+  [ ! -e "$dir/state/t1.inbox/.ring-state" ] || fail "ack did not reset recovery"
+  pass "watcher: composer-blocked escalation recovers once only after positive empty proof; ack remains required"
+}
+test_composer_block_recovery

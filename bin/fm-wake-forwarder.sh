@@ -15,7 +15,11 @@
 #      The child records its own pid as `arm_pid=<N>` in the beat before it
 #      execs the arm, so the pid in the beat is the arm pid that
 #      state/.watch-cycle-exits.log rows begin with.
-#   3. Waits for the arm to end its cycle.
+#   3. Waits for the arm process to exit, then atomically records completed_at
+#      in the beat. Interim attached-watcher cycle exits are not arm exits.
+#      run_id and arm_sequence identify this arm incarnation. Each phase is
+#      recorded in .forwarder-phases.log (last 128 rows), with UTC time, epoch,
+#      arm identity, exit status and elapsed seconds. Notify payloads are omitted.
 #   4. When the arm surfaced a wake (exit 0 with a reason line), runs
 #      <notify-command> [args...] "<one-line row text>" once. The row names the
 #      home and the arm's reason line. A failed notify is retried: the next
@@ -86,6 +90,12 @@ RETRY=${FM_FORWARDER_RETRY_SECONDS:-15}
 FORWARDER_LOCK="$STATE/.forwarder.lock"
 FORWARDER_BEAT="$STATE/.forwarder-beat"
 ARM_OUT="$STATE/.forwarder-arm.out"
+PHASE_LOG="$STATE/.forwarder-phases.log"
+run_id="$$-$(date +%s)"
+arm_sequence=0
+arm_pid=
+started_at=0
+completed_at=0
 
 if ! fm_lock_try_acquire "$FORWARDER_LOCK"; then
   echo "forwarder: already running pid=${FM_LOCK_HELD_PID:-unknown}"
@@ -105,34 +115,56 @@ stop_arm() {  # <exit-code>
 trap 'stop_arm 143' TERM
 trap 'stop_arm 130' INT
 
+record_phase() {  # <phase> [exit-code] [elapsed-seconds]
+  local phase=$1 now
+  now=$(date +%s)
+  {
+    printf 'arm_pid=%s\nforwarder_pid=%s\nrun_id=%s\narm_sequence=%s\n' "$arm_pid" "$$" "$run_id" "$arm_sequence"
+    printf 'started_at=%s\ncompleted_at=%s\nphase=%s\n' "$started_at" "$completed_at" "$phase"
+  } > "$FORWARDER_BEAT.tmp" && mv -f "$FORWARDER_BEAT.tmp" "$FORWARDER_BEAT"
+  printf 'at=%s\tepoch=%s\trun_id=%s\tarm_sequence=%s\tarm_pid=%s\tphase=%s\texit_code=%s\telapsed=%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$now" "$run_id" "$arm_sequence" "$arm_pid" "$phase" "${2:-none}" "${3:-0}" >> "$PHASE_LOG"
+  tail -n 128 "$PHASE_LOG" > "$PHASE_LOG.tmp" && mv -f "$PHASE_LOG.tmp" "$PHASE_LOG"
+}
+
 notify_row() {  # <row-text> <notify-command> [args...]
-  local row=$1
+  local row=$1 begin result
   shift
+  begin=$(date +%s)
+  record_phase notify-begin
   "$@" "$row" </dev/null
+  result=$?
+  record_phase notify-end "$result" "$(( $(date +%s) - begin ))"
+  return "$result"
 }
 
 predecessor=
 failing=0
 while :; do
-  printf 'arm_pid=\nforwarder_pid=%s\n' "$$" > "$FORWARDER_BEAT.tmp" \
-    && mv -f "$FORWARDER_BEAT.tmp" "$FORWARDER_BEAT"
+  arm_sequence=$((arm_sequence + 1))
+  arm_pid=
+  completed_at=0
+  started_at=$(date +%s)
+  record_phase arm-start
   fm_detector_beat_check "$@"
   # The child writes its own pid, then execs the arm in place, so the pid in
   # the beat is the arm's own pid. The forwarder waits on it and signals it on
   # shutdown: a tracked child, never fired and forgotten.
   /bin/bash -c '
-    printf "arm_pid=%s\nforwarder_pid=%s\n" "$$" "$2" > "$1.tmp" && mv -f "$1.tmp" "$1"
+    printf "arm_pid=%s\nforwarder_pid=%s\nrun_id=%s\narm_sequence=%s\nstarted_at=%s\ncompleted_at=0\nphase=arm-wait\n" "$$" "$2" "$5" "$6" "$7" > "$1.tmp" && mv -f "$1.tmp" "$1"
     if [ -n "$4" ]; then
       FM_WATCH_PREDECESSOR_ARM_PID=$4 exec "$3"
     fi
     unset FM_WATCH_PREDECESSOR_ARM_PID
     exec "$3"
-  ' _ "$FORWARDER_BEAT" "$$" "$ARM" "$predecessor" > "$ARM_OUT" 2>&1 </dev/null &
+  ' _ "$FORWARDER_BEAT" "$$" "$ARM" "$predecessor" "$run_id" "$arm_sequence" "$started_at" > "$ARM_OUT" 2>&1 </dev/null &
   arm_child=$!
   wait "$arm_child"
   rc=$?
+  arm_pid=$arm_child
   arm_child=
-  arm_pid=$(sed -n 's/^arm_pid=//p' "$FORWARDER_BEAT" 2>/dev/null | head -n 1)
+  completed_at=$(date +%s)
+  record_phase arm-exit "$rc" "$((completed_at - started_at))"
   predecessor=
   reason=$(grep -v '^watcher: ' "$ARM_OUT" | grep -v '^[[:space:]]*$' | tail -n 1)
   if [ "$rc" -eq 0 ] && [ -n "$reason" ]; then
