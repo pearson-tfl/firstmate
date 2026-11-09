@@ -198,7 +198,7 @@
       "audience": "agent-runtime"
     },
     {
-      "path": ".agents/skills/harness-adapters/references/harness/claude.md",
+      "path": ".agents/skills/harness-adapters/references/harness/claude-code.md",
       "audience": "agent-runtime"
     },
     {
@@ -482,7 +482,7 @@
       "audience": "agent-runtime"
     },
     {
-      "path": "docs/supervision-protocols/claude.md",
+      "path": "docs/supervision-protocols/claude-code.md",
       "audience": "agent-runtime"
     },
     {

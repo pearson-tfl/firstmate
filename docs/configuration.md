@@ -1397,7 +1397,7 @@ The diagnostic names the accepted values; Firstmate never falls back to a permis
 Both approval-mode files follow the primary-authoritative [`secondmate-provisioning`](../.agents/skills/secondmate-provisioning/SKILL.md) inherited-local-material contract.
 T3 Code owns its provider command and always uses `full-access`, so `backend=t3code` accepts the default `bypass` posture and refuses `auto` before mutation; [`t3code-backend.md`](t3code-backend.md#active-limits) owns that backend limit.
 
-The [Claude adapter reference](../.agents/skills/harness-adapters/references/harness/claude.md) records the permission-mode observations and the distinct startup dialogs.
+The [Claude adapter reference](../.agents/skills/harness-adapters/references/harness/claude-code.md) records the permission-mode observations and the distinct startup dialogs.
 
 ## Codex permission mode (config/codex-permission-mode)
 
