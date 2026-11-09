@@ -588,7 +588,7 @@ inbox_steer_busy() {  # <window> <backend> <task> <tail40>
 # Runs for secondmates too: their pane-staleness exemption is about quiet panes
 # being healthy, while an unacknowledged instruction can still be a stuck steer.
 inbox_steer_check() {  # <window> <task>
-  local w=$1 task=$2 action verb rec count tail40 reason='' ring_rc backend agent_state
+  local w=$1 task=$2 action verb rec count tail40 reason='' ring_rc backend agent_state ring_result
   action=$(fm_task_inbox_due_action "$STATE" "$task") || return 0
   verb=${action%% *}
   [ "$verb" != quiet ] || return 0
@@ -617,6 +617,13 @@ inbox_steer_check() {  # <window> <task>
   esac
   watcher_capture "$backend" "$w" 40 "$(window_label "$w")" || WATCHER_CAPTURE=
   tail40=$WATCHER_CAPTURE
+  # Recovery is deliberately stricter than an ordinary advisory ring: the
+  # previous escalation remains authoritative until the composer is positively
+  # empty and the worker is non-busy. Never clear or submit arbitrary text.
+  if [ "$verb" = recover ]; then
+    inbox_steer_busy "$w" "$backend" "$task" "$tail40" && return 0
+    [ "$(FM_COMPOSER_HARNESS=$(window_harness "$w") fm_backend_composer_state "$backend" "$w" "$(window_label "$w")" 2>/dev/null)" = empty ] || return 0
+  fi
   if inbox_steer_busy "$w" "$backend" "$task" "$tail40"; then
     [ "$verb" != retry ] || return 0
     if ! count=$(fm_task_inbox_record_busy "$STATE" "$task" "$rec"); then
@@ -633,7 +640,7 @@ inbox_steer_check() {  # <window> <task>
     verb=escalate
   fi
   case "$verb" in
-    ring)
+    ring|recover)
       ring_rc=0
       FM_COMPOSER_HARNESS=$(window_harness "$w") \
         fm_task_inbox_ring "$backend" "$w" "$rec" "$(window_label "$w")" || ring_rc=$?
@@ -641,7 +648,17 @@ inbox_steer_check() {  # <window> <task>
         inbox_steer_escalate_unavailable "$w" "$task" "$rec"
         return 0
       fi
-      if ! fm_task_inbox_record_ring "$STATE" "$task" "$rec"; then
+      case "$ring_rc" in
+        0) ring_result=attempted ;;
+        1) ring_result=composer-blocked ;;
+        *) ring_result=send-failed ;;
+      esac
+      # A recovery consumes its single post-escalation attempt. The durable
+      # record still requires acknowledgement; a send is never delivery proof.
+      if [ "$verb" = recover ] && [ "$ring_rc" -ne 1 ]; then
+        triage_log "steer-inbox composer recovered: $task ${rec##*/}; re-ring result=$ring_result; acknowledgement pending"
+      fi
+      if ! fm_task_inbox_record_ring "$STATE" "$task" "$rec" "$ring_result"; then
         if [ ! -f "$rec" ]; then
           fm_task_inbox_due_action "$STATE" "$task" >/dev/null || true
           return 0
@@ -652,7 +669,7 @@ inbox_steer_check() {  # <window> <task>
           wake "$reason"
         fi
       fi
-      triage_log "steer-inbox delivery attempt: $task ${rec##*/} result=$ring_rc"
+      triage_log "steer-inbox delivery attempt: $task ${rec##*/} result=$ring_result"
       ;;
     retry)
       ring_rc=0
@@ -666,6 +683,9 @@ inbox_steer_check() {  # <window> <task>
       triage_log "steer-inbox retry ring: $task ${rec##*/} result=$ring_rc"
       ;;
     escalate)
+      if [ -z "$reason" ] && [ "$(cut -f4 "${rec%/*}/.ring-state" 2>/dev/null)" = composer-blocked ]; then
+        reason="stale: $w (unread firstmate instruction: composer-blocked; $rec stays unhandled after $count protected doorbells; pending text was preserved; recover the composer, then the watcher will re-ring once when it proves empty)"
+      fi
       reason=${reason:-"stale: $w (unread firstmate instruction: $rec still unhandled after $count doorbell delivery attempts with an idle pane; inspect the worker)"}
       if [ ! -d "${rec%/*}" ] || [ ! -f "$rec" ]; then
         fm_task_inbox_due_action "$STATE" "$task" >/dev/null || true
