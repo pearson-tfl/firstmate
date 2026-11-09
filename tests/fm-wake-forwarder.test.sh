@@ -282,6 +282,31 @@ test_loop_sends_one_row_on_a_stale_detector_beat() {
   pass "forwarder: the loop sends one row on a detector beat over 900s"
 }
 
+test_phase_records_are_bounded_and_terminal() {
+  local dir state
+  dir=$(make_forwarder_case phase-records)
+  state="$dir/state"
+  cat > "$dir/arm" <<'SH'
+#!/usr/bin/env bash
+printf 'check: fixture phase wake\n'
+SH
+  chmod +x "$dir/arm"
+  # Seed old evidence to prove the public executable enforces the bound.
+  for _ in $(seq 1 140); do printf 'old phase\n'; done > "$state/.forwarder-phases.log"
+  PATH="$dir/fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+    FM_FORWARDER_ARM="$dir/arm" FM_TEST_INBOX="$dir/inbox" \
+    "$FORWARDER" --once -- "$dir/notify" > "$dir/forwarder.out" 2> "$dir/forwarder.err" \
+    || fail "phase forwarder failed: $(cat "$dir/forwarder.err")"
+  [ "$(wc -l < "$state/.forwarder-phases.log" | tr -d ' ')" -eq 128 ] || fail "phase evidence is unbounded"
+  grep -q 'phase=arm-exit.*exit_code=0.*elapsed=' "$state/.forwarder-phases.log" || fail "terminal timing missing"
+  grep -q 'phase=notify-begin' "$state/.forwarder-phases.log" || fail "notify start missing"
+  grep -q 'phase=notify-end.*exit_code=0.*elapsed=' "$state/.forwarder-phases.log" || fail "notify finish missing"
+  grep -Eq '^completed_at=[1-9][0-9]+$' "$state/.forwarder-beat" || fail "terminal completion not retained"
+  grep -q '^run_id=' "$state/.forwarder-beat" || fail "incarnation absent"
+  ! grep -q 'fixture phase wake' "$state/.forwarder-phases.log" || fail "diagnostic recorded payload"
+  pass "forwarder: bounded phase records retain terminal/notify timing without wake payloads"
+}
+
 test_one_wake_gives_one_row_and_keeps_the_queue_row
 test_second_copy_exits_without_arming
 test_failing_arm_sends_one_row_per_failure_run
@@ -289,3 +314,5 @@ test_failed_notify_is_retried
 test_term_stops_the_arm_and_watcher
 test_refuses_without_an_explicit_home
 test_loop_sends_one_row_on_a_stale_detector_beat
+
+test_phase_records_are_bounded_and_terminal
