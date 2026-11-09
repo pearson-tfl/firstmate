@@ -1643,7 +1643,23 @@ ok - matrix: a named claude session's titled top rule proves its composer; pi st
 ok - fm_backend_herdr_send_text_submit: a complete wrapped payload in a named Claude composer is submitted, not cleared
 ```
 
-The live refresh command remains `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh`.
+Live confirmation measured 2026-11-09 against Claude Code 2.1.319 / Herdr 0.8.2, with isolated code pinned at `b633d252` and Claude launched with `--name labmate`.
+The named, wrapped inbox doorbell was submitted and acknowledged without a manual poke.
+The measured remote command below abbreviates only the isolated code path as `$ROOT` and the scratch home as `$LAB_HOME`; the surrounding real-SSH transport and named-lab setup are described in [the verification evidence](https://github.com/pearson-tfl/firstmate/pull/27).
+
+```sh
+FM_HOME="$LAB_HOME" /bin/bash -x "$ROOT/bin/fm-send.sh" labmate "This is an explicitly no-action doorbell test. Read and acknowledge this inbox record only; do not start any work or change anything else. Reply briefly that the test was received."
+```
+
+Observed submit trace and real-agent output:
+
+```text
++ verdict=empty
+● Doorbell test received. Message 004 was the only one waiting; it asked for acknowledgement
+  and no work, so I took no action beyond moving it to handled/.
+```
+
+The maintained live refresh command remains `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh`.
 Its first submit uses a named Claude session and captures the typed payload before any Enter, requiring both the titled top rule and an indented continuation row.
 A pane wide enough not to wrap fails the guard rather than passing without exercising the wrapped-composer path.
 
