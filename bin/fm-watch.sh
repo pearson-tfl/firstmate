@@ -684,7 +684,7 @@ inbox_steer_check() {  # <window> <task>
       ;;
     escalate)
       if [ -z "$reason" ] && [ "$(cut -f4 "${rec%/*}/.ring-state" 2>/dev/null)" = composer-blocked ]; then
-        reason="stale: $w (unread firstmate instruction: composer-blocked; $rec stays unhandled after $count protected doorbells; pending text was preserved; recover the composer, then the watcher will re-ring once when it proves empty)"
+        reason="stale: $w (unread firstmate instruction: composer-blocked; $rec stays unhandled after $count delivery attempts; the latest attempt preserved pending text; recover the composer, then the watcher will re-ring once when it proves empty)"
       fi
       reason=${reason:-"stale: $w (unread firstmate instruction: $rec still unhandled after $count doorbell delivery attempts with an idle pane; inspect the worker)"}
       if [ ! -d "${rec%/*}" ] || [ ! -f "$rec" ]; then

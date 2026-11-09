@@ -85,6 +85,13 @@
 #            identity it ran under and ended by a later launch of that source
 #            confirming - because the supervision cycle discards the `failed=`
 #            count. The launch itself is retried every cycle exactly as before.
+#            Private state/procevent/.<id>.launch-diagnostics retains one atomic
+#            snapshot of the latest runner's start, claim and first exit-0 poll
+#            times, phase and refusal detail (at most 512 characters, no argv or
+#            source output). Exit 75 is not successful-read evidence because it
+#            can also mean preemption. .<id>.launch-resolved retains claim
+#            recovery or registration replacement without emitting another wake.
+#            These records are diagnostics, never ownership or delivery proof.
 #            A source whose claim nothing may automatically displace is not
 #            relaunched at all; it is counted `uncertain` and announced once per
 #            stranded claim generation as a durable `check` wake, because the
@@ -438,11 +445,7 @@ staging_file() { printf '%s/.%s.%s.output\n' "$REG" "$1" "$2"; }
 stranded_file() { printf '%s/.%s.stranded\n' "$REG" "$1"; }
 launch_failed_file() { printf '%s/.%s.launch-failed\n' "$REG" "$1"; }
 
-# Private bounded startup/read evidence, not an ownership or delivery signal.
-# One atomic snapshot per source retains the latest runner's launch, claim and
-# first successful poll times. Refusals retain up to 512 characters, never argv
-# or source output. A clean-empty exit 75 is recorded but is NOT labelled a
-# successful read: adapters can also use it for preemption.
+# Write the private diagnostic snapshot described in the command header.
 runner_diagnostic() {  # <phase> [detail]
   local path now detail
   [ -n "${RUNNER_SOURCE_ID:-}" ] || return 0
@@ -467,7 +470,7 @@ resolve_launch_failure() {  # <source-id>
   episode=$(cat -- "$marker" 2>/dev/null) || return 1
   identity=$(fm_pr_file_identity "$(source_file "$id")" 2>/dev/null) || return 1
   expected=${identity//:/-}
-  [ "${episode%% *}" = "$expected" ] || resolution=registration-replaced
+  [ "${episode%% *}" = "$expected" ] || resolution="registration-replaced"
   (umask 077
     printf 'at=%s\nregistration=%s\nepisode=%s\nstate=%s\nread_confirmed=no\n' \
       "$(date +%s)" "$identity" "$episode" "$resolution" > "$REG/.$id.launch-resolved.$$" \
