@@ -7,8 +7,8 @@
 # build is refused while that pid is a live verified harness, and claimed once
 # it is dead or not a harness. Readers that still need a pid on line 1 are
 # inert under a named holder: task leases, the supervision host and
-# bin/fm-supervision-handoff.sh (#5138); the Pi, omp and Cursor primaries'
-# extension and park proofs (#5137); the OpenCode primary's watch-arm
+# bin/fm-supervision-handoff.sh (#5138); the Pi primary's park proof and the
+# omp and Cursor primaries' extension and park proofs (#5137); the OpenCode primary's watch-arm
 # ownership check (.opencode/plugins/fm-primary-watch-arm.js); and
 # bin/fm-live-lab.sh's primary and mate checks.
 #
