@@ -129,8 +129,13 @@ require_file() {
 }
 task_header() {
   printf 'count: %s\n' "$1"
-  printf 'tasks[%s]{id,state,kind,repo,title,blocked_by,hold_kind,hold_reason}:\n' "$1"
+  printf 'tasks[%s]{id,state,kind,repo,title,blocked_by,hold_kind,%s}:\n' "$1" "$hold_field"
 }
+hold_field=hold_reason
+hold_value='captain choice pending'
+case "$*" in
+  *'--fields blocked_by,hold_kind,hold_until'*) hold_field=hold_until; hold_value=2026-11-10 ;;
+esac
 list_help() {
   printf 'help[1]:\n'
   printf '%s\n' '  - Run `tasks-axi show <id> --full` for full notes on a task'
@@ -181,11 +186,16 @@ case "${1:-}" in
         ;;
       *'--state in_flight'*)
         task_header 1
-        printf '%s\n' '  compact-startup,in_flight,ship,firstmate,Compact startup digest,none,captain,captain choice pending'
+        printf '  compact-startup,in_flight,ship,firstmate,Compact startup digest,none,captain,%s\n' "$hold_value"
         ;;
       *'--state held'*)
-        task_header 1
-        printf '%s\n' '  held-queued,queued,ship,firstmate,Held queued work,none,captain,captain choice pending'
+        if [ "${FM_FAKE_TASKS_AXI_OVERLAP:-0}" = 1 ]; then
+          task_header 2
+          printf '  compact-startup,in_flight,ship,firstmate,Compact startup digest,none,captain,%s\n' "$hold_value"
+        else
+          task_header 1
+        fi
+        printf '  held-queued,queued,ship,firstmate,Held queued work,none,captain,%s\n' "$hold_value"
         ;;
       *'--state queued'*'--blocked'*)
         task_header 1
@@ -2296,6 +2306,117 @@ EOF
 
 # --- context re-emit (--reemit) ----------------------------------------------
 
+# Public output captured on 2e771922813bcc2bc25e5f82e1f1dd0f3d647ace,
+# before re-emit trimming. Only fixture locations are normalized; every other
+# byte of this ordinary (lock-refused) startup digest is compared unchanged.
+startup_byte_fixture() {
+  local rec root home fakebin out
+  rec=$(new_world startup-byte-fixture)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_tasks_axi_compact "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf 'holder:other-main\n' > "$home/state/.lock"
+  printf '# Backlog\n' > "$home/data/backlog.md"
+  printf 'Memory kept verbatim.\n' > "$home/data/captain.md"
+  printf 'kind=ship\nwindow=\nworktree=/isolated/sample\ncustom=keep-full-at-startup\n' > "$home/state/lane.meta"
+  printf 'working: older event\npaused: declared wait\n' > "$home/state/lane.status"
+  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
+  out=${out//"$home"/@HOME@}
+  out=${out//"$root"/@ROOT@}
+  printf '%s\n' "$out"
+}
+
+test_ordinary_startup_bytes_unchanged() {
+  startup_byte_fixture > "$TMP_ROOT/startup-digest.txt"
+  cmp -s "$ROOT/tests/fixtures/session-start-ordinary.txt" "$TMP_ROOT/startup-digest.txt" \
+    || fail "ordinary startup output changed from the pre-compaction public-output fixture: $(diff -u "$ROOT/tests/fixtures/session-start-ordinary.txt" "$TMP_ROOT/startup-digest.txt")"
+  pass "ordinary startup digest remains byte-identical to the pre-compaction fixture"
+}
+
+test_reemit_compacts_only_waiting_lane_history() {
+  local rec root home fakebin out full active reemit_active id
+  rec=$(new_world reemit-compaction)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf 'holder:other-main\n' > "$home/state/.lock"
+  printf 'Memory must stay full\nsecond memory line\n' > "$home/data/captain.md"
+  for id in active paused held resumed; do
+    printf 'kind=scout\nwindow=\nworktree=/isolated/%s space\ncustom=omitted-%s\n' "$id" "$id" > "$home/state/$id.meta"
+    printf 'working: old-%s\nworking: recent-%s\n' "$id" "$id" > "$home/state/$id.status"
+  done
+  printf 'paused [at=123]: waiting-paused\n' >> "$home/state/paused.status"
+  printf 'captain-held [at=123]: waiting-held\n' >> "$home/state/held.status"
+  printf 'paused: old wait\nresolved: wait cleared\nworking: resumed now\n' >> "$home/state/resumed.status"
+  printf 'kind=ship\nmalformed record\n' > "$home/state/missing.meta"
+  printf 'kind=ship\nbackend=orca\nterminal=terminal-recovery-id\nworktree=/isolated/orca\n' > "$home/state/orca.meta"
+  printf 'kind=ship\nbackend=t3code\nt3_thread_id=thread-recovery-id\nworktree=/isolated/t3code\n' > "$home/state/t3code.meta"
+  printf 'working: orphan earlier\npaused: orphan wait\n' > "$home/state/orphan.status"
+  full=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
+  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" --reemit)
+  for id in active paused held resumed; do
+    assert_contains "$out" "--- $id ---" "re-emit lost a lane identity"
+    assert_contains "$out" "meta summary: kind=scout window='' worktree=/isolated/$id\\ space" "re-emit lost lane kind/endpoint/location"
+    assert_contains "$out" "$home/state/$id.status" "re-emit lost full history pointer"
+  done
+  assert_contains "$out" "backend=orca terminal=terminal-recovery-id" "re-emit lost Orca endpoint recovery"
+  assert_contains "$out" "backend=t3code t3_thread_id=thread-recovery-id" "re-emit lost t3code endpoint recovery"
+  assert_contains "$out" "--- missing ---" "re-emit lost incomplete lane"
+  assert_contains "$out" "endpoint: unknown (no window recorded)" "re-emit hid missing endpoint"
+  assert_contains "$out" "no status file yet" "re-emit hid missing history"
+  assert_contains "$out" "$home/state/<id>.meta" "re-emit omitted full metadata recovery path"
+  assert_contains "$out" "bin/fm-crew-state.sh <id>" "re-emit omitted targeted current-state recovery"
+  assert_not_contains "$out" "omitted-paused" "re-emit retained non-recovery metadata"
+  assert_not_contains "$out" "old-paused" "re-emit retained paused history"
+  assert_not_contains "$out" "old-held" "re-emit retained held history"
+  assert_contains "$out" "waiting-paused" "re-emit lost declared wait reason"
+  assert_contains "$out" "waiting-held" "re-emit lost held latest event"
+  assert_contains "$out" "old-resumed" "re-emit compacted a resumed lane"
+  assert_contains "$out" "orphan earlier" "re-emit compacted orphan history without meta"
+  assert_contains "$out" $'Memory must stay full\nsecond memory line' "re-emit compacted memory"
+  active=$(printf '%s\n' "$full" | awk '/^--- active ---$/ {p=1;next} /^--- / {p=0} p && /^status tail / {s=1} p && s {print}')
+  reemit_active=$(printf '%s\n' "$out" | awk '/^--- active ---$/ {p=1;next} /^--- / {p=0} p && /^status tail / {s=1} p && s {print}')
+  [ "$active" = "$reemit_active" ] || fail "active lane recent status changed during re-emit"
+  assert_not_contains "$out" "Everything below is printed in full" "re-emit still promises full metas"
+  pass "re-emit summarizes metadata and declared waits, retaining active/orphan history and recovery pointers"
+}
+
+test_reemit_backlog_projection_and_overlap() {
+  local rec root home fakebin out log
+  rec=$(new_world reemit-backlog)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_tasks_axi_compact "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf 'holder:other-main\n' > "$home/state/.lock"
+  printf '# Backlog\n' > "$home/data/backlog.md"
+  log="$home/tasks.log"
+  out=$(FM_FAKE_TASKS_AXI_OVERLAP=1 FM_FAKE_TASKS_AXI_LOG="$log" FM_LOCK_HOLDER=test-main \
+    run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" --reemit)
+  [ "$(printf '%s\n' "$out" | grep -c 'Compact startup digest')" -eq 1 ] || fail "re-emit duplicated an overlapping held in-flight row"
+  assert_contains "$out" "Held queued work" "re-emit dropped a non-overlapping held item"
+  assert_contains "$out" "2026-11-10" "re-emit dropped hold-until"
+  assert_contains "$out" "blocked-followup" "re-emit dropped dependency"
+  assert_not_contains "$out" "captain choice pending" "re-emit still prints long hold reasons"
+  assert_contains "$out" "hold reasons omitted" "re-emit failed to disclose backlog omissions"
+  assert_contains "$(cat "$log")" "--fields blocked_by,hold_kind,hold_until" "re-emit requested the wrong projection"
+  assert_not_contains "$(cat "$log")" "hold_reason" "re-emit requested hold reasons"
+  # Manual/unavailable fallback stays conservative: title-line metadata intact.
+  printf 'manual\n' > "$home/config/backlog-backend"
+  printf '## In flight\n- [ship] manual-row (hold: preserve title reason)\n  private body\n' > "$home/data/backlog.md"
+  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" --reemit)
+  assert_contains "$out" "preserve title reason" "manual re-emit dropped title-line hold metadata"
+  assert_not_contains "$out" "private body" "manual re-emit printed task bodies"
+  pass "re-emit omits hold reasons and duplicate rows only through tasks-axi, preserving recovery fields/fallback"
+}
+
 test_reemit_cue_survives_the_hook_output_preview() {
   local rec root home fakebin reemit normal head2k
   rec=$(new_world reemit-cue)
@@ -2984,6 +3105,9 @@ EOF
   pass "session start rejects Pi loaded markers from previous sessions"
 }
 
+test_ordinary_startup_bytes_unchanged
+test_reemit_compacts_only_waiting_lane_history
+test_reemit_backlog_projection_and_overlap
 test_context_digest_absent_empty_present
 test_lock_refusal_read_only_path
 test_lock_write_failure_read_only_path
