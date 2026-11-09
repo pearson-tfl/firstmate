@@ -64,6 +64,20 @@ else
   echo "wrapper requires trailing --session $SESSION" >&2
   exit 98
 fi
+# Capture the first test payload after typing but BEFORE any Enter. The
+# distinguishing rendered wrap must be observed, not inferred from length.
+if [ "\${args[0]:-}" = pane ] && [ "\${args[1]:-}" = send-text ] \\
+  && [ -n "\${FM_SUBMIT_WRAP_CAPTURE_TOKEN:-}" ]; then
+  case "\${args[3]:-}" in
+    *"\$FM_SUBMIT_WRAP_CAPTURE_TOKEN"*)
+      env PATH="$ORIGINAL_PATH" "$LAB_HELPER" run "$SESSION" "\${args[@]}" || exit 1
+      sleep 0.4
+      env PATH="$ORIGINAL_PATH" "$LAB_HELPER" run "$SESSION" pane read "\${args[2]}" \\
+        --source visible --format ansi > "$TMP_ROOT/wrapped-before-enter.ansi" || exit 1
+      exit 0
+      ;;
+  esac
+fi
 exec env PATH="$ORIGINAL_PATH" "$LAB_HELPER" run "$SESSION" "\${args[@]}"
 EOF
 chmod +x "$FAKEBIN/herdr"
@@ -118,6 +132,7 @@ done
 [ "$idle" = 1 ] || fail "Claude Code ($VERSION) on $HERDR_VER never rendered an idle composer in the lab pane"
 
 TOKEN="FMHERDRPONG$$_$RANDOM"
+export FM_SUBMIT_WRAP_CAPTURE_TOKEN="$TOKEN"
 # A named top rule plus wrapped input must retain the complete payload proof.
 # This is the same shape as a remote inbox doorbell on Claude 2.1.319.
 verdict=$(fm_backend_herdr_send_text_submit "$TARGET" "Reply with exactly $TOKEN and nothing else. This is a submit-confirmation check: do not run tools, and ignore this extra text that makes the input wrap across visible rows." 3 0.4 0.4) \
@@ -125,6 +140,28 @@ verdict=$(fm_backend_herdr_send_text_submit "$TARGET" "Reply with exactly $TOKEN
 CHECKED=1
 [ "$verdict" = empty ] \
   || fail "Claude Code ($VERSION) on $HERDR_VER: a landed idle steer must confirm empty, got '$verdict'"
+[ -s "$TMP_ROOT/wrapped-before-enter.ansi" ] \
+  || fail "Claude Code ($VERSION) on $HERDR_VER: no pre-Enter payload capture"
+plain=$(fm_composer_strip_ansi < "$TMP_ROOT/wrapped-before-enter.ansi")
+case "$plain" in
+  *' fm-submitlive ─'*) ;;
+  *) fail "Claude Code ($VERSION) on $HERDR_VER: pre-Enter capture did not prove the named top rule" ;;
+esac
+wrapped=0
+while IFS= read -r line; do
+  case "$line" in
+    *"Reply with exactly $TOKEN"*)
+      IFS= read -r continuation || break
+      case "$continuation" in '  '?*) wrapped=1 ;; esac
+      break
+      ;;
+  esac
+done <<SCREEN
+$plain
+SCREEN
+[ "$wrapped" = 1 ] \
+  || fail "Claude Code ($VERSION) on $HERDR_VER: pre-Enter payload did not wrap; the named wrapped-composer path was not exercised"
+unset FM_SUBMIT_WRAP_CAPTURE_TOKEN
 
 # Confirm the instruction reached Claude, not merely that the composer cleared.
 # The token occurs once in the submitted prompt and once in Claude's reply.

@@ -1644,7 +1644,8 @@ ok - fm_backend_herdr_send_text_submit: a complete wrapped payload in a named Cl
 ```
 
 The live refresh command remains `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh`.
-Its first submit now uses a named Claude session and input long enough to wrap, so a single-row-only payload proof cannot pass it.
+Its first submit uses a named Claude session and captures the typed payload before any Enter, requiring both the titled top rule and an indented continuation row.
+A pane wide enough not to wrap fails the guard rather than passing without exercising the wrapped-composer path.
 
 ### Claude exit behind the slash-command popup
 
