@@ -224,6 +224,13 @@
 #             the ordinary read-only path. A re-emit prints a short RE-EMIT CUE
 #             first, so a harness that spills a large output and shows only its
 #             head still tells the model to read the saved full output.
+#             Only this mode compacts fleet records: meta summaries retain lane
+#             identity, location and delivery pointers; declared paused/held
+#             status histories become their latest event plus a full-log path.
+#             Backlog hold reasons are omitted (targeted show recovers them),
+#             and overlapping in-flight/held rows print once. Active status
+#             tails and all safety, wake, supervision and memory output remain.
+#             Ordinary startup output is unchanged.
 #
 #   --source  The native session-open source, supplied only by
 #             fm-sessionstart-run.sh. A genuine `startup` that owns the active
@@ -378,6 +385,12 @@ PRIMARY_HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || printf unknown)
 # shellcheck source=bin/fm-hold-reason-lib.sh
 . "$SCRIPT_DIR/fm-hold-reason-lib.sh"
 
+# Re-emit alone classifies declared waits to compact their status history.
+if [ "$REEMIT" -eq 1 ]; then
+  # shellcheck source=bin/fm-classify-lib.sh
+  . "$SCRIPT_DIR/fm-classify-lib.sh"
+fi
+
 # One tasks-axi compatibility verdict per session start. The probe costs three
 # tasks-axi subprocesses and this digest needs the same answer twice - here for
 # the backlog listing and again inside the fm-bootstrap.sh child, which reports
@@ -401,6 +414,7 @@ ENDPOINT_TIMEOUT=${FM_SESSION_START_ENDPOINT_TIMEOUT:-10}
 case "$ENDPOINT_TIMEOUT" in ''|*[!0-9]*) ENDPOINT_TIMEOUT=10 ;; esac
 [ "$ENDPOINT_TIMEOUT" -gt 0 ] 2>/dev/null || ENDPOINT_TIMEOUT=10
 BACKLOG_FIELDS=blocked_by,hold_kind,hold_reason
+[ "$REEMIT" -eq 0 ] || BACKLOG_FIELDS=blocked_by,hold_kind,hold_until
 
 RULE='================================================================================'
 SUBRULE='--------------------------------------------------------------------------------'
@@ -517,6 +531,22 @@ print_ready_queued_bounded() {
   '
 }
 
+# Filter only rows already emitted by the in-flight listing, retaining the
+# tool's headers and explicit counts (which are labeled as pre-deduplication).
+print_reemit_held() {
+  local in_flight=$1 held=$2
+  { printf '%s\n' "$in_flight" | strip_axi_help; printf '\034\n';
+    printf '%s\n' "$held" | strip_axi_help; } | awk '
+    $0 == "\034" { held = 1; next }
+    /^[[:space:]]/ {
+      id = $0; sub(/^[[:space:]]+/, "", id); sub(/,.*/, "", id)
+      if (!held) { seen[id] = 1; next }
+      if (id in seen) next
+    }
+    held { print }
+  '
+}
+
 print_backlog_tasks_axi_compact() {
   local path=$1 in_flight held blocked ready err
   if ! in_flight=$(tasks-axi list --file "$path" --state in_flight --fields "$BACKLOG_FIELDS" 2>&1); then
@@ -528,12 +558,24 @@ print_backlog_tasks_axi_compact() {
   elif ! ready=$(tasks-axi ready --file "$path" 2>&1); then
     err=$ready
   else
-    printf 'compact backlog listing (tasks-axi; done rows omitted; every in-flight, held, and blocked row shown in full; ready queued bounded to %s; task bodies omitted)\n' \
-      "$QUEUED_LIMIT"
+    if [ "$REEMIT" -eq 1 ]; then
+      printf 'compact backlog listing (tasks-axi re-emit; hold reasons omitted, use bin/fm-tasks-axi.sh show <id> --full; overlapping in-flight/held rows shown once; ready queued bounded to %s; task bodies omitted)\n' "$QUEUED_LIMIT"
+    else
+      printf 'compact backlog listing (tasks-axi; done rows omitted; every in-flight, held, and blocked row shown in full; ready queued bounded to %s; task bodies omitted)\n' \
+        "$QUEUED_LIMIT"
+    fi
     printf '\nin flight:\n'
     printf '%s\n' "$in_flight" | fm_hold_reason_decode_stream | strip_axi_help
-    printf '\nheld (captain- or time-gated; an in-flight item that is also held appears in both groups):\n'
-    printf '%s\n' "$held" | fm_hold_reason_decode_stream | strip_axi_help
+    if [ "$REEMIT" -eq 1 ]; then
+      printf '\nheld (captain- or time-gated; in-flight rows already shown above omitted; tool counts include overlaps):\n'
+      # IDs are the first field of tasks-axi listing rows. Do not parse titles
+      # or reasons as CSV: those fields may contain quoted commas/newlines.
+      # Re-emit requests no reason/body fields, so each identity is one row.
+      print_reemit_held "$in_flight" "$held"
+    else
+      printf '\nheld (captain- or time-gated; an in-flight item that is also held appears in both groups):\n'
+      printf '%s\n' "$held" | fm_hold_reason_decode_stream | strip_axi_help
+    fi
     printf '\nblocked queued:\n'
     printf '%s\n' "$blocked" | fm_hold_reason_decode_stream | strip_axi_help
     printf '\nready queued (dispatchable now):\n'
@@ -567,7 +609,15 @@ print_backlog_compact() {
 }
 
 print_status_tail() {
-  local status=$1 line
+  local status=$1 compact=${2:-1} line latest
+  if [ "$REEMIT" -eq 1 ] && [ "$compact" -eq 1 ]; then
+    latest=$(last_status_line "$status")
+    if status_is_paused_or_captain_held "$latest"; then
+      printf 'status history compacted (declared paused/held; latest wake-EVENT, not current state; full log: %s):\n' "$status"
+      fm_cap_line "$latest"
+      return 0
+    fi
+  fi
   printf 'status tail (last %s line(s), each capped at %s characters, wake-EVENT history, not current state; full log: %s):\n' \
     "$STATUS_TAIL" "$FM_LINE_CAP_DEFAULT" "$status"
   # A crewmate writes its own status lines, so their length is unbounded: one
@@ -577,6 +627,21 @@ print_status_tail() {
   while IFS= read -r line || [ -n "$line" ]; do
     fm_cap_line "$line"
   done < <(tail -n "$STATUS_TAIL" "$status")
+}
+
+# A display projection, never a replacement for the meta format or a current
+# state classifier. Preserve values without shell interpretation, and do not cap
+# paths/URLs. Unknown and malformed records remain available by the full path.
+print_meta_summary() {
+  local meta=$1 key value
+  printf 'meta summary:'
+  while IFS='=' read -r key value || [ -n "$key" ]; do
+    case "$key" in
+      kind|window|terminal|t3_thread_id|worktree|harness|backend|project|branch|base_branch|pr|home)
+        printf ' %s=%q' "$key" "$value" ;;
+    esac
+  done < "$meta"
+  printf '\n'
 }
 
 # fm_session_start_endpoint_read <backend> <target> [expected-label]: ONE
@@ -902,6 +967,20 @@ fi
 # a stage that never ran, which the truncation banner names by stage.
 stage read-once
 section "READ-ONCE CONTRACT"
+if [ "$REEMIT" -eq 1 ]; then
+  cat <<EOF
+This context re-emit compacts fleet records, not safety or memory inputs:
+  - each lane has a one-line meta summary (identity, endpoint, location and delivery pointers);
+    read $STATE/<id>.meta for its full metadata, or bin/fm-crew-state.sh <id> for current state;
+  - declared paused/held lanes show only their latest status event, with a full log path;
+    active lanes and orphan logs keep bounded recent status tails;
+  - tasks-axi backlog hold reasons are omitted and overlapping in-flight/held rows appear once;
+    use bin/fm-tasks-axi.sh show <id> --full for a full task record.
+Wake queue, open decisions, unread status, supervision instructions and memory files
+are not compacted. Read represented sources once; targeted full records above remain
+available when recovery needs omitted details. Do not bulk-read the fleet again.
+EOF
+else
 cat <<'EOF'
 Everything below is printed in full for this session start: every state/*.meta,
 a compact data/backlog.md listing, a bounded tail of every state/*.status,
@@ -910,6 +989,9 @@ and data/learnings.md.
 Do NOT re-read any of them after reading this digest, and do NOT bulk-read
 data/backlog.md or state/*.status: re-reading everything defeats the entire
 point of this command.
+EOF
+fi
+cat <<'EOF'
 
 Go to a source directly only when:
   - this digest flagged it ABSENT (then rebuild or create it per AGENTS.md),
@@ -941,7 +1023,11 @@ for meta in "$STATE"/*.meta; do
   META_FOUND=1
   id=$(basename "$meta" .meta)
   printf '\n--- %s ---\n' "$id"
-  cat "$meta"
+  if [ "$REEMIT" -eq 1 ]; then
+    print_meta_summary "$meta"
+  else
+    cat "$meta"
+  fi
 
   window=$(fm_meta_get "$meta" window)
   target=$(fm_backend_target_of_meta "$meta")
@@ -981,7 +1067,7 @@ for status in "$STATE"/*.status; do
   [ -f "$STATE/$id.meta" ] && continue
   ORPHAN_STATUS_FOUND=1
   printf '\n--- %s ---\n' "$id"
-  print_status_tail "$status"
+  print_status_tail "$status" 0
 done
 [ "$ORPHAN_STATUS_FOUND" -eq 1 ] || printf '(none)\n'
 
