@@ -1624,6 +1624,45 @@ Observed 2026-08-19:
 ok - live Herdr submit confirm: Claude Code (2.1.236 (Claude Code)) on herdr 0.8.0 reports empty for a landed idle steer
 ```
 
+### Named Claude wrapped input
+
+Portable regressions verified 2026-11-09 under Bash 5.3.20, modeling the named-composer wrapping observed on Claude Code 2.1.319 / Herdr 0.8.2.
+They require the shared composer extraction to preserve a complete payload wrapped across two rows under a session-titled top rule, and the adapter to submit it once without clearing it.
+The title and closing rule must have matching widths; continuation rows must be contiguous, nonempty and indented, with no intervening border or status furniture.
+Plain multirow classification retains its conservative `unknown` verdict.
+
+Portable refresh:
+
+```sh
+bash tests/fm-composer-lib.test.sh
+bash tests/fm-backend-herdr.test.sh
+```
+
+```text
+ok - matrix: a named claude session's titled top rule proves its composer; pi stays unchanged
+ok - fm_backend_herdr_send_text_submit: a complete wrapped payload in a named Claude composer is submitted, not cleared
+```
+
+Live confirmation measured 2026-11-09 against Claude Code 2.1.319 / Herdr 0.8.2, with isolated code pinned at `b633d252` and Claude launched with `--name labmate`.
+The named, wrapped inbox doorbell was submitted and acknowledged without a manual poke.
+The measured remote command below abbreviates only the isolated code path as `$ROOT` and the scratch home as `$LAB_HOME`; the surrounding real-SSH transport and named-lab setup are described in [the verification evidence](https://github.com/pearson-tfl/firstmate/pull/27).
+
+```sh
+FM_HOME="$LAB_HOME" /bin/bash -x "$ROOT/bin/fm-send.sh" labmate "This is an explicitly no-action doorbell test. Read and acknowledge this inbox record only; do not start any work or change anything else. Reply briefly that the test was received."
+```
+
+Observed submit trace and real-agent output:
+
+```text
++ verdict=empty
+● Doorbell test received. Message 004 was the only one waiting; it asked for acknowledgement
+  and no work, so I took no action beyond moving it to handled/.
+```
+
+The maintained live refresh command remains `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh`.
+Its first submit uses a named Claude session and captures the typed payload before any Enter, requiring both the titled top rule and an indented continuation row.
+A pane wide enough not to wrap fails the guard rather than passing without exercising the wrapped-composer path.
+
 ### Claude exit behind the slash-command popup
 
 Measured 2026-09-26 against Herdr 0.9.0 and Claude Code 2.1.283 in an isolated `fm-lab-` session.
