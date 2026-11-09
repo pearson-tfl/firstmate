@@ -1624,6 +1624,29 @@ Observed 2026-08-19:
 ok - live Herdr submit confirm: Claude Code (2.1.236 (Claude Code)) on herdr 0.8.0 reports empty for a landed idle steer
 ```
 
+### Named Claude wrapped input
+
+Measured 2026-11-09 with Claude Code 2.1.319 on Herdr 0.8.2 in a named isolated lab.
+A complete inbox doorbell wrapped across two composer rows under a session-titled top rule.
+The shared composer extraction preserved the entire payload, the submit verdict was `empty`, and the real agent read and acknowledged the inbox records without a manual poke.
+The title and closing rule must have matching widths; continuation rows must be contiguous, nonempty and indented, with no intervening border or status furniture.
+Plain multirow classification retains its conservative `unknown` verdict.
+
+Portable refresh:
+
+```sh
+bash tests/fm-composer-lib.test.sh
+bash tests/fm-backend-herdr.test.sh
+```
+
+```text
+ok - matrix: a named claude session's titled top rule proves its composer; pi stays unchanged
+ok - fm_backend_herdr_send_text_submit: a complete wrapped payload in a named Claude composer is submitted, not cleared
+```
+
+The live refresh command remains `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh`.
+Its first submit now uses a named Claude session and input long enough to wrap, so a single-row-only payload proof cannot pass it.
+
 ### Claude exit behind the slash-command popup
 
 Measured 2026-09-26 against Herdr 0.9.0 and Claude Code 2.1.283 in an isolated `fm-lab-` session.
