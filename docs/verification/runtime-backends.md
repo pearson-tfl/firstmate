@@ -1626,9 +1626,8 @@ ok - live Herdr submit confirm: Claude Code (2.1.236 (Claude Code)) on herdr 0.8
 
 ### Named Claude wrapped input
 
-Measured 2026-11-09 with Claude Code 2.1.319 on Herdr 0.8.2 in a named isolated lab.
-A complete inbox doorbell wrapped across two composer rows under a session-titled top rule.
-The shared composer extraction preserved the entire payload, the submit verdict was `empty`, and the real agent read and acknowledged the inbox records without a manual poke.
+Portable regressions verified 2026-11-09 under Bash 5.3.20, modeling the named-composer wrapping observed on Claude Code 2.1.319 / Herdr 0.8.2.
+They require the shared composer extraction to preserve a complete payload wrapped across two rows under a session-titled top rule, and the adapter to submit it once without clearing it.
 The title and closing rule must have matching widths; continuation rows must be contiguous, nonempty and indented, with no intervening border or status furniture.
 Plain multirow classification retains its conservative `unknown` verdict.
 

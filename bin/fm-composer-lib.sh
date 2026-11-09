@@ -1949,7 +1949,7 @@ _fm_composer_locate_footer_zone() {  # <plain>
 # glyph rejects a complete wrapped payload. Blank gaps, unindented transcript,
 # and intervening borders still cannot extend this envelope.
 _fm_composer_bare_rule_sandwich() {  # <plain-screen> <row>
-  local plain=$1 row=$2 above below next raw trimmed close=$FM_COMPOSER_SCAN_PI_LAST_SEPARATOR
+  local plain=$1 row=$2 above below next raw trimmed glyph proof close=$FM_COMPOSER_SCAN_PI_LAST_SEPARATOR
   [ "$row" -ge 1 ] && [ "$close" -gt "$row" ] || return 1
   below=$(_fm_composer_screen_row "$close" "$plain")
   fm_composer_normalize_trim_var below
@@ -1957,6 +1957,9 @@ _fm_composer_bare_rule_sandwich() {  # <plain-screen> <row>
   above=$(_fm_composer_screen_row "$((row - 1))" "$plain")
   fm_composer_normalize_trim_var above
   _fm_composer_titled_rule_row "$above" "${below//─/ }" || return 1
+  proof=$(_fm_composer_screen_row "$row" "$plain")
+  fm_composer_normalize_trim_var proof
+  fm_composer_leading_agent_glyph_var glyph "$proof" || return 1
   next=$((row + 1))
   while [ "$next" -lt "$close" ]; do
     raw=$(_fm_composer_screen_row "$next" "$plain")
@@ -1965,8 +1968,7 @@ _fm_composer_bare_rule_sandwich() {  # <plain-screen> <row>
     fm_composer_normalize_trim_var trimmed
     [ -n "$trimmed" ] || return 1
     fm_composer_row_has_edge "$trimmed" && return 1
-    _fm_composer_row_is_omp_status "$trimmed" && return 1
-    _fm_composer_row_is_braille_furniture "$trimmed" && return 1
+    _fm_composer_row_is_composer_furniture "$trimmed" "$glyph" && return 1
     next=$((next + 1))
   done
   return 0

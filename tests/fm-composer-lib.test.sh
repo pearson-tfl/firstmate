@@ -239,6 +239,10 @@ test_matrix_claude_named_session_titled_rule() {
     "${wrapped/  after wrapping/after wrapping}" '' "$claude_idle"
   assert_screen "a blank transcript gap is not named-composer wrapping" unknown "$CAPS_STYLED" \
     "${wrapped/  after wrapping/$'\n  after wrapping'}" '' "$claude_idle"
+  assert_screen "Claude mode furniture is not named-composer wrapping" unknown "$CAPS_STYLED" \
+    "${wrapped/  after wrapping/  ⏵⏵ bypass permissions on}" '' "$claude_idle"
+  out=$(fm_composer_extract_selected_content "$CAPS_STYLED" \
+    "${wrapped/  after wrapping/  ⏵⏵ bypass permissions on}") && fail "mode furniture must refuse extraction, got '$out'"
   # Pi non-regression: a titled rule over a blank row never proves a pi
   # composer, even with a live idle pi identity.
   assert_screen "titled pair over a blank row is not pi" unknown "$CAPS_STYLED" \
