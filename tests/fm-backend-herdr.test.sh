@@ -5435,6 +5435,26 @@ test_send_text_submit_claude_slash_popup_composer_is_still_proven_and_submitted(
 # dark-foreground ghost threshold. Claude's own ghost suggestion is SGR-2 dim,
 # so the Claude payload proof must not strip the grey command and judge the
 # typed /exit unsent (the fm-control exit breakage, reproduced live).
+test_send_text_submit_named_claude_wrapped_doorbell() {
+  local dir log resp fb out enter_count text rule titled
+  dir="$TMP_ROOT/submit-named-wrapped"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  text='send the complete payload after wrapping'
+  rule='────────────────────────────────'
+  titled='────────────────────── labmate ─'
+  herdr_submit_claude_prefix "$resp" "$text"
+  printf '%s\n❯ send the complete payload\n  after wrapping\n%s\n' "$titled" "$rule" > "$resp/4.out"
+  printf '{"result":{"agent":{"agent":"claude","agent_status":"idle"}}}\n' > "$resp/5.out"
+  printf '{"result":{"agent":{"agent_status":"working"}}}\n' > "$resp/7.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$( PATH="$fb:$PATH" FM_HERDR_LOG="$log" FM_HERDR_RESPONSES="$resp" FM_BACKEND_HERDR_SUBMIT_POLLS=1 \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_send_text_submit default:w1:p2 "$1" 3 0.01 0.01' "$ROOT" "$text" )
+  [ "$out" = empty ] || fail "named Claude wrapped payload should submit, got '$out'"
+  enter_count=$(grep -c $'\x1f''pane'$'\x1f''send-keys'$'\x1f''w1:p2'$'\x1f''enter' "$log")
+  [ "$enter_count" -eq 1 ] || fail "named wrapped payload should receive exactly one Enter, got $enter_count"
+  [ "$(herdr_ctrl_u_count "$log")" -eq 0 ] || fail "a complete named wrapped payload must not be cleared"
+  pass "fm_backend_herdr_send_text_submit: a complete wrapped payload in a named Claude composer is submitted, not cleared"
+}
+
 test_send_text_submit_claude_grey_slash_command_is_proven_and_submitted() {
   local dir log resp fb out enter_count text rule head
   dir="$TMP_ROOT/submit-claude-grey-slash"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -6380,6 +6400,7 @@ test_send_text_submit_refuses_marked_digest_missing_its_head
 test_composer_state_claude_slash_popup_pushes_composer_above_tail_window
 test_send_text_submit_claude_slash_popup_composer_is_still_proven_and_submitted
 test_send_text_submit_claude_grey_slash_command_is_proven_and_submitted
+test_send_text_submit_named_claude_wrapped_doorbell
 test_send_text_submit_lone_paste_placeholder_submits_the_long_payload
 test_send_text_submit_multiline_paste_placeholder_submits_the_long_payload
 test_send_text_submit_refuses_placeholder_followed_by_a_literal_remainder

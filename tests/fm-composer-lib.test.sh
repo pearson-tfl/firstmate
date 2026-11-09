@@ -196,7 +196,7 @@ test_matrix_claude_named_session_titled_rule() {
   # Herdr gives no cursor, so before the titled rule was recognized the
   # cursorless path saw only the lower rule, read the idle composer `unknown`,
   # and the away-mode injector deferred every escalation on a named primary.
-  local rule titled multi idle ghost typed out claude_idle pi_idle
+  local rule titled multi idle ghost typed wrapped out claude_idle pi_idle
   claude_idle=$(printf 'claude\tidle'); pi_idle=$(printf 'pi\tidle')
   rule='────────────────────────────────'
   titled='─────────────────────── Andrew ─'
@@ -223,6 +223,22 @@ test_matrix_claude_named_session_titled_rule() {
   out=$(fm_composer_extract_selected_content "$CAPS_STYLED" "$typed")
   [ "$out" = 'fix the login bug' ] \
     || fail "named claude composer content should extract the typed text, got '$out'"
+  # Real Claude 2.1.319 / Herdr 0.8.2 wraps the inbox doorbell under
+  # a named top rule. The complete payload must remain observable, not be
+  # mistaken for scrollback just because the closing rule is two rows down.
+  wrapped="transcript line"$'\n'"$titled"$'\n❯ send the complete payload\n  after wrapping\n'"$rule"
+  assert_screen "named wrapped claude on herdr" pending "$CAPS_STYLED" "$wrapped" '' "$claude_idle"
+  assert_screen "named wrapped claude on zellij" pending "$CAPS_STYLED_NOID" "$wrapped"
+  # Unstyled multirow input retains the existing conservative verdict.
+  assert_screen "named wrapped claude on cmux/orca" unknown "$CAPS_PLAIN" "$wrapped"
+  assert_screen "named wrapped claude on tmux" pending "$CAPS_TMUX" "$wrapped" 2 "$claude_idle"
+  out=$(fm_composer_extract_selected_content "$CAPS_STYLED" "$wrapped")
+  [ "$out" = 'send the complete payload after wrapping' ] \
+    || fail "named wrapped composer must extract its whole payload, got '$out'"
+  assert_screen "unindented transcript is not named-composer wrapping" unknown "$CAPS_STYLED" \
+    "${wrapped/  after wrapping/after wrapping}" '' "$claude_idle"
+  assert_screen "a blank transcript gap is not named-composer wrapping" unknown "$CAPS_STYLED" \
+    "${wrapped/  after wrapping/$'\n  after wrapping'}" '' "$claude_idle"
   # Pi non-regression: a titled rule over a blank row never proves a pi
   # composer, even with a live idle pi identity.
   assert_screen "titled pair over a blank row is not pi" unknown "$CAPS_STYLED" \
