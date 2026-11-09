@@ -1192,7 +1192,7 @@ test_pi_extension_keeps_marker_of_live_ancestor_session() {
   cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$ext"
   cp "$ROOT/.pi/extensions/lib/fm-operational-input.ts" "$repo/.pi/extensions/lib/fm-operational-input.ts"
   cp "$ROOT/bin/fm-operational-input.sh" "$repo/bin/fm-operational-input.sh"
-  for marker_case in nested dead foreign fresh; do
+  for marker_case in nested dead foreign fresh named-owned named-other; do
     rm -f "$home/state/.pi-turnend-extension-loaded"
     out=$(PLUGIN="$ext" FM_HOME="$home" MARKER_CASE="$marker_case" node --input-type=module 2>&1 <<'EOF'
 import { spawn, spawnSync } from "node:child_process";
@@ -1233,6 +1233,20 @@ function pidAlive(pid) {
 }
 
 switch (process.env.MARKER_CASE) {
+  case "named-owned": {
+    process.env.FM_LOCK_HOLDER = "pi";
+    writeFileSync(`${process.env.FM_HOME}/state/.lock`, "holder:pi\n");
+    await load();
+    expectBoundToThisProcess("named holder");
+    break;
+  }
+  case "named-other": {
+    process.env.FM_LOCK_HOLDER = "pi";
+    writeFileSync(`${process.env.FM_HOME}/state/.lock`, "holder:claude\n");
+    await load();
+    if (existsSync(marker)) throw new Error("foreign named holder published load evidence");
+    break;
+  }
   case "nested": {
     const before = `${version}\n${process.ppid}\n`;
     writeFileSync(marker, before);

@@ -2973,8 +2973,16 @@ try {
   other.kill("SIGTERM");
 }
 
+for (const holder of [undefined, "claude", "pi bad"]) {
+  if (holder === undefined) delete process.env.FM_LOCK_HOLDER;
+  else process.env.FM_LOCK_HOLDER = holder;
+  writeFileSync(lock, "holder:pi\n");
+  const result = await callArm();
+  if (result.details?.ok !== false) throw new Error(`foreign named lock armed for ${holder}`);
+}
 if (existsSync(process.env.FM_ARM_LOG)) throw new Error("watcher arm ran without lock ownership");
-writeFileSync(lock, `${process.pid}\n`);
+process.env.FM_LOCK_HOLDER = "pi";
+writeFileSync(lock, "holder:pi\n");
 const owned = await callArm();
 if (owned.details?.ok !== true || !owned.details.message.includes("started Pi extension arm child")) {
   throw new Error(`owned lock did not arm: ${JSON.stringify(owned.details)}`);
