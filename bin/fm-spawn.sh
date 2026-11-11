@@ -5447,7 +5447,7 @@ EOF
       # Checked before anything resets or wires the slot; the lease is kept so
       # no later spawn is handed that task's copy either.
       if spawn_other_id=$(spawn_open_record_naming "$WT"); then
-        echo "error: Treehouse leased task $ID the slot $WT, which task $spawn_other_id's open record still names; refusing to share one copy between two tasks. The slot stays leased to $ID untouched; once $spawn_other_id is relaunched or cleaned up, release it with 'treehouse return $WT' from $PROJ_ABS" >&2
+        echo "error: Treehouse leased task $ID the slot $WT, which task $spawn_other_id's open record still names; refusing to share one copy between two tasks. The slot stays leased to $ID untouched so no later spawn is handed it; $spawn_other_id's own cleanup releases that lease - never return it by hand while $spawn_other_id may run there" >&2
         exit 1
       fi
       T3CODE_LEASED=1
