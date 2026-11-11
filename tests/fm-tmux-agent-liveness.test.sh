@@ -196,6 +196,40 @@ for decoy in musescore amuse muse-binary muse-bind; do
 done
 pass "tmux liveness: unrelated muse-containing command names stay ambiguous"
 
+# Bun-script omp has no harness name in either process-name source.
+ln -s "$STANDIN_BIN" "$LAB/bin/bun"
+mkdir -p "$LAB/script-bin" "$LAB/node_modules/@oh-my-pi/pi-coding-agent/dist" "$LAB/unrelated"
+printf '// package entry fixture\n' > "$LAB/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"
+chmod +x "$LAB/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"
+printf '// unrelated script\n' > "$LAB/unrelated/omp"
+ln -s ../node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js "$LAB/script-bin/omp"
+PATH="$LAB/script-bin:$PATH"
+export PATH
+new_window omp-script "$LAB/bin/bun" "$LAB/script-bin/omp" --profile slowgp
+wait_for_state "$SESSION:omp-script" alive \
+  || fail "Bun's omp script argument must classify alive"
+[ "$(fm_agent_process_classify_name "$(fm_backend_tmux_current_command "$SESSION:omp-script")")" != agent ] \
+  || fail "omp script case must blind the pane-command identity"
+comms_classify_agent "$SESSION:omp-script" && fail "omp script case must blind both process-name sources"
+pass "tmux liveness: omp script survives loss of both process-name signals"
+decoy_index=0
+for args in 'other-script omp' 'other-script --cwd /tmp/omp' '-e omp'; do
+  decoy_index=$((decoy_index + 1))
+  # shellcheck disable=SC2086 # deliberately separate fixture arguments
+  new_window "bun-decoy-$decoy_index" "$LAB/bin/bun" $args
+  wait_for_state "$SESSION:bun-decoy-$decoy_index" ambiguous \
+    || fail "an unrelated Bun process mentioning omp must remain ambiguous"
+done
+new_window bun-omp-collision "$LAB/bin/bun" "$LAB/unrelated/omp"
+wait_for_state "$SESSION:bun-omp-collision" ambiguous \
+  || fail "an unrelated script named omp must remain ambiguous"
+mkdir -p "$LAB/unrelated/@oh-my-pi/pi-coding-agent/dist"
+printf '// unrelated package-shaped script\n' > "$LAB/unrelated/@oh-my-pi/pi-coding-agent/dist/cli.js"
+new_window bun-package-collision "$LAB/bin/bun" "$LAB/unrelated/@oh-my-pi/pi-coding-agent/dist/cli.js"
+wait_for_state "$SESSION:bun-package-collision" ambiguous \
+  || fail "a stranger's package-shaped path must not match the installed omp tool"
+pass "tmux liveness: unrelated Bun scripts, eval, and basename/package-path collisions remain ambiguous"
+
 # --- omp's bare binary name -------------------------------------------------
 # omp (Oh My Pi) runs as a single binary whose live process name is exactly
 # `omp`, with no path component to fall back on, so the anchored name is the

@@ -8,7 +8,7 @@ Cross-harness provider and credential identity is owned by `references/common/mo
 
 | Fact | Value |
 |---|---|
-| Binary | `omp`, a single Bun-compiled executable resolved from `PATH` by `../../../bin/fm-spawn.sh`; a missing binary refuses the spawn. |
+| Binary | `omp`, resolved from `PATH` by `../../../bin/fm-spawn.sh`, ships as either a Bun-compiled executable or a Bun script; a missing binary refuses the spawn. |
 | Launch | Foreign markers cleared (`CLAUDECODE`, `PI_CODING_AGENT`, `GROK_AGENT`, `FM_PI_HARNESS`, `GEMINI_CLI`, Cursor's), `FM_OMP_HARNESS=omp OMP_SKIP_SETUP=1`, then `omp [--profile <name>] --config <.omp/fm-worker-overlay.yml> --auto-approve --cwd <worktree> [--model] [--thinking] -e state/<id>.omp-ext.ts <one positional brief>`; a secondmate passes that same `-e` for the busy extension and still relies on auto-discovery for its primary extensions. `--profile` appears only for a local secondmate pinned by the [per-secondmate omp profile](../../../../../docs/configuration.md#per-secondmate-omp-profile). |
 | Busy state | `../../../bin/fm-busy-lib.sh` source `omp-ext`: the per-task extension marks busy at `agent_start` and idle at `agent_end` only when `willContinue` is not true; `ctx.isIdle()` is deliberately not consulted because it reads false at a natural TUI `agent_end` (`session_stop` is awaited before settle). |
 | Exit command | `/quit` (`/exit` and `/q` are aliases). |
@@ -31,7 +31,7 @@ omp cold start is roughly twenty seconds to the first agent turn, paid once per 
 
 `../../../bin/fm-harness.sh` tests `FM_OMP_HARNESS=omp` before `CLAUDECODE`, like Cursor's markers, and its ancestry walk matches the anchored process name `omp` above the interpreter fallback.
 The omp template in `../../../bin/fm-spawn.sh` clears every foreign marker at its own launch boundary, and `FM_OMP_HARNESS=omp` counts only under a real `omp` ancestor, so the marker inherited by any other launch is inert: an omp secondmate's workers keep their own identity and an inherited `CLAUDECODE` cannot outrank a worker that omp launched.
-`../../../bin/fm-session-lock-lib.sh` matches the same anchored name for session-lock ownership, and `../../../bin/backends/tmux.sh` classifies it `agent` for liveness.
+`../../../bin/fm-session-lock-lib.sh` matches the same anchored name for session-lock ownership; tmux liveness also recognizes canonical Bun package entries through `../../../bin/fm-agent-process-lib.sh`.
 The optional claude-bridge extension runs a nested executable literally named `claude` as a sibling of tool execution, never an ancestor of it, so omp's own tool calls detect as omp; that subtree is never walked by a Firstmate script.
 
 ## Worker posture overlay

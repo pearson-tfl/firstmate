@@ -86,6 +86,47 @@ fm_agent_process_classify_name() {  # <path> [argv0] -> agent|shell|other
   esac
 }
 
+# Tmux's Oh My Pi probe also handles Bun scripts. Attribute only the executable script
+# position, never a prompt, --cwd, extension path, or later mention of omp.
+# A bare Bun interpreter is not an agent. Linux preserves argv boundaries;
+# the flattened fallback on macOS accepts only an unambiguous script token.
+fm_agent_process_omp_script() {  # <interpreter> <script>
+  local canonical installed
+  case "${1##*/}" in bun|bun.exe) ;; *) return 1 ;; esac
+  # A script merely named omp is not identity. Require the installed package
+  # entry, following the launcher symlink with the existing portable resolver.
+  case "$2" in /*) ;; *) return 1 ;; esac
+  canonical=$(fm_cursor_canonical_path "$2") || return 1
+  [ -f "$canonical" ] || return 1
+  # Match the same PATH-selected tool the launch owner trusts, not a stranger
+  # reproducing the package's directory spelling elsewhere. Never execute it.
+  installed=$(command -v omp 2>/dev/null) || return 1
+  case "$installed" in /*) ;; *) return 1 ;; esac
+  installed=$(fm_cursor_canonical_path "$installed") || return 1
+  [ "$canonical" = "$installed" ] || return 1
+  case "$canonical" in */@oh-my-pi/pi-coding-agent/dist/cli.js) return 0 ;; esac
+  return 1
+}
+
+fm_agent_process_omp_args() {  # <flattened-args>
+  local args=$1 interpreter script
+  args=${args#"${args%%[![:space:]]*}"}
+  interpreter=${args%%[[:space:]]*}
+  args=${args#"$interpreter"}
+  args=${args#"${args%%[![:space:]]*}"}
+  script=${args%%[[:space:]]*}
+  fm_agent_process_omp_script "$interpreter" "$script"
+}
+
+fm_agent_process_omp_pid() {  # <pid>
+  local interpreter script
+  [ -r "/proc/$1/cmdline" ] || return 1
+  {
+    IFS= read -r -d '' interpreter && IFS= read -r -d '' script
+  } < "/proc/$1/cmdline" || return 1
+  fm_agent_process_omp_script "$interpreter" "$script"
+}
+
 # fm_agent_process_classify: one process, from every identity surface a
 # backend can hand over, as agent|shell|other. Any single surface naming a
 # verified harness carries `agent`, because a false negative is the one outcome

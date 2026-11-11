@@ -3370,6 +3370,31 @@ SH
 
 test_account_move_resumes_restores_and_persists
 
+test_ambiguous_stop_refuses_with_nonzero_status() {
+  local dir out rc before verb
+  dir=$(new_case ambiguous-stop rlomp)
+  add_ship_task "$dir" rlomp omp
+  printf 'bun' > "$dir/fake/command"
+  before=$(cat "$dir/home/data/rlomp/brief.md")
+  for verb in exit relaunch; do
+    if [ "$verb" = exit ]; then
+      out=$(run_control "$dir" rlomp exit); rc=$?
+    else
+      out=$(run_control "$dir" rlomp relaunch --note "preserve the old instructions"); rc=$?
+    fi
+    expect_code 1 "$rc" "$verb must propagate an ambiguous stop refusal"$'\n'"$out"
+    assert_contains "$out" "endpoint reads 'ambiguous'" "$verb must name its unattributed endpoint"
+    [ ! -s "$dir/fake/literal" ] || fail "$verb sent text to an ambiguous endpoint"
+    [ ! -s "$dir/fake/keys" ] || fail "$verb sent keys to an ambiguous endpoint"
+    [ "$(cat "$dir/home/data/rlomp/brief.md")" = "$before" ] \
+      || fail "$verb changed the original instructions"
+  done
+  assert_contains "$(cat "$dir/home/state/rlomp.control-relaunch")" 'phase=failed:stopping' \
+    "refused relaunch must retain its failed stop phase"
+  pass "ambiguous stop: exit and relaunch return nonzero and preserve the agent's instructions"
+}
+test_ambiguous_stop_refuses_with_nonzero_status
+
 test_missing_worktree_refuses_before_stopping_anything
 test_missing_instructions_refuse_before_stopping_anything
 test_checkpoint_refusal_leaves_the_record_byte_identical
