@@ -244,6 +244,35 @@ test_explicit_reclassification_requires_durable_reason() {
   pass "tmux and Herdr blockers require the same explicit durable reclassification before ordinary work"
 }
 
+test_pending_reply_blocker_guidance_names_its_owner() {
+  local dir out rc
+  dir="$TMP_ROOT/pending-reply-guidance"
+  install_runner "$dir"
+  seed_live_blocker "$dir" tmux synthetic-dependency
+  printf 'blocked [key=pending-reply-synthetic]: pending-reply-missed: task=repair-task pending-reply-id=synthetic request=synthetic report\n' >> "$dir/home/state/repair-task.status"
+  date +%s > "$dir/home/state/.afk"
+  : > "$dir/home/state/.fake-drain"
+  set +e
+  out=$(run_return "$dir" begin)
+  rc=$?
+  set -e
+  [ "$rc" -eq 3 ] || fail "mixed ordinary and reserved blockers did not open the return gate: $out"
+
+  # Ordinary resolution works, but a hand-written reserved-key resolution
+  # leaves its owner-managed blocker open and must not be recommended again.
+  printf 'resolved [key=synthetic-dependency]: refreshed the synthetic token\n' >> "$dir/home/state/repair-task.status"
+  printf 'resolved [key=pending-reply-synthetic]: reclassified as an external wait because the mate owns the next event\n' >> "$dir/home/state/repair-task.status"
+  set +e
+  out=$(run_return "$dir" check)
+  rc=$?
+  set -e
+  [ "$rc" -eq 3 ] || fail "hand-written reserved resolution cleared the return gate: $out"
+  assert_contains "$out" 'firstmate-actionable blocker: repair-task [key=pending-reply-synthetic]' "check lost the reserved blocker"
+  assert_contains "$out" 'for ordinary keys, close with resolved [key=...] and append a durable reclassification reason' "check lost ordinary-key resolution guidance"
+  assert_contains "$out" 'reserved pending-reply-* keys close through bin/fm-pending-reply-lib.sh when the asked secondmate reports its correlated reply through its parent status log or a document it points to; hand-written resolved lines do not close them' "check did not name the reserved-key close path"
+  pass "return check distinguishes ordinary resolution from the pending-reply owner's correlated close"
+}
+
 test_captain_decision_does_not_masquerade_as_firstmate_blocker() {
   local dir out
   dir="$TMP_ROOT/captain-decision"
@@ -1355,6 +1384,7 @@ test_missing_final_archive_keeps_retained_contract_gated() {
 
 test_return_gate_owns_remediation_and_reports_catchup_to_bearings
 test_explicit_reclassification_requires_durable_reason
+test_pending_reply_blocker_guidance_names_its_owner
 test_captain_decision_does_not_masquerade_as_firstmate_blocker
 test_evidence_publication_failure_preserves_wake_for_redrain
 test_away_reentry_refuses_pending_return_gate
