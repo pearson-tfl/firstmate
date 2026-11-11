@@ -753,6 +753,28 @@ test_pool_slot_claim_follows_the_spawn_outcome() {
   pass "a Treehouse slot claim names the launched task, refuses when unclaimable, and is dropped by a locked abort"
 }
 
+# A stopped worker's lapsed lease lets Treehouse hand its clean slot to the next
+# spawn while that task's record still names it; the spawn must refuse, naming
+# the record, rather than publish a second record for the same copy.
+test_spawn_refuses_a_slot_another_open_record_names() {
+  local rec id out status
+  id='pool-slot-reused-r1'
+  rec=$(make_case slot-reused "$id")
+  read_case_record "$rec"
+  lay_out_as_pool_slot
+  printf 'worktree=%s\nkind=ship\n' "$POOL_DIR" > "$HOME_DIR/state/stopped-first.meta"
+  printf 'task=stopped-first\nhome=%s\n' "$HOME_DIR" > "$SLOT_CLAIM"
+  out=$(run_spawn "$id" --scout)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn launched into a slot another open record names"
+  assert_contains "$out" "task stopped-first's open record still names" \
+    "the refusal did not name the task whose record holds the slot"
+  [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "spawn published a second record for the same slot"
+  grep -Fxq -- "task=stopped-first" "$SLOT_CLAIM" \
+    || fail "the refused spawn replaced the first task's slot claim: $(cat "$SLOT_CLAIM")"
+  pass "a spawn handed a slot another open record names refuses, naming that task"
+}
+
 # A stateful terminal and pool stand-in for the refused-launch sequence. Each
 # window is a file recording its stable id and the path its shell sits in; a
 # `treehouse get` typed into a window moves it into the lowest slot no live
@@ -1381,6 +1403,7 @@ test_opt_in_still_refuses_an_unclean_slot_first() {
 
 test_remote_seeded_home_spawns_from_treehouse_pool
 test_pool_slot_claim_follows_the_spawn_outcome
+test_spawn_refuses_a_slot_another_open_record_names
 test_refused_launch_leaves_the_pool_for_a_retry_and_a_second_task
 test_refused_launch_spares_per_id_paths_under_a_contended_spawn_lock
 test_non_polytoken_refused_launch_keeps_its_window
