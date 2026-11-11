@@ -208,7 +208,10 @@
 #   what lets teardown leave a slot reassigned since untouched; bin/fm-wake-lib.sh
 #   owns the claim and bin/fm-teardown.sh owns what it protects. A slot that
 #   cannot be claimed refuses the spawn rather than launching a worker whose slot
-#   could later be released out from under its successor. A spawn that aborts
+#   could later be released out from under its successor, and so does a slot
+#   another open task record in this home still names (a stopped worker's clean
+#   slot is otherwise handed on); --relaunch refuses a recorded slot whose claim
+#   now names another task. A spawn that aborts
 #   while it still holds the allocation lock drops its own claim; an abort after
 #   metadata publication has released that lock leaves the claim in place, and
 #   the next spawn's claim replaces it. A fresh polytoken spawn that fails and
@@ -2512,6 +2515,15 @@ if [ "$RELAUNCH" -eq 1 ]; then
       echo "error: task $ID has no recorded project; refusing to relaunch" >&2
       exit 1
     }
+    # The slot claim (bin/fm-wake-lib.sh) names the task Treehouse last handed
+    # this slot to; if that is another task, the recorded copy is now its work.
+    if fm_treehouse_pool_slot "$PROJ" "$RELAUNCH_WT"; then
+      fm_treehouse_slot_owner_state "$RELAUNCH_WT" "$ID"
+      if [ "$FM_TREEHOUSE_SLOT_OWNER" = other ]; then
+        echo "error: task $ID's recorded worktree '$RELAUNCH_WT' now belongs to task $FM_TREEHOUSE_SLOT_OWNER_ID (home ${FM_TREEHOUSE_SLOT_OWNER_HOME:-unknown}); refusing to relaunch into another task's copy" >&2
+        exit 1
+      fi
+    fi
   fi
   if [ "$BACKEND" = herdr ]; then
     # fm-spawn uses HERDR_PANE_ID for the TASK's pane, while the herdr adapter
@@ -6119,6 +6131,18 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   # Written under the Treehouse project lock held from before slot allocation
   # through metadata publication, so no other spawn or return sees a half-claim.
   if fm_treehouse_pool_slot "$PROJ_ABS" "$WT"; then
+    # A slot a stopped worker left clean is handed on while that task's record
+    # still names it, so the two records would share one copy and either task's
+    # cleanup or relaunch would act on the other's work. Refuse, naming the
+    # holder; its relaunch or cleanup frees the slot for the next spawn.
+    spawn_wt_real=$(real_path_or_raw "$WT")
+    for spawn_other_meta in "$STATE"/*.meta; do
+      [ -f "$spawn_other_meta" ] && [ "$spawn_other_meta" != "$STATE/$ID.meta" ] || continue
+      spawn_other_wt=$(fm_meta_get "$spawn_other_meta" worktree)
+      [ -n "$spawn_other_wt" ] && [ "$(real_path_or_raw "$spawn_other_wt")" = "$spawn_wt_real" ] || continue
+      echo "error: Treehouse handed task $ID the slot $WT, which task $(basename "$spawn_other_meta" .meta)'s open record still names; refusing to share one copy between two tasks - relaunch or clean up that task first; $(spawn_endpoint_hint)" >&2
+      exit 1
+    done
     if ! fm_treehouse_slot_owner_claim "$WT" "$ID" "$FM_HOME"; then
       echo "error: could not claim Treehouse pool slot $WT for task $ID; refusing to launch a worker whose slot cannot later be proved to be its own; $(spawn_endpoint_hint)" >&2
       exit 1

@@ -1145,6 +1145,14 @@ safe_checkpoint() {
   wt_top_real=$(cd "$wt_top" 2>/dev/null && pwd -P) || wt_top_real=$wt_top
   [ "$wt_real" = "$wt_top_real" ] \
     || die "task $ID's recorded worktree $WT is not a worktree root (root is $wt_top); refusing to relaunch against an ambiguous checkout"
+  # A stopped worker's Treehouse slot may since have been handed to another
+  # task (claim: bin/fm-wake-lib.sh); bin/fm-spawn.sh refuses that relaunch
+  # too, but only after this agent has been stopped.
+  if [ "$KIND" != secondmate ] && fm_treehouse_pool_slot "$(fm_meta_get "$META" project)" "$WT"; then
+    fm_treehouse_slot_owner_state "$WT" "$ID"
+    [ "$FM_TREEHOUSE_SLOT_OWNER" != other ] \
+      || die "task $ID's recorded worktree $WT now belongs to task $FM_TREEHOUSE_SLOT_OWNER_ID (home ${FM_TREEHOUSE_SLOT_OWNER_HOME:-unknown}); refusing to relaunch into another task's copy"
+  fi
   if head=$(git -C "$WT" rev-parse --verify HEAD 2>/dev/null); then
     :
   elif head_ref=$(git -C "$WT" symbolic-ref -q HEAD 2>/dev/null); then

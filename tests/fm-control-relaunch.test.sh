@@ -497,6 +497,34 @@ test_relaunch_refuses_before_exit_when_the_composer_state_is_unproven() {
   pass "fm-control relaunch: an unreadable composer fails safe before the exit command is typed"
 }
 
+# A stopped worker's clean Treehouse slot can be handed to another task while
+# this record still names it; neither relaunch path may start a worker there,
+# and fm-control refuses before stopping anything.
+test_relaunch_refuses_a_slot_another_task_now_holds() {
+  local dir out rc slot
+  dir=$(new_case slot-reassigned rl60)
+  add_ship_task "$dir" rl60 claude
+  slot="$dir/pool/1/proj"
+  mkdir -p "$dir/pool/1"
+  git -C "$dir/proj" worktree move "$dir/wt" "$slot"
+  printf '{"worktrees":[{"name":"1","path":"%s"}]}\n' "$slot" > "$dir/pool/treehouse-state.json"
+  sed "s|^worktree=.*|worktree=$slot|" "$dir/home/state/rl60.meta" > "$dir/moved.meta"
+  mv "$dir/moved.meta" "$dir/home/state/rl60.meta"
+  printf '%s' "$slot" > "$dir/fake/cwd"
+  printf 'task=successor\nhome=%s\n' "$dir/home" > "$dir/pool/1/.fm-slot-owner"
+
+  out=$(run_control "$dir" rl60 relaunch --note "resume"); rc=$?
+  [ "$rc" -ne 0 ] || fail "fm-control relaunched into a slot another task holds"$'\n'"$out"
+  assert_contains "$out" "now belongs to task successor" "fm-control did not name the task holding the slot"
+  ! grep -Fq "/exit" "$dir/fake/literal" || fail "fm-control stopped the agent before refusing"
+  printf 'zsh' > "$dir/fake/command"
+  out=$(run_spawn "$dir" rl60 --relaunch); rc=$?
+  [ "$rc" -ne 0 ] || fail "fm-spawn relaunched into a slot another task holds"$'\n'"$out"
+  assert_contains "$out" "now belongs to task successor" "fm-spawn did not name the task holding the slot"
+  grep -Fxq "task=successor" "$dir/pool/1/.fm-slot-owner" || fail "a refused relaunch changed the slot claim"
+  pass "relaunch: a recorded slot another task now holds is refused by fm-control before stopping and by fm-spawn"
+}
+
 test_relaunch_from_linked_home_preserves_recorded_worktree() {
   local dir out rc head fetch_head
   dir=$(new_case linked-home rl42)
@@ -3441,3 +3469,4 @@ test_resume_returns_the_recorded_session
 test_resume_of_a_stopped_agent_relaunches_its_session
 test_resume_refuses_before_stop_without_a_session_or_resume_form
 test_relaunch_reuses_recorded_loadout_and_workflows
+test_relaunch_refuses_a_slot_another_task_now_holds
