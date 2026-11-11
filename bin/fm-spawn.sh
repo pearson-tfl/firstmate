@@ -211,7 +211,9 @@
 #   could later be released out from under its successor, and so does a slot
 #   another open task record in this home still names (a stopped worker's clean
 #   slot is otherwise handed on); --relaunch refuses a recorded slot whose claim
-#   now names another task. A spawn that aborts
+#   now names another task. While that task's record stands, each later
+#   pane spawn on the project may be handed the same slot and refuse again; a
+#   T3 spawn keeps its lease instead. A spawn that aborts
 #   while it still holds the allocation lock drops its own claim; an abort after
 #   metadata publication has released that lock leaves the claim in place, and
 #   the next spawn's claim replaces it. A fresh polytoken spawn that fails and
@@ -2515,14 +2517,10 @@ if [ "$RELAUNCH" -eq 1 ]; then
       echo "error: task $ID has no recorded project; refusing to relaunch" >&2
       exit 1
     }
-    # The slot claim (bin/fm-wake-lib.sh) names the task Treehouse last handed
-    # this slot to; if that is another task, the recorded copy is now its work.
-    if fm_treehouse_pool_slot "$PROJ" "$RELAUNCH_WT"; then
-      fm_treehouse_slot_owner_state "$RELAUNCH_WT" "$ID"
-      if [ "$FM_TREEHOUSE_SLOT_OWNER" = other ]; then
-        echo "error: task $ID's recorded worktree '$RELAUNCH_WT' now belongs to task $FM_TREEHOUSE_SLOT_OWNER_ID (home ${FM_TREEHOUSE_SLOT_OWNER_HOME:-unknown}); refusing to relaunch into another task's copy" >&2
-        exit 1
-      fi
+    # bin/fm-control.sh makes the same check before stopping the agent.
+    if fm_treehouse_slot_reassigned "$PROJ" "$RELAUNCH_WT" "$ID"; then
+      echo "error: task $ID's recorded worktree '$RELAUNCH_WT' now belongs to $FM_TREEHOUSE_SLOT_REASSIGNED_REASON; refusing to relaunch into another task's copy" >&2
+      exit 1
     fi
   fi
   if [ "$BACKEND" = herdr ]; then

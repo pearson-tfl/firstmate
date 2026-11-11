@@ -1915,6 +1915,19 @@ fm_treehouse_slot_owner_state() {  # <worktree> <task-id>
   fi
 }
 
+# Succeeds when <worktree> is a pool slot of <project> whose claim names a task
+# other than <task-id>: that task's recorded copy now holds another task's work,
+# so a relaunch into it must refuse. FM_TREEHOUSE_SLOT_REASSIGNED_REASON then
+# carries the refusal's evidence, worded for "<worktree> now belongs to ...".
+fm_treehouse_slot_reassigned() {  # <project> <worktree> <task-id>
+  FM_TREEHOUSE_SLOT_REASSIGNED_REASON=
+  fm_treehouse_pool_slot "$1" "$2" || return 1
+  fm_treehouse_slot_owner_state "$2" "$3"
+  [ "$FM_TREEHOUSE_SLOT_OWNER" = other ] || return 1
+  # shellcheck disable=SC2034 # Output global, read by the sourcing caller.
+  FM_TREEHOUSE_SLOT_REASSIGNED_REASON="task $FM_TREEHOUSE_SLOT_OWNER_ID (home ${FM_TREEHOUSE_SLOT_OWNER_HOME:-unknown})"
+}
+
 # Drop a task's own claim once its slot is back in the pool. Never removes
 # another task's claim, so a misdirected release cannot strip the evidence that
 # protects the slot's real owner.
