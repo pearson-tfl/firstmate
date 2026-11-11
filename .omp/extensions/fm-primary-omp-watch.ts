@@ -231,6 +231,12 @@ function lockOwnership(): LockOwnership {
   } catch {
     return "missing";
   }
+  // Match fm-lock.sh's explicit named-holder contract, never the runtime name
+  // inferred from this process. An inherited name grants the same identity.
+  if (lockPid.startsWith("holder:")) {
+    const holder = process.env.FM_LOCK_HOLDER ?? "";
+    return /^[A-Za-z0-9._-]+$/.test(holder) && lockPid === `holder:${holder}` ? "owned" : "other";
+  }
   if (!/^[0-9]+$/.test(lockPid) || lockPid === "1") return "other";
   let pid = String(process.pid);
   for (let i = 0; i < 8; i += 1) {
