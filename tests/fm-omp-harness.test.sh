@@ -621,6 +621,48 @@ EOF
   pass ".omp turn-end guard: digest delivery, seatbelt block, one compelled continuation, flagged stop stands down"
 }
 
+test_named_holder_extensions() {
+  local repo home out status extension holder
+  repo="$TMP_ROOT/named-holder/repo"; home="$TMP_ROOT/named-holder/home"
+  install_omp_extension_fixture "$repo"
+  mkdir -p "$home/state"
+  printf '#!/usr/bin/env bash\nprintf "watcher: started pid=%%s (beacon 0s) recovery-generation=gen-1\\n" "$$"\nsleep 30\n' > "$repo/bin/fm-watch-arm.sh"
+  chmod +x "$repo/bin/fm-watch-arm.sh"
+  for extension in fm-primary-omp-watch fm-primary-turnend-guard; do
+    for holder in omp other unset 'omp bad'; do
+      out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" HOLDER="$holder" \
+        EXT="$repo/.omp/extensions/$extension.ts" node --input-type=module 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+import { writeFileSync, existsSync, unlinkSync } from "node:fs";
+const watch = process.env.EXT.includes("omp-watch");
+const marker = `${process.env.FM_HOME}/state/.omp-${watch ? "watch" : "turnend"}-extension-loaded`;
+if (existsSync(marker)) unlinkSync(marker);
+writeFileSync(`${process.env.FM_HOME}/state/.lock`, `holder:${process.env.HOLDER === "omp bad" ? "omp bad" : "omp"}\n`);
+if (process.env.HOLDER === "unset") delete process.env.FM_LOCK_HOLDER;
+else process.env.FM_LOCK_HOLDER = process.env.HOLDER;
+const owned = process.env.HOLDER === "omp";
+const handlers = new Map(); let tool;
+const api = { on(e, h) { handlers.set(e, h); }, registerCommand() {}, registerTool(t) { tool = t; }, sendUserMessage() {} };
+(await import(pathToFileURL(process.env.EXT).href)).default(api);
+try {
+  await handlers.get("session_start")?.({}, { sessionManager: { getSessionId: () => "named-test" } });
+  if (existsSync(marker) !== owned) throw new Error(`marker ownership mismatch for ${process.env.HOLDER}`);
+  if (watch) {
+    const result = await tool.execute();
+    if (result.details?.ok !== owned) throw new Error(`arm ownership mismatch: ${JSON.stringify(result)}`);
+  }
+} finally {
+  await handlers.get("session_shutdown")?.({}, {});
+}
+EOF
+)
+      status=$?
+      expect_code 0 "$status" "$extension named holder $holder: $out"
+      pass "$extension named holder $holder"
+    done
+  done
+}
+
 test_watch_extension_arms_and_delivers() {
   local repo home out status
   repo="$TMP_ROOT/watch/repo"; home="$TMP_ROOT/watch/home"
@@ -975,6 +1017,7 @@ test_secondmate_omp_profile_malformed_refuses
 test_busy_extension_lifecycle
 test_control_composer_and_model_tables
 test_ownership_proof_is_omp_keyed
+test_named_holder_extensions
 test_turnend_guard_extension_compels_one_continuation
 test_watch_extension_arms_and_delivers
 test_watch_extension_runs_the_supervision_host
