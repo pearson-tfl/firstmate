@@ -48,24 +48,34 @@ HARNESS="$ROOT/bin/fm-harness.sh"
 TMP_ROOT=$(fm_test_tmproot fm-omp-harness)
 export NODE_NO_WARNINGS=1
 
-# Both tmux and Herdr consume this backend-neutral process classifier.
+# Bun-script attribution is opt-in at the tmux probe, not a change to every
+# backend that consumes the generic process classifier.
 # shellcheck source=bin/fm-agent-process-lib.sh
 . "$ROOT/bin/fm-agent-process-lib.sh"
 mkdir -p "$TMP_ROOT/script-bin" "$TMP_ROOT/node_modules/@oh-my-pi/pi-coding-agent/dist" "$TMP_ROOT/unrelated"
 printf '// package entry fixture\n' > "$TMP_ROOT/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"
+chmod +x "$TMP_ROOT/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"
+mkdir -p "$TMP_ROOT/unrelated/@oh-my-pi/pi-coding-agent/dist"
+printf '// unrelated package-shaped script\n' > "$TMP_ROOT/unrelated/@oh-my-pi/pi-coding-agent/dist/cli.js"
 printf '// unrelated script\n' > "$TMP_ROOT/unrelated/omp"
 ln -s ../node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js "$TMP_ROOT/script-bin/omp"
 for args in "bun $TMP_ROOT/script-bin/omp --profile slowgp" \
   "bun $TMP_ROOT/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"; do
-  [ "$(fm_agent_process_classify bun bun "$args")" = agent ] \
-    || fail "Bun-script omp must be attributed by the shared classifier"
+  PATH="$TMP_ROOT/script-bin:$PATH" fm_agent_process_omp_args "$args" \
+    || fail "tmux's Bun-script omp identity must accept the installed package entry"
+  [ "$(fm_agent_process_classify bun bun "$args")" = other ] \
+    || fail "the generic backend process classifier must remain unchanged"
 done
 for args in 'bun' 'bun /app/server.js --cwd /tmp/omp' 'bun -e omp' \
-  'bun /app/ompd' 'bun /app/comp' 'node /app/omp' "bun $TMP_ROOT/unrelated/omp"; do
+  'bun /app/ompd' 'bun /app/comp' 'node /app/omp' "bun $TMP_ROOT/unrelated/omp" \
+  "bun $TMP_ROOT/unrelated/@oh-my-pi/pi-coding-agent/dist/cli.js"; do
+  if PATH="$TMP_ROOT/script-bin:$PATH" fm_agent_process_omp_args "$args"; then
+    fail "a stranger's Bun script must remain unattributed: $args"
+  fi
   [ "$(fm_agent_process_classify bun bun "$args")" = other ] \
     || fail "a stranger's interpreter must remain unattributed: $args"
 done
-pass "omp script identity: shared tmux/Herdr classifier accepts only the Bun script position"
+pass "omp script identity: tmux accepts the package entry; generic backend classification is unchanged"
 
 # A process whose kernel-recorded identity is the bare name `omp`: a SYMLINK to
 # the system shell, never a copy (a copied platform binary fails macOS code

@@ -36,7 +36,7 @@ fm_backend_source tmux || fail 'cannot load tmux adapter'
 "$REAL_TMUX" -L "$SOCKET" new-session -d -s lab -n control /bin/sh || fail 'cannot create private server'
 
 wait_idle() {
-  local target=$1 n state composer busy screen
+  local target=$1 n state composer busy screen status
   for n in $(seq 1 150); do
     state=$(fm_backend_agent_state tmux "$target")
     composer=$(fm_backend_composer_state tmux "$target")
@@ -47,13 +47,23 @@ wait_idle() {
     if [ "$state" = alive ] && [ "$composer" = empty ] && [ "$busy" = idle ] \
       && printf '%s\n' "$screen" | grep -Eq '^[[:space:]]*IDLE[[:space:]]*$' \
       && printf '%s\n' "$screen" | grep -Eq '^[[:space:]]*❯[[:space:]]*$'; then
-      printf '%s\n' "$screen" | grep -Eq 'π[^·]*·.*📁' \
-        || fail "$target lacks the profile/model/folder status row"
+      status=$(printf '%s\n' "$screen" | awk '/^[[:space:]]*❯[[:space:]]*$/ { getline; row=$0 } END { print row }')
+      printf '%s\n' "$status" | grep -Eq '^[[:space:]]*π(-[a-z0-9._-]+)?[[:space:]]+·[[:space:]]+[^[:space:]·][^·]*[[:space:]]+·[[:space:]]+📁[[:space:]]+[^[:space:]·][^·]*([[:space:]]+·.*)?$' \
+        || fail "$target lacks the adjacent profile/model/folder status row"
       return 0
     fi
     sleep 0.2
   done
   fail "$target never settled at the matching idle screen ($state/$composer/$busy)"
+}
+
+omp_pid() {  # <target>: the attributed agent, not its persistent pane shell
+  local pid args
+  for pid in $(fm_backend_tmux_foreground_pids "$1"); do
+    args=$(LC_ALL=C ps -p "$pid" -o args= 2>/dev/null) || continue
+    if fm_agent_process_omp_args "$args"; then printf '%s' "$pid"; return 0; fi
+  done
+  return 1
 }
 
 for id in without-extension with-extension; do
@@ -93,32 +103,35 @@ EOF
   wait_idle "lab:fm-$id"
   "$REAL_TMUX" -L "$SOCKET" capture-pane -p -t "lab:fm-$id" > "$LAB/$id-before.txt"
   if [ "$id" = without-extension ]; then printf 'export default function() {}\n' > "$extension"; fi
-  old_pid=$("$REAL_TMUX" -L "$SOCKET" display-message -p -t "lab:fm-$id" '#{pane_current_command} #{pane_pid}')
+  old_pid=$(omp_pid "lab:fm-$id") || fail "$id has no attributed omp process"
   bash "$ROOT/bin/fm-control.sh" "$id" relaunch > "$LAB/$id-relaunch.log" 2>&1
   rc=$?
   [ "$rc" -eq 0 ] || fail "$id relaunch exited $rc"
   grep -q '^phase=complete$' "$FM_HOME/state/$id.control-relaunch" || fail "$id transaction did not complete"
   wait_idle "lab:fm-$id"
+  new_pid=$(omp_pid "lab:fm-$id") || fail "$id has no replacement omp process"
+  [ "$old_pid" != "$new_pid" ] || fail "$id retained its old agent process"
   "$REAL_TMUX" -L "$SOCKET" capture-pane -p -t "lab:fm-$id" > "$LAB/$id-after.txt"
-  printf 'ok - omp %s: %s secondmate relaunched (initial %s)\n' "$VERSION" "$id" "$old_pid"
+  printf 'ok - omp %s: %s secondmate relaunched (agent %s -> %s)\n' "$VERSION" "$id" "$old_pid" "$new_pid"
 done
 
-# An unrelated real Bun script named omp must remain unattributed, even when
-# its screen resembles the idle composer. No lifecycle input may reach it.
-mkdir -p "$LAB/ambiguous/state"
-printf '%s\n' 'console.log("❯\n π-test · model · 📁 test"); setInterval(() => {}, 1000);' > "$LAB/ambiguous/omp"
-"$REAL_TMUX" -L "$SOCKET" new-window -d -t lab: -n fm-ambiguous -c "$LAB/ambiguous" bun "$LAB/ambiguous/omp" || fail 'cannot create ambiguous endpoint'
-[ "$(fm_backend_agent_state tmux lab:fm-ambiguous)" = ambiguous ] || fail 'an unrelated script named omp acquired agent identity'
-sed 's/window=lab:fm-without-extension/window=lab:fm-ambiguous/;s/endpoint_task_id=without-extension/endpoint_task_id=ambiguous/' \
-  "$FM_HOME/state/without-extension.meta" > "$FM_HOME/state/ambiguous.meta"
-# Checkpoint marker must name this independent task, not the successful seat.
-mkdir -p "$LAB/ambiguous/state"
-git -C "$LAB/ambiguous" init -q || fail 'cannot initialize ambiguous home'
-printf 'ambiguous\n' > "$LAB/ambiguous/.fm-secondmate-home"
-sed "s|$LAB/without-extension|$LAB/ambiguous|g" "$FM_HOME/state/ambiguous.meta" > "$LAB/ambiguous-meta"
-cp "$LAB/ambiguous-meta" "$FM_HOME/state/ambiguous.meta"
-bash "$ROOT/bin/fm-control.sh" ambiguous relaunch > "$LAB/ambiguous-relaunch.log" 2>&1
-rc=$?
-[ "$rc" -ne 0 ] || fail 'ambiguous relaunch returned success'
-grep -q "endpoint reads 'ambiguous'" "$LAB/ambiguous-relaunch.log" || fail 'refusal was not due to ambiguous identity'
-printf 'ok - omp %s: ambiguous relaunch refused with exit %s; evidence %s\n' "$VERSION" "$rc" "$LAB"
+# Unrelated real Bun scripts remain unattributed even with a deceptive screen,
+# an omp basename, or the same package directory spelling as the installed tool.
+for decoy in ambiguous package-collision; do
+  seat="$LAB/$decoy"
+  mkdir -p "$seat/state" "$seat/@oh-my-pi/pi-coding-agent/dist"
+  script="$seat/omp"
+  [ "$decoy" != package-collision ] || script="$seat/@oh-my-pi/pi-coding-agent/dist/cli.js"
+  printf '%s\n' 'console.log("❯\n π-test · model · 📁 test"); setInterval(() => {}, 1000);' > "$script"
+  "$REAL_TMUX" -L "$SOCKET" new-window -d -t lab: -n "fm-$decoy" -c "$seat" bun "$script" || fail 'cannot create ambiguous endpoint'
+  [ "$(fm_backend_agent_state tmux "lab:fm-$decoy")" = ambiguous ] || fail "$decoy acquired agent identity"
+  sed "s/window=lab:fm-without-extension/window=lab:fm-$decoy/;s/endpoint_task_id=without-extension/endpoint_task_id=$decoy/;s|$LAB/without-extension|$seat|g" \
+    "$FM_HOME/state/without-extension.meta" > "$FM_HOME/state/$decoy.meta"
+  git -C "$seat" init -q || fail 'cannot initialize ambiguous home'
+  printf '%s\n' "$decoy" > "$seat/.fm-secondmate-home"
+  bash "$ROOT/bin/fm-control.sh" "$decoy" relaunch > "$LAB/$decoy-relaunch.log" 2>&1
+  rc=$?
+  [ "$rc" -ne 0 ] || fail "$decoy relaunch returned success"
+  grep -q "endpoint reads 'ambiguous'" "$LAB/$decoy-relaunch.log" || fail 'refusal was not due to ambiguous identity'
+  printf 'ok - omp %s: %s relaunch refused with exit %s; evidence %s\n' "$VERSION" "$decoy" "$rc" "$LAB"
+done

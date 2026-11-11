@@ -86,18 +86,24 @@ fm_agent_process_classify_name() {  # <path> [argv0] -> agent|shell|other
   esac
 }
 
-# Oh My Pi also ships as a Bun script. Attribute only the executable script
+# Tmux's Oh My Pi probe also handles Bun scripts. Attribute only the executable script
 # position, never a prompt, --cwd, extension path, or later mention of omp.
 # A bare Bun interpreter is not an agent. Linux preserves argv boundaries;
 # the flattened fallback on macOS accepts only an unambiguous script token.
 fm_agent_process_omp_script() {  # <interpreter> <script>
-  local canonical
+  local canonical installed
   case "${1##*/}" in bun|bun.exe) ;; *) return 1 ;; esac
   # A script merely named omp is not identity. Require the installed package
   # entry, following the launcher symlink with the existing portable resolver.
   case "$2" in /*) ;; *) return 1 ;; esac
   canonical=$(fm_cursor_canonical_path "$2") || return 1
   [ -f "$canonical" ] || return 1
+  # Match the same PATH-selected tool the launch owner trusts, not a stranger
+  # reproducing the package's directory spelling elsewhere. Never execute it.
+  installed=$(command -v omp 2>/dev/null) || return 1
+  case "$installed" in /*) ;; *) return 1 ;; esac
+  installed=$(fm_cursor_canonical_path "$installed") || return 1
+  [ "$canonical" = "$installed" ] || return 1
   case "$canonical" in */@oh-my-pi/pi-coding-agent/dist/cli.js) return 0 ;; esac
   return 1
 }
@@ -131,8 +137,8 @@ fm_agent_process_omp_pid() {  # <pid>
 #            on Linux the exec name, on macOS argv[0] truncated to 16 bytes.
 #   <argv0>  argv[0] as the process reports it - a bare name or an install
 #            path, whichever the launcher used (empty when unknown).
-#   <args>   the flattened command line for interpreter-script harnesses
-#            whose identity sits in argv[1] (Gemini and omp).
+#   <args>   the flattened command line, read only for the node-bundle
+#            harnesses whose identity sits in argv[1] (bin/fm-gemini-lib.sh).
 #   [pid]    when given, lets the Gemini rule read argv boundaries from the
 #            live process instead of the flattened line.
 fm_agent_process_classify() {  # <name> <argv0> <args> [pid] -> agent|shell|other
@@ -147,11 +153,11 @@ fm_agent_process_classify() {  # <name> <argv0> <args> [pid] -> agent|shell|othe
   else
     by_argv0=$by_name
   fi
-  if [ -n "$pid" ] && { fm_gemini_pid_is_gemini "$pid" || fm_agent_process_omp_pid "$pid"; }; then
+  if [ -n "$pid" ] && fm_gemini_pid_is_gemini "$pid"; then
     printf 'agent'
     return 0
   fi
-  if [ -n "$args" ] && { fm_gemini_args_are_gemini "$args" || fm_agent_process_omp_args "$args"; }; then
+  if [ -n "$args" ] && fm_gemini_args_are_gemini "$args"; then
     printf 'agent'
     return 0
   fi
