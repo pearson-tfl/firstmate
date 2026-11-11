@@ -4662,12 +4662,12 @@ spawn_endpoint_closes_on_abort() {
 # or relaunch would act on the other's work. Prints the first other task whose
 # record in this home names <worktree>; fails when none does.
 spawn_open_record_naming() {  # <worktree>
-  local wt_real meta other
+  local wt_real meta named
   wt_real=$(real_path_or_raw "$1")
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] && [ "$meta" != "$STATE/$ID.meta" ] || continue
-    other=$(fm_meta_get "$meta" worktree)
-    [ -n "$other" ] && [ "$(real_path_or_raw "$other")" = "$wt_real" ] || continue
+    named=$(fm_meta_get "$meta" worktree)
+    [ -n "$named" ] && [ "$(real_path_or_raw "$named")" = "$wt_real" ] || continue
     basename "$meta" .meta
     return 0
   done
