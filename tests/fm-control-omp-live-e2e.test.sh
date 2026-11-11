@@ -36,14 +36,24 @@ fm_backend_source tmux || fail 'cannot load tmux adapter'
 "$REAL_TMUX" -L "$SOCKET" new-session -d -s lab -n control /bin/sh || fail 'cannot create private server'
 
 wait_idle() {
-  local target=$1 n state composer
+  local target=$1 n state composer busy screen
   for n in $(seq 1 150); do
     state=$(fm_backend_agent_state tmux "$target")
     composer=$(fm_backend_composer_state tmux "$target")
-    if [ "$state" = alive ] && [ "$composer" = empty ]; then return 0; fi
+    busy=$(fm_pane_busy_state "$target" omp)
+    screen=$(fm_backend_visible_capture tmux "$target")
+    # Empty composers exist during a running turn too. Require the settled
+    # reply, no working/spinner signal, and the live seat's bare prompt shape.
+    if [ "$state" = alive ] && [ "$composer" = empty ] && [ "$busy" = idle ] \
+      && printf '%s\n' "$screen" | grep -Eq '^[[:space:]]*IDLE[[:space:]]*$' \
+      && printf '%s\n' "$screen" | grep -Eq '^[[:space:]]*❯[[:space:]]*$'; then
+      printf '%s\n' "$screen" | grep -Eq 'π[^·]*·.*📁' \
+        || fail "$target lacks the profile/model/folder status row"
+      return 0
+    fi
     sleep 0.2
   done
-  fail "$target never became alive with an empty composer ($state/$composer)"
+  fail "$target never settled at the matching idle screen ($state/$composer/$busy)"
 }
 
 for id in before with; do
