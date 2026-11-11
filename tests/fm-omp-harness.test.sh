@@ -51,13 +51,17 @@ export NODE_NO_WARNINGS=1
 # Both tmux and Herdr consume this backend-neutral process classifier.
 # shellcheck source=bin/fm-agent-process-lib.sh
 . "$ROOT/bin/fm-agent-process-lib.sh"
-for args in 'bun /opt/bin/omp --profile slowgp' \
-  'bun /opt/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js'; do
+mkdir -p "$TMP_ROOT/script-bin" "$TMP_ROOT/node_modules/@oh-my-pi/pi-coding-agent/dist" "$TMP_ROOT/unrelated"
+printf '// package entry fixture\n' > "$TMP_ROOT/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"
+printf '// unrelated script\n' > "$TMP_ROOT/unrelated/omp"
+ln -s ../node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js "$TMP_ROOT/script-bin/omp"
+for args in "bun $TMP_ROOT/script-bin/omp --profile slowgp" \
+  "bun $TMP_ROOT/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"; do
   [ "$(fm_agent_process_classify bun bun "$args")" = agent ] \
     || fail "Bun-script omp must be attributed by the shared classifier"
 done
 for args in 'bun' 'bun /app/server.js --cwd /tmp/omp' 'bun -e omp' \
-  'bun /app/ompd' 'bun /app/comp' 'node /app/omp'; do
+  'bun /app/ompd' 'bun /app/comp' 'node /app/omp' "bun $TMP_ROOT/unrelated/omp"; do
   [ "$(fm_agent_process_classify bun bun "$args")" = other ] \
     || fail "a stranger's interpreter must remain unattributed: $args"
 done

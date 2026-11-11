@@ -91,10 +91,14 @@ fm_agent_process_classify_name() {  # <path> [argv0] -> agent|shell|other
 # A bare Bun interpreter is not an agent. Linux preserves argv boundaries;
 # the flattened fallback on macOS accepts only an unambiguous script token.
 fm_agent_process_omp_script() {  # <interpreter> <script>
+  local canonical
   case "${1##*/}" in bun|bun.exe) ;; *) return 1 ;; esac
-  case "$2" in -*|'') return 1 ;; esac
-  case "${2##*/}" in omp) return 0 ;; esac
-  case "$2" in */@oh-my-pi/pi-coding-agent/dist/cli.js) return 0 ;; esac
+  # A script merely named omp is not identity. Require the installed package
+  # entry, following the launcher symlink with the existing portable resolver.
+  case "$2" in /*) ;; *) return 1 ;; esac
+  canonical=$(fm_cursor_canonical_path "$2") || return 1
+  [ -f "$canonical" ] || return 1
+  case "$canonical" in */@oh-my-pi/pi-coding-agent/dist/cli.js) return 0 ;; esac
   return 1
 }
 
@@ -127,8 +131,8 @@ fm_agent_process_omp_pid() {  # <pid>
 #            on Linux the exec name, on macOS argv[0] truncated to 16 bytes.
 #   <argv0>  argv[0] as the process reports it - a bare name or an install
 #            path, whichever the launcher used (empty when unknown).
-#   <args>   the flattened command line, read only for the node-bundle
-#            harnesses whose identity sits in argv[1] (bin/fm-gemini-lib.sh).
+#   <args>   the flattened command line for interpreter-script harnesses
+#            whose identity sits in argv[1] (Gemini and omp).
 #   [pid]    when given, lets the Gemini rule read argv boundaries from the
 #            live process instead of the flattened line.
 fm_agent_process_classify() {  # <name> <argv0> <args> [pid] -> agent|shell|other

@@ -3405,7 +3405,8 @@ omp publishes no harness marker: `PI_CODING_AGENT` is absent from the binary, an
 
 Verified on 2026-11-11 with omp 18.14.0 on macOS arm64 using real secondmates in disposable homes on a private tmux socket.
 This installation reports `bun` through both the foreground process name and tmux's current-command field; its command line names `omp` as Bun's script argument.
-`bin/fm-agent-process-lib.sh` owns that structural attribution for tmux and Herdr; no rendered prompt or busy-extension record is needed to prove liveness.
+`bin/fm-agent-process-lib.sh` owns canonical package-entry attribution for tmux and Herdr, including installed launcher symlinks; a bare script basename is insufficient.
+No rendered prompt or busy-extension record is needed to prove liveness.
 The existing compiled-binary identity above remains supported.
 Refresh the credentialed proof with:
 
@@ -3417,14 +3418,14 @@ FM_OMP_CONTROL_LIVE=1 FM_OMP_CONTROL_LIVE_PROFILE=slowgp \
 Observed output (the guard also prints the evidence directory and initial pane identity):
 
 ```text
-ok - omp omp/18.14.0: before secondmate relaunched
-ok - omp omp/18.14.0: with secondmate relaunched
+ok - omp omp/18.14.0: without-extension secondmate relaunched
+ok - omp omp/18.14.0: with-extension secondmate relaunched
 ok - omp omp/18.14.0: ambiguous relaunch refused with exit 1
 ```
 
 The first secondmate starts before its extension file exists; the second starts with its extension present.
-Both settle to the bare prompt and profile/model/folder status row before the guarded relaunch.
-`tests/fm-tmux-agent-liveness.test.sh` proves the Bun-script identity with real portable processes while both process-name signals are blind, and rejects unrelated interpreters that merely mention omp.
+Both settle to a completed reply, no busy indicator, a bare prompt, and the profile/model/folder status row before the guarded relaunch.
+`tests/fm-tmux-agent-liveness.test.sh` proves the Bun-script identity with real portable processes while both process-name signals are blind, and rejects unrelated interpreters that merely mention omp, including an unrelated script actually named `omp`.
 `tests/fm-control-relaunch.test.sh` pins nonzero refusal and byte-preserved instructions on an ambiguous endpoint.
 
 ### Composer

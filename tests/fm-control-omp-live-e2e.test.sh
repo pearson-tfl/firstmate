@@ -6,7 +6,7 @@
 set -u
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
-fm_live_gate opt-in FM_OMP_CONTROL_LIVE omp tmux git
+fm_live_gate opt-in FM_OMP_CONTROL_LIVE omp bun tmux git
 
 REAL_TMUX=$(command -v tmux)
 OMP_BIN=$(command -v omp)
@@ -56,7 +56,7 @@ wait_idle() {
   fail "$target never settled at the matching idle screen ($state/$composer/$busy)"
 }
 
-for id in before with; do
+for id in without-extension with-extension; do
   seat="$LAB/$id"
   mkdir -p "$seat/state" "$seat/data" "$seat/config" "$seat/projects"
   git -C "$seat" init -q || fail 'cannot initialize disposable home'
@@ -66,7 +66,7 @@ for id in before with; do
   ln -s "$ROOT/bin" "$seat/bin" || fail 'cannot expose launch tools'
   printf 'Reply exactly IDLE. Do not use tools, start work, or run supervision.\n' > "$seat/data/charter.md"
   extension="$FM_HOME/state/$id.omp-ext.ts"
-  if [ "$id" = with ]; then printf 'export default function() {}\n' > "$extension"; fi
+  if [ "$id" = with-extension ]; then printf 'export default function() {}\n' > "$extension"; fi
   mkdir -p "$FM_HOME/config/secondmate-accounts/$id"
   profile_args=()
   if [ -n "${FM_OMP_CONTROL_LIVE_PROFILE:-}" ]; then
@@ -86,13 +86,13 @@ yolo=off
 EOF
   "$REAL_TMUX" -L "$SOCKET" new-window -d -t lab: -n "fm-$id" -c "$seat" /bin/sh || fail 'cannot create test endpoint'
   # A tiny turn dismisses omp's fresh-session keybind hint so the idle screen
-  # matches a settled live seat. The before case starts without its extension.
+  # matches a settled live seat. One case starts without its extension.
   printf -v launch '%q ' env OMP_SKIP_SETUP=1 FM_OMP_HARNESS=omp "$OMP_BIN" "${profile_args[@]}" --config "$ROOT/.omp/fm-worker-overlay.yml" --auto-approve --cwd "$seat" -e "$extension" "$(cat "$seat/data/charter.md")"
   "$REAL_TMUX" -L "$SOCKET" send-keys -t "lab:fm-$id" -l "$launch" || fail 'initial launch failed'
   "$REAL_TMUX" -L "$SOCKET" send-keys -t "lab:fm-$id" Enter || fail 'initial Enter failed'
   wait_idle "lab:fm-$id"
   "$REAL_TMUX" -L "$SOCKET" capture-pane -p -t "lab:fm-$id" > "$LAB/$id-before.txt"
-  if [ "$id" = before ]; then printf 'export default function() {}\n' > "$extension"; fi
+  if [ "$id" = without-extension ]; then printf 'export default function() {}\n' > "$extension"; fi
   old_pid=$("$REAL_TMUX" -L "$SOCKET" display-message -p -t "lab:fm-$id" '#{pane_current_command} #{pane_pid}')
   bash "$ROOT/bin/fm-control.sh" "$id" relaunch > "$LAB/$id-relaunch.log" 2>&1
   rc=$?
@@ -103,15 +103,19 @@ EOF
   printf 'ok - omp %s: %s secondmate relaunched (initial %s)\n' "$VERSION" "$id" "$old_pid"
 done
 
-# A genuinely unattributed foreground process must receive no lifecycle input.
-"$REAL_TMUX" -L "$SOCKET" new-window -d -t lab: -n fm-ambiguous -c "$LAB/before" sleep 900 || fail 'cannot create ambiguous endpoint'
-sed 's/window=lab:fm-before/window=lab:fm-ambiguous/;s/endpoint_task_id=before/endpoint_task_id=ambiguous/' \
-  "$FM_HOME/state/before.meta" > "$FM_HOME/state/ambiguous.meta"
+# An unrelated real Bun script named omp must remain unattributed, even when
+# its screen resembles the idle composer. No lifecycle input may reach it.
+mkdir -p "$LAB/ambiguous/state"
+printf '%s\n' 'console.log("❯\n π-test · model · 📁 test"); setInterval(() => {}, 1000);' > "$LAB/ambiguous/omp"
+"$REAL_TMUX" -L "$SOCKET" new-window -d -t lab: -n fm-ambiguous -c "$LAB/ambiguous" bun "$LAB/ambiguous/omp" || fail 'cannot create ambiguous endpoint'
+[ "$(fm_backend_agent_state tmux lab:fm-ambiguous)" = ambiguous ] || fail 'an unrelated script named omp acquired agent identity'
+sed 's/window=lab:fm-without-extension/window=lab:fm-ambiguous/;s/endpoint_task_id=without-extension/endpoint_task_id=ambiguous/' \
+  "$FM_HOME/state/without-extension.meta" > "$FM_HOME/state/ambiguous.meta"
 # Checkpoint marker must name this independent task, not the successful seat.
 mkdir -p "$LAB/ambiguous/state"
 git -C "$LAB/ambiguous" init -q || fail 'cannot initialize ambiguous home'
 printf 'ambiguous\n' > "$LAB/ambiguous/.fm-secondmate-home"
-sed "s|$LAB/before|$LAB/ambiguous|g" "$FM_HOME/state/ambiguous.meta" > "$LAB/ambiguous-meta"
+sed "s|$LAB/without-extension|$LAB/ambiguous|g" "$FM_HOME/state/ambiguous.meta" > "$LAB/ambiguous-meta"
 cp "$LAB/ambiguous-meta" "$FM_HOME/state/ambiguous.meta"
 bash "$ROOT/bin/fm-control.sh" ambiguous relaunch > "$LAB/ambiguous-relaunch.log" 2>&1
 rc=$?
