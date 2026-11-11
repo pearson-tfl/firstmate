@@ -3401,6 +3401,32 @@ The evidence below was produced on 2026-09-05 against omp 18.1.11 (`~/.local/bin
 omp publishes no harness marker: `PI_CODING_AGENT` is absent from the binary, and the default profile sets neither `PI_CODING_AGENT_DIR` nor `OMP_PROFILE` in the process environment.
 `FM_OMP_HARNESS=omp` is Firstmate's own launch marker and wins over an inherited `CLAUDECODE` only under a real omp ancestor; `tests/fm-omp-harness.test.sh` pins both directions with real processes.
 
+### Bun-script lifecycle on tmux
+
+Verified on 2026-11-11 with omp 18.14.0 on macOS arm64 using real secondmates in disposable homes on a private tmux socket.
+This installation reports `bun` through both the foreground process name and tmux's current-command field; its command line names `omp` as Bun's script argument.
+`bin/fm-agent-process-lib.sh` owns that structural attribution for tmux and Herdr; no rendered prompt or busy-extension record is needed to prove liveness.
+The existing compiled-binary identity above remains supported.
+Refresh the credentialed proof with:
+
+```sh
+FM_OMP_CONTROL_LIVE=1 FM_OMP_CONTROL_LIVE_PROFILE=slowgp \
+  bin/fm-test-run.sh tests/fm-control-omp-live-e2e.test.sh
+```
+
+Observed output (the guard also prints the evidence directory and initial pane identity):
+
+```text
+ok - omp omp/18.14.0: before secondmate relaunched
+ok - omp omp/18.14.0: with secondmate relaunched
+ok - omp omp/18.14.0: ambiguous relaunch refused with exit 1
+```
+
+The first secondmate starts before its extension file exists; the second starts with its extension present.
+Both settle to the bare prompt and profile/model/folder status row before the guarded relaunch.
+`tests/fm-tmux-agent-liveness.test.sh` proves the Bun-script identity with real portable processes while both process-name signals are blind, and rejects unrelated interpreters that merely mention omp.
+`tests/fm-control-relaunch.test.sh` pins nonzero refusal and byte-preserved instructions on an ambiguous endpoint.
+
 ### Composer
 
 Under the captain's `unicode` symbol preset the idle screen through Herdr was a bare `❯` (U+276F) row followed directly by the status row:

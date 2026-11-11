@@ -48,6 +48,21 @@ HARNESS="$ROOT/bin/fm-harness.sh"
 TMP_ROOT=$(fm_test_tmproot fm-omp-harness)
 export NODE_NO_WARNINGS=1
 
+# Both tmux and Herdr consume this backend-neutral process classifier.
+# shellcheck source=bin/fm-agent-process-lib.sh
+. "$ROOT/bin/fm-agent-process-lib.sh"
+for args in 'bun /opt/bin/omp --profile slowgp' \
+  'bun /opt/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js'; do
+  [ "$(fm_agent_process_classify bun bun "$args")" = agent ] \
+    || fail "Bun-script omp must be attributed by the shared classifier"
+done
+for args in 'bun' 'bun /app/server.js --cwd /tmp/omp' 'bun -e omp' \
+  'bun /app/ompd' 'bun /app/comp' 'node /app/omp'; do
+  [ "$(fm_agent_process_classify bun bun "$args")" = other ] \
+    || fail "a stranger's interpreter must remain unattributed: $args"
+done
+pass "omp script identity: shared tmux/Herdr classifier accepts only the Bun script position"
+
 # A process whose kernel-recorded identity is the bare name `omp`: a SYMLINK to
 # the system shell, never a copy (a copied platform binary fails macOS code
 # signing). macOS reports the symlink name through `ps -o comm=`, which is the

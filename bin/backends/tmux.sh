@@ -471,7 +471,7 @@ EOF
   # cannot represent unambiguously.
   while IFS= read -r pid; do
     [ -n "$pid" ] || continue
-    if fm_gemini_pid_is_gemini "$pid"; then
+    if fm_gemini_pid_is_gemini "$pid" || fm_agent_process_omp_pid "$pid"; then
       printf 'alive'
       return 0
     fi
@@ -483,7 +483,7 @@ EOF
   # evidence only - a bare interpreter still reaches the negative verdicts.
   while IFS= read -r name; do
     [ -n "$name" ] || continue
-    if fm_gemini_args_are_gemini "$name"; then
+    if fm_gemini_args_are_gemini "$name" || fm_agent_process_omp_args "$name"; then
       printf 'alive'
       return 0
     fi
