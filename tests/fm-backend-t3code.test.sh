@@ -2772,6 +2772,42 @@ test_busy_classify_trusts_native_idle_and_busy
 test_control_lib_tables
 test_control_exit_refused_before_any_call
 test_control_relaunch_refused_before_any_dispatch
+# A durable lease of a slot another open record still names (a stopped
+# worker's clean copy) refuses before the slot is refreshed, wired, or returned:
+# that task's branch, wiring, and claim survive, and the lease is kept.
+test_t3_lease_of_a_slot_another_record_names_is_refused_untouched() {
+  local id out rc before
+  id=$(t3_uid t3reused)
+  t3_case slot-reused
+  WORKER_PROJ="$CASE_DIR/spawn-project"
+  WORKER_WT="$CASE_DIR/pool/1/spawn-project"
+  mkdir -p "$CASE_DIR/pool/1" "$CASE_DIR/data/$id" "$CASE_DIR/state" "$CASE_DIR/home/state"
+  fm_git_init_commit "$WORKER_PROJ"
+  fm_git_add_origin "$WORKER_PROJ" "$WORKER_PROJ.origin.git"
+  git -C "$WORKER_PROJ" worktree add --quiet -b fm/first "$WORKER_WT"
+  git -C "$WORKER_WT" -c user.name=t -c user.email=t@e.invalid commit --allow-empty -qm "first task unlanded work"
+  before=$(git -C "$WORKER_PROJ" rev-parse fm/first)
+  mkdir -p "$WORKER_WT/.claude"
+  echo ".claude/" >> "$WORKER_PROJ/.git/info/exclude"
+  echo '{"first":"wiring"}' > "$WORKER_WT/.claude/settings.local.json"
+  printf '{"worktrees":[]}\n' > "$CASE_DIR/pool/treehouse-state.json"
+  write_spawn_brief "$CASE_DIR/data" "$id"
+  touch "$CASE_DIR/state/.last-watcher-beat"
+  FM_T3_PROJ="$WORKER_PROJ" t3_world_set 'w.projects[0].workspaceRoot = process.env.FM_T3_PROJ'
+  printf 'worktree=%s\nkind=ship\nproject=%s\n' "$WORKER_WT" "$WORKER_PROJ" > "$CASE_DIR/state/first.meta"
+  printf 'task=first\nhome=%s\n' "$CASE_DIR/home" > "$CASE_DIR/pool/1/.fm-slot-owner"
+  out=$(t3_worker_spawn "$id" claude --model claude-sonnet-5); rc=$?
+  [ "$rc" -ne 0 ] || fail "a T3 spawn launched into a slot another open record names"$'\n'"$out"
+  assert_contains "$out" "task first's open record still names" "the T3 refusal did not name the record holding the slot"
+  [ "$(git -C "$WORKER_PROJ" rev-parse fm/first)" = "$before" ] || fail "the refused T3 spawn moved the first task's branch"
+  assert_grep '"first":"wiring"' "$WORKER_WT/.claude/settings.local.json" "the refused T3 spawn removed the first task's wiring"
+  [ "$(t3_log_line_of 'r.tool === "treehouse" && r.args.indexOf("return") === 0')" -eq 0 ] \
+    || fail "the refused T3 spawn returned the first task's slot"
+  grep -Fxq "task=first" "$CASE_DIR/pool/1/.fm-slot-owner" || fail "the refused T3 spawn replaced the first task's claim"
+  [ ! -e "$CASE_DIR/state/$id.meta" ] || fail "the refused T3 spawn published a second record for the slot"
+  pass "t3code spawn: a leased slot another open record names is refused before it is refreshed, wired, or returned"
+}
+
 test_spawn_leases_slot_creates_thread_and_starts_launch_turn
 test_claude_pr_tool_clause_version_boundary
 test_spawn_codex_preserves_tracked_codex_config
@@ -2815,3 +2851,4 @@ test_spawn_rejected_lease_is_neither_cleaned_nor_returned
 test_teardown_keeps_tracked_claude_local_md
 test_fractional_poll_event_wait
 test_housekeeping_removes_the_iterated_stale_marker
+test_t3_lease_of_a_slot_another_record_names_is_refused_untouched

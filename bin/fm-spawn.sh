@@ -4657,6 +4657,23 @@ spawn_endpoint_closes_on_abort() {
   [ "$SPAWN_FRESH_ENDPOINT_OPENED" = 1 ] && [ "$SPAWN_LAUNCH_SENT" = 0 ]
 }
 
+# A slot a stopped worker left clean is handed on while that task's record
+# still names it, so two records would share one copy and either task's cleanup
+# or relaunch would act on the other's work. Prints the first other task whose
+# record in this home names <worktree>; fails when none does.
+spawn_open_record_naming() {  # <worktree>
+  local wt_real meta other
+  wt_real=$(real_path_or_raw "$1")
+  for meta in "$STATE"/*.meta; do
+    [ -f "$meta" ] && [ "$meta" != "$STATE/$ID.meta" ] || continue
+    other=$(fm_meta_get "$meta" worktree)
+    [ -n "$other" ] && [ "$(real_path_or_raw "$other")" = "$wt_real" ] || continue
+    basename "$meta" .meta
+    return 0
+  done
+  return 1
+}
+
 spawn_endpoint_hint() {
   if spawn_endpoint_closes_on_abort; then
     printf 'window %s is closed on exit, returning any pool slot it held' "$T"
@@ -5429,6 +5446,12 @@ EOF
       }
       [ -n "$WT" ] || { echo "error: treehouse get --lease did not report a worktree for $ID" >&2; exit 1; }
       validate_spawn_worktree "treehouse get --lease" "$WT (leased to $ID; once inspected, release it with 'treehouse return --force $WT' from $PROJ_ABS)"
+      # Checked before anything resets or wires the slot; the lease is kept so
+      # no later spawn is handed that task's copy either.
+      if spawn_other_id=$(spawn_open_record_naming "$WT"); then
+        echo "error: Treehouse leased task $ID the slot $WT, which task $spawn_other_id's open record still names; refusing to share one copy between two tasks. The slot stays leased to $ID untouched; once $spawn_other_id is relaunched or cleaned up, release it with 'treehouse return $WT' from $PROJ_ABS" >&2
+        exit 1
+      fi
       T3CODE_LEASED=1
       freshen_spawn_worktree_base "$WT" "$BASE_BRANCH" "$PROJ_ABS" "$MODE" || {
         if [ "$?" -eq 2 ]; then
@@ -6131,18 +6154,10 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   # Written under the Treehouse project lock held from before slot allocation
   # through metadata publication, so no other spawn or return sees a half-claim.
   if fm_treehouse_pool_slot "$PROJ_ABS" "$WT"; then
-    # A slot a stopped worker left clean is handed on while that task's record
-    # still names it, so the two records would share one copy and either task's
-    # cleanup or relaunch would act on the other's work. Refuse, naming the
-    # holder; its relaunch or cleanup frees the slot for the next spawn.
-    spawn_wt_real=$(real_path_or_raw "$WT")
-    for spawn_other_meta in "$STATE"/*.meta; do
-      [ -f "$spawn_other_meta" ] && [ "$spawn_other_meta" != "$STATE/$ID.meta" ] || continue
-      spawn_other_wt=$(fm_meta_get "$spawn_other_meta" worktree)
-      [ -n "$spawn_other_wt" ] && [ "$(real_path_or_raw "$spawn_other_wt")" = "$spawn_wt_real" ] || continue
-      echo "error: Treehouse handed task $ID the slot $WT, which task $(basename "$spawn_other_meta" .meta)'s open record still names; refusing to share one copy between two tasks - relaunch or clean up that task first; $(spawn_endpoint_hint)" >&2
+    if spawn_other_id=$(spawn_open_record_naming "$WT"); then
+      echo "error: Treehouse handed task $ID the slot $WT, which task $spawn_other_id's open record still names; refusing to share one copy between two tasks - relaunch or clean up that task first; $(spawn_endpoint_hint)" >&2
       exit 1
-    done
+    fi
     if ! fm_treehouse_slot_owner_claim "$WT" "$ID" "$FM_HOME"; then
       echo "error: could not claim Treehouse pool slot $WT for task $ID; refusing to launch a worker whose slot cannot later be proved to be its own; $(spawn_endpoint_hint)" >&2
       exit 1

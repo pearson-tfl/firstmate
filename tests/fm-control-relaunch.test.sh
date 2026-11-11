@@ -516,7 +516,7 @@ test_relaunch_refuses_a_slot_another_task_now_holds() {
   out=$(run_control "$dir" rl60 relaunch --note "resume"); rc=$?
   [ "$rc" -ne 0 ] || fail "fm-control relaunched into a slot another task holds"$'\n'"$out"
   assert_contains "$out" "now belongs to task successor" "fm-control did not name the task holding the slot"
-  ! grep -Fq "/exit" "$dir/fake/literal" || fail "fm-control stopped the agent before refusing"
+  assert_no_grep "/exit" "$dir/fake/literal" "fm-control stopped the agent before refusing"
   printf 'zsh' > "$dir/fake/command"
   out=$(run_spawn "$dir" rl60 --relaunch); rc=$?
   [ "$rc" -ne 0 ] || fail "fm-spawn relaunched into a slot another task holds"$'\n'"$out"
