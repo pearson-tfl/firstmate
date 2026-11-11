@@ -34,6 +34,7 @@
 # live task's open blocked event must be remediated and closed with
 # `resolved [key=...]`, or explicitly reclassified in the status stream with a
 # durable reason, before an ordinary captain request may proceed.
+# Reserved pending-reply-* keys follow bin/fm-pending-reply-lib.sh's close path.
 # `needs-decision:` is deliberately not part of this blocker gate. The gate
 # keeps every open blocker until that blocker's own resolution is proven.
 # Captain-verdict outcomes are listed under "waiting on you", but cannot exempt
@@ -861,7 +862,9 @@ EOF
     printf 'fm-afk-return: catch-up must finish before the captain request\n' >&2
     print_evidence "$GATE" >&2
     print_blockers "$GATE" >&2
-    printf 'fm-afk-return: handle each blocker now, or close it with resolved [key=...] and append a durable reclassification reason, then run bin/fm-afk-return.sh check\n' >&2
+    printf 'fm-afk-return: handle each blocker now; for ordinary keys, close with resolved [key=...] and append a durable reclassification reason\n' >&2
+    printf 'fm-afk-return: reserved pending-reply-* keys close through bin/fm-pending-reply-lib.sh when the asked secondmate reports its correlated reply through its parent status log or a document it points to; hand-written resolved lines do not close them\n' >&2
+    printf 'fm-afk-return: then run bin/fm-afk-return.sh check\n' >&2
     rm -f "$evidence" "$blockers" "$drain_err"
     return 3
   fi
