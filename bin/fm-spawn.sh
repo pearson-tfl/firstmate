@@ -6606,7 +6606,16 @@ BUSY_GEN=
       j_stop=$(json_escape "${stop_turnend}$busy_cmd_prefix idle $busy_suffix --event stop 2>/dev/null || true")
       stop_entry="\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_stop\"}]}],"
     fi
-    hooks_json="\"hooks\":{\"UserPromptSubmit\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_submit\"}]}],${stop_entry}\"StopFailure\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_stopfail\"}]}],\"SessionEnd\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_sessionend\"}]}]}"
+    # Worker tmux stand-in, Claude's second leg (config/worker-tmux-dir): the
+    # Bash tool rebuilds PATH from the login-shell snapshot, dropping the launch
+    # export, but sources CLAUDE_ENV_FILE after it, so SessionStart re-prepends.
+    session_start_entry=
+    if [ -n "$WORKER_TMUX_DIR" ]; then
+      standin_line="export PATH=$(shell_quote "$WORKER_TMUX_DIR"):\"\$PATH\""
+      j_session_start=$(json_escape "[ -z \"\${CLAUDE_ENV_FILE:-}\" ] || printf '%s\\n' $(shell_quote "$standin_line") >> \"\$CLAUDE_ENV_FILE\"")
+      session_start_entry="\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_session_start\"}]}],"
+    fi
+    hooks_json="\"hooks\":{${session_start_entry}\"UserPromptSubmit\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_submit\"}]}],${stop_entry}\"StopFailure\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_stopfail\"}]}],\"SessionEnd\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_sessionend\"}]}]}"
     if [ "$KIND" = secondmate ]; then
       session_keys='"feedbackDrafts":"off",'
       if [ "$KEEP_AI_TRAILERS" != 1 ]; then

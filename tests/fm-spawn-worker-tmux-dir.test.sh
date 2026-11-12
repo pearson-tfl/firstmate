@@ -122,6 +122,35 @@ test_bad_directory_refuses() {
   pass "a configured directory without an executable tmux refuses the spawn and names what is missing"
 }
 
+# Claude's Bash tool rebuilds PATH from the login-shell snapshot, so the launch
+# export alone does not reach it; the worker's SessionStart hook must re-prepend
+# the stand-in through CLAUDE_ENV_FILE. Run the hook the spawn wrote exactly as
+# Claude would, then source the env file over a reset PATH, as the Bash tool does.
+test_claude_bash_tool_leg() {
+  local setting out status hook envfile seen
+  for setting in absent set; do
+    make_case "claude-$setting" claude "claude-$setting-a1"
+    [ "$setting" = absent ] || printf '%s\n' "$STANDIN" > "$HOME_DIR/config/worker-tmux-dir"
+    out=$(run_case_spawn "claude-$setting-a1" "$PROJ_DIR" --mode no-mistakes --yolo off)
+    status=$?
+    expect_code 0 "$status" "claude spawn, worker-tmux-dir $setting: $out"
+    hook=$(jq -r '.hooks.SessionStart[0].hooks[0].command // empty' "$WT_DIR/.claude/settings.local.json") \
+      || fail "claude, worker-tmux-dir $setting: the worker settings are not valid JSON"
+    if [ "$setting" = absent ]; then
+      [ -z "$hook" ] || fail "with worker-tmux-dir absent the claude worker must get no SessionStart hook: $hook"
+      continue
+    fi
+    [ -n "$hook" ] || fail "with worker-tmux-dir set the claude worker must get a SessionStart hook"
+    envfile="$CASE_DIR/claude-env"
+    : > "$envfile"
+    CLAUDE_ENV_FILE="$envfile" /bin/sh -c "$hook" || fail "the SessionStart hook failed: $hook"
+    seen=$(env -i HOME="$TMP_ROOT/pane-home" PATH="$FAKEBIN_DIR:/usr/bin:/bin" /bin/sh -c ". '$envfile'; command -v tmux")
+    assert_equals "$STANDIN/tmux" "$seen" "the Bash tool must resolve the stand-in first after sourcing CLAUDE_ENV_FILE"
+  done
+  pass "a claude worker's SessionStart hook puts the stand-in first for its Bash tool, and an absent file adds no hook"
+}
+
 test_ship_path_order
 test_secondmate_path_order
 test_bad_directory_refuses
+test_claude_bash_tool_leg
