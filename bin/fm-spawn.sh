@@ -431,6 +431,33 @@
 #   On backend=orca the destination is an Orca terminal whose environment comes
 #   from the Orca app and shell startup, not this home, so a nonempty allowlist
 #   without the source below prints a stderr warning and launches unchanged.
+# Worker tmux stand-in (config/worker-tmux-dir):
+#   Optional local file holding one absolute directory without colons or
+#   whitespace. When present, every launch (ship, scout, secondmate, raw command,
+#   and relaunch, on every harness) begins with `export PATH=<dir>:"$PATH"`, so a
+#   bare `tmux` inside the worker resolves to <dir>/tmux first. Absent leaves
+#   launches unchanged. A present file that is unreadable, malformed, or names a
+#   directory without an executable regular tmux refuses before any mutation,
+#   never launching an unguarded worker; backend=t3code refuses the file because
+#   T3 owns the provider environment. Only the worker's environment changes:
+#   this script's own tmux calls keep the invoking PATH. docs/configuration.md
+#   owns the operator contract.
+# Worker tmux isolation (always on for ship and scout launches, fresh and
+#   relaunch, on every pane backend): the launch begins with
+#   `unset TMUX TMUX_PANE SSH_CONNECTION SSH_CLIENT SSH_TTY` and exports
+#   TMUX_TMPDIR=/tmp/fm-<id>/tmux, a private folder inside the task temp root
+#   that teardown removes. A tmux command the worker runs without naming a server
+#   then reaches that empty folder instead of the server the worker was launched
+#   on, whatever tmux binary or PATH it uses; -L and -S scratch servers keep
+#   working. The SSH names go too because a login shell that sees SSH_CONNECTION
+#   without TMUX may attach to tmux and break the harness's shell tool. A
+#   task id is at most 64 characters, so that socket path stays inside the
+#   104-byte Unix socket limit. Secondmates keep their
+#   tmux environment because they supervise their own workers through it;
+#   steering and lifecycle control reach the worker from the supervisor's side
+#   and are unaffected. Not covered: a worker that also clears TMUX_TMPDIR, or
+#   names the live socket with -S. backend=t3code has no pane launch command,
+#   so its workers start with the T3 provider's environment, unisolated.
 # Orca environment source (config/launch-env-tmux-session):
 #   Optional local file containing one exact tmux session name (letters, digits,
 #   underscores or hyphens). Only fresh Orca spawns use it; other backends are
@@ -924,6 +951,30 @@ if [ "$LAVISH_AXI_HOST_CONFIG_PRESENT" = 1 ]; then
 fi
 if ! KEEP_AI_TRAILERS=$(fm_config_source_present "$CONFIG/keep-ai-trailers"); then
   exit 1
+fi
+# config/worker-tmux-dir (header): one absolute directory holding an executable
+# tmux stand-in, prepended to every launched worker's PATH. Validated before any
+# mutation so a bad value refuses rather than launching an unguarded worker.
+if ! WORKER_TMUX_DIR_PRESENT=$(fm_config_source_present "$CONFIG/worker-tmux-dir"); then
+  exit 1
+fi
+WORKER_TMUX_DIR=
+if [ "$WORKER_TMUX_DIR_PRESENT" = 1 ]; then
+  if [ ! -f "$CONFIG/worker-tmux-dir" ] || [ ! -r "$CONFIG/worker-tmux-dir" ]; then
+    echo "error: config/worker-tmux-dir must be a readable regular file holding one absolute directory; refusing to launch an unguarded worker" >&2
+    exit 1
+  fi
+  WORKER_TMUX_DIR=$(cat "$CONFIG/worker-tmux-dir") || exit 1
+  case "$WORKER_TMUX_DIR" in
+    *:*|*[[:space:][:cntrl:]]*|[!/]*|'')
+      echo "error: config/worker-tmux-dir must contain one absolute directory path without colons or whitespace; refusing to launch an unguarded worker" >&2
+      exit 1
+      ;;
+  esac
+  if [ ! -f "$WORKER_TMUX_DIR/tmux" ] || [ ! -x "$WORKER_TMUX_DIR/tmux" ]; then
+    echo "error: config/worker-tmux-dir names $WORKER_TMUX_DIR, which holds no executable tmux ($WORKER_TMUX_DIR/tmux is missing or not executable); refusing to launch an unguarded worker" >&2
+    exit 1
+  fi
 fi
 # Set by the forge agreement below for a forge=external ship.
 EXTERNAL_REVIEW=0
@@ -2582,6 +2633,11 @@ shell_quote() {
   printf "'"
 }
 
+# The one PATH line both the launch and Claude's SessionStart hook carry
+# (config/worker-tmux-dir, header).
+WORKER_TMUX_PATH_EXPORT=
+[ -z "$WORKER_TMUX_DIR" ] || WORKER_TMUX_PATH_EXPORT="export PATH=$(shell_quote "$WORKER_TMUX_DIR"):\"\$PATH\""
+
 resolve_pi_executable() {
   local candidate dir
   candidate=$(type -P -- "$1" 2>/dev/null) || return 1
@@ -3537,6 +3593,10 @@ if [ "$BACKEND" = t3code ]; then
     codex_posture_setting="config/codex-approval-mode=$CODEX_APPROVAL_MODE"
     [ "$CODEX_PERMISSION_MODE" != restricted ] || codex_posture_setting="config/codex-permission-mode=restricted"
     echo "error: backend=t3code runs codex at T3's full-access runtime mode and cannot honor $codex_posture_setting; remove that file or choose another backend" >&2
+    exit 1
+  fi
+  if [ -n "$WORKER_TMUX_DIR" ]; then
+    echo "error: backend=t3code cannot apply config/worker-tmux-dir because T3 starts the agent with its provider instance's environment; remove that file or choose another backend" >&2
     exit 1
   fi
   if [ "$LAUNCH_ENV_ENABLED" = 1 ]; then
@@ -6563,7 +6623,15 @@ BUSY_GEN=
       j_stop=$(json_escape "${stop_turnend}$busy_cmd_prefix idle $busy_suffix --event stop 2>/dev/null || true")
       stop_entry="\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_stop\"}]}],"
     fi
-    hooks_json="\"hooks\":{\"UserPromptSubmit\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_submit\"}]}],${stop_entry}\"StopFailure\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_stopfail\"}]}],\"SessionEnd\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_sessionend\"}]}]}"
+    # Worker tmux stand-in, Claude's second leg (config/worker-tmux-dir): the
+    # Bash tool rebuilds PATH from the login-shell snapshot, dropping the launch
+    # export, but sources CLAUDE_ENV_FILE after it, so SessionStart re-prepends.
+    session_start_entry=
+    if [ -n "$WORKER_TMUX_DIR" ]; then
+      j_session_start=$(json_escape "[ -z \"\${CLAUDE_ENV_FILE:-}\" ] || printf '%s\\n' $(shell_quote "$WORKER_TMUX_PATH_EXPORT") >> \"\$CLAUDE_ENV_FILE\"")
+      session_start_entry="\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_session_start\"}]}],"
+    fi
+    hooks_json="\"hooks\":{${session_start_entry}\"UserPromptSubmit\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_submit\"}]}],${stop_entry}\"StopFailure\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_stopfail\"}]}],\"SessionEnd\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_sessionend\"}]}]}"
     if [ "$KIND" = secondmate ]; then
       session_keys='"feedbackDrafts":"off",'
       if [ "$KEEP_AI_TRAILERS" != 1 ]; then
@@ -7753,6 +7821,24 @@ fi
 # launch and the launch-env-allowlist `env -i` wrapper.
 LAUNCH="export FM_TASK_INBOX=$(shell_quote "$STATE_REAL/$ID.inbox"); $LAUNCH"
 LAUNCH="export COMPACT_ADVISER_DISABLE=1; $LAUNCH"
+# Worker tmux stand-in (config/worker-tmux-dir, header): an export statement
+# inside the launch text, so it survives a compound raw launch and the
+# launch-env-allowlist `env -i` wrapper, and reaches only the worker, never
+# this script's own tmux calls.
+if [ -n "$WORKER_TMUX_DIR" ]; then
+  LAUNCH="$WORKER_TMUX_PATH_EXPORT; $LAUNCH"
+fi
+# Worker tmux isolation (header): a ship or scout worker starts cut off from
+# the tmux server it was launched on, so a tmux command that names no server
+# reaches an empty private folder instead of the live fleet.
+if { [ "$KIND" = ship ] || [ "$KIND" = scout ]; } && [ "$BACKEND" != t3code ]; then
+  WORKER_TMUX_TMPDIR="$TASK_TMP/tmux"
+  (umask 077 && mkdir -p "$WORKER_TMUX_TMPDIR") || {
+    echo "error: could not create the worker's private tmux folder $WORKER_TMUX_TMPDIR" >&2
+    exit 1
+  }
+  LAUNCH="unset TMUX TMUX_PANE SSH_CONNECTION SSH_CLIENT SSH_TTY; export TMUX_TMPDIR=$(shell_quote "$WORKER_TMUX_TMPDIR"); $LAUNCH"
+fi
 # When the live-harness gate has exported DISABLE_AUTOUPDATER into this spawn's
 # own environment, carry it into the launch command text so Claude Code's
 # auto-updater cannot rewrite the shared binary during a live run. Embedding the

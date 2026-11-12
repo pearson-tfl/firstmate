@@ -146,6 +146,12 @@ fm_test_run() {
   printf 'FM_TEST_COMPLETE\n'
 }
 
+# The tmux isolation every ship and scout launch starts with (bin/fm-spawn.sh
+# header, "Worker tmux isolation"); the task temp root is /tmp/fm-<id>.
+fm_test_worker_tmux_isolation() {  # <id>
+  printf "unset TMUX TMUX_PANE SSH_CONNECTION SSH_CLIENT SSH_TTY; export TMUX_TMPDIR='/tmp/fm-%s/tmux'; " "$1"
+}
+
 # Harness argument assertions reuse the emitted prefix rather than duplicating
 # its per-spawn env-file path. The dispatch suite executes it separately to prove
 # credential preservation, hooks-path selection and invalid-count refusal.
