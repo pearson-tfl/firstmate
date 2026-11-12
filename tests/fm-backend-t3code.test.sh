@@ -2349,11 +2349,11 @@ if (o.clientRequestId !== id || !/^msg:/.test(o.messageId || "") || !o.runId || 
   pass "t3code send: a reply lost after commit is unconfirmed through the adapter and fm-send, and the resend lands once"
 }
 
-# A marked secondmate request on the typed plane (a slash command) carries a
-# fresh correlation on every plain rerun, so a lost reply must never be
-# answered with advice to resend the same text.
-test_lost_send_reply_to_secondmate_names_armed_correlation() {
-  local id out rc thread=mcp:1c2d3e4f-6a7b-4c8d-9e0f-89abcdef0123
+# A marked secondmate request opening with a slash command never takes the
+# typed plane: it rides the durable inbox, so a lost reply on the doorbell
+# cannot leave its delivery unconfirmed or its text unrecorded.
+test_marked_secondmate_slash_rides_inbox() {
+  local id out rc body thread=mcp:1c2d3e4f-6a7b-4c8d-9e0f-89abcdef0123
   id=$(t3_uid t3smlost1)
   make_t3_control_task send-lost-secondmate "$id" "$thread" completed
   fm_write_meta "$CTRL_STATE/$id.meta" \
@@ -2362,12 +2362,15 @@ test_lost_send_reply_to_secondmate_names_armed_correlation() {
   t3_world_set 'w.dropReplyTools = { t3_thread_send: 1 }'
   out=$(FM_HOME="$CASE_DIR/home" FM_STATE_OVERRIDE="$CTRL_STATE" FM_DATA_OVERRIDE="$CTRL_DATA" FM_CONFIG_OVERRIDE="$CONFIG" \
     "$ROOT/bin/fm-send.sh" "$id" "/status" 2>&1); rc=$?
-  expect_code 3 "$rc" "a lost reply to a typed secondmate request is delivered-unconfirmed (exit 3)"$'\n'"$out"
-  assert_contains "$out" "verdict=unconfirmed" "fm-send names the unconfirmed verdict"
-  assert_not_contains "$out" "resend only the identical text" "a marked request must not be told to resend: a rerun mints a new correlation"
-  assert_contains "$out" "do not resend" "a marked request is told not to resend"
-  assert_contains "$out" "stays armed" "the armed correlation is named"
-  pass "t3code send: a lost reply to a secondmate names its armed correlation instead of advising a resend"
+  expect_code 0 "$rc" "a marked secondmate slash steer is sent at enqueue"$'\n'"$out"
+  body=$(bash -c '. "$1"; fm_task_inbox_body "$2"' _ "$ROOT/bin/fm-task-inbox-lib.sh" "$CTRL_STATE/$id.inbox/001.msg") ||
+    fail "a marked secondmate slash steer must leave an inbox record"$'\n'"$out"
+  case "$body" in
+    *' /status') : ;;
+    *) fail "the inbox record must carry the full slash steer, got '$body'" ;;
+  esac
+  [ "$(t3_item_count "$thread" "/status")" = 0 ] || fail "a marked secondmate slash payload must never start a typed turn"
+  pass "t3code send: a marked secondmate slash steer rides the inbox, never the typed plane"
 }
 
 # t3_watch_cycles <state-dir> <n>: source the real watcher (its guard returns
@@ -2790,7 +2793,7 @@ test_send_key_mapping
 test_send_text_submit_verdicts
 test_lost_send_reply_is_unconfirmed_and_resend_is_idempotent
 test_held_send_local_failure_stays_unconfirmed
-test_lost_send_reply_to_secondmate_names_armed_correlation
+test_marked_secondmate_slash_rides_inbox
 test_status_table
 test_push_wait_escalates_pending_question_once
 test_answer_script_reads_and_answers_questions
