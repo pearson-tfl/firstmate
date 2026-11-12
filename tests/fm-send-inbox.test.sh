@@ -16,10 +16,12 @@
 #   5. A failed doorbell is still a sent steer (exit 0, record durable): the
 #      watcher's re-ring ladder owns delivery from the record on. A
 #      fire-and-forget record whose ring did not land is owed one retry ring.
-#   6. Carve-outs keep the typed plane: a leading "/" (any harness), a leading
-#      "$" to codex, an explicit backend target, and the --key path.
+#   6. Carve-outs keep the typed plane: an unmarked leading "/" (any harness),
+#      an unmarked leading "$" to codex, an explicit backend target (slash
+#      included), and the --key path.
 #   7. A marked secondmate steer carries its marker + corr token in the record
-#      body, and the pending-reply expectation is marked delivered at enqueue.
+#      body, and the pending-reply expectation is marked delivered at enqueue;
+#      a marked "/..." or codex "$..." steer rides the inbox in full too.
 #   8. Pending-reply bookkeeping failure after enqueue never reports a
 #      retryable send failure that could duplicate the durable instruction.
 #   9. An unwritable inbox is a real local failure: nonzero exit, nothing
@@ -327,7 +329,16 @@ test_explicit_target_stays_typed() {
     "an explicit backend target should receive the literal text"
   [ -z "$(find "$dir/home/state" -maxdepth 1 -name '*.inbox' -print 2>/dev/null)" ] ||
     fail "an explicit target has no task record here and must not grow an inbox"
-  pass "fm-send planes: an explicit backend target keeps the typed plane"
+  # A slash invocation to an explicit endpoint that matches local secondmate
+  # metadata still names an endpoint, not a task: typed, unmarked, no record.
+  fm_write_secondmate_meta "$dir/home/state/domain.meta" "$dir/home" "sess:fm-domain"
+  run_send "$dir" "$err" -- sess:fm-domain "/grilling the plan" ||
+    fail "an explicit-target slash send should succeed"
+  [ "$(cat "$dir/send.log")" = "/grilling the plan" ] ||
+    fail "an explicit-target slash send should be typed literally and unmarked:"$'\n'"$(cat "$dir/send.log")"
+  [ ! -d "$dir/home/state/domain.inbox" ] ||
+    fail "an explicit-target slash send must not grow the matching task's inbox"
+  pass "fm-send planes: an explicit backend target keeps the typed plane, slash commands included"
 }
 
 test_key_path_never_touches_inbox() {
@@ -361,6 +372,53 @@ test_secondmate_marker_and_enqueue_delivery() {
   *"summarize fleet health"*) fail "the marked payload was typed" ;;
   esac
   pass "fm-send inbox: a secondmate steer records marker+corr in the body and is delivered at enqueue"
+}
+
+test_marked_secondmate_invocation_rides_inbox() {
+  local dir err text body corr expected_body pr_rec i n
+  # A marked request reaches the harness as marker-prefixed chat, never as a
+  # parser command, so a leading "/" (or "$" to codex) earns no typed plane:
+  # the full long text must land in exactly one durable record.
+  dir=$(setup_case sm-slash)
+  err="$dir/send.err"
+  fm_write_secondmate_meta "$dir/home/state/domain.meta" "$dir/home" "sess:fm-domain" alpha claude
+  text="/grilling HEAD-START"
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    text="$text segment-$i of a long marked slash steer that must survive in full."
+  done
+  text="$text TAIL-END"
+  [ "${#text}" -ge 600 ] || fail "the long slash steer fixture is too short: ${#text}"
+  run_send "$dir" "$err" -- fm-domain "$text" || fail "a marked slash steer should succeed:"$'\n'"$(cat "$err")"
+  n=$(find "$dir/home/state/domain.inbox" -maxdepth 1 -name '*.msg' 2>/dev/null | wc -l | tr -d ' ')
+  [ "$n" = 1 ] || fail "a marked slash steer should leave exactly one inbox record, found $n"
+  body=$(record_body _ "$dir/home/state/domain.inbox/001.msg")
+  # shellcheck source=/dev/null
+  . "$ROOT/bin/fm-pending-reply-lib.sh"
+  corr=$(fm_pending_reply_extract_corr "$body")
+  [ -n "$corr" ] || fail "the marked slash record carries no corr token:"$'\n'"$body"
+  fm_pending_reply_embed_corr "$text" "$corr" expected_body
+  [ "$body" = "$expected_body" ] ||
+    fail "the marked slash record is not byte-identical to marker+corr+text"$'\n'"--- expected ---"$'\n'"$expected_body"$'\n'"--- got ---"$'\n'"$body"
+  pr_rec="$dir/home/state/pending-replies/$corr"
+  [ -n "$(grep '^delivered_epoch=' "$pr_rec" 2>/dev/null | cut -d= -f2)" ] ||
+    fail "the marked slash steer's expectation should be delivered at enqueue:"$'\n'"$(cat "$pr_rec" 2>/dev/null)"
+  case "$(cat "$dir/send.log")" in
+  *grilling* | *HEAD-START*) fail "the marked slash payload was typed" ;;
+  esac
+  # A marked codex `$skill` request likewise rides the inbox.
+  dir=$(setup_case sm-codex codex)
+  err="$dir/send.err"
+  fm_write_secondmate_meta "$dir/home/state/domain.meta" "$dir/home" "sess:fm-domain" alpha codex
+  run_send "$dir" "$err" -- fm-domain '$grilling the plan' || fail "a marked codex \$skill steer should succeed"
+  body=$(record_body _ "$dir/home/state/domain.inbox/001.msg")
+  case "$body" in
+  "$FM_FROMFIRST_MARK"corr=*' $grilling the plan') : ;;
+  *) fail "a marked codex \$skill steer should ride the inbox as marker+corr+text:"$'\n'"$body" ;;
+  esac
+  case "$(cat "$dir/send.log")" in
+  *grilling*) fail "the marked codex \$skill payload was typed" ;;
+  esac
+  pass "fm-send inbox: a marked secondmate slash or codex \$skill steer rides the inbox in full"
 }
 
 test_post_enqueue_bookkeeping_failure_is_not_retryable() {
@@ -516,6 +574,7 @@ test_harness_invocations_stay_typed
 test_explicit_target_stays_typed
 test_key_path_never_touches_inbox
 test_secondmate_marker_and_enqueue_delivery
+test_marked_secondmate_invocation_rides_inbox
 test_post_enqueue_bookkeeping_failure_is_not_retryable
 test_meta_lock_contention_fails_bounded
 test_unwritable_inbox_fails_loudly

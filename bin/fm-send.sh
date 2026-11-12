@@ -58,8 +58,8 @@
 # delivery proof on this plane, and a failed ring never fails the send.
 #
 # TYPED - the LOCAL text submitted directly instead of through the inbox. On a
-# pane backend, a harness-native invocation (a leading "/", or a leading "$" to
-# a codex target) must reach the harness's own parser. An explicit backend
+# pane backend, an unmarked harness-native invocation (a leading "/", or a
+# leading "$" to a codex target) must reach the harness's own parser. An explicit backend
 # target names an endpoint, not a task, so it stays on this plane even when
 # local metadata happens to match it (the same boundary that keeps it unmarked
 # and outside --resolve-key). Pane backends type the literal text ONCE, then
@@ -78,18 +78,17 @@
 # default to 20 for agy's late busy render) / FM_SEND_SLEEP (0.4). Slash
 # commands, and codex `$...` skill invocations resolved through harness meta,
 # get a longer pre-Enter settle so completion popups do not swallow Enter.
-# A remote secondmate target has no typed text plane at all:
-# every remote text steer rides the inbox (a marked secondmate request already
-# reaches the harness as marker-prefixed chat rather than a parser command, so
-# routing a remote "/..." or "$..." through the record changes nothing the
-# parser would have seen); only --key still crosses to the remote endpoint.
+# A secondmate task selector, local or remote, has no typed text plane at all:
+# every marked text steer rides the inbox whatever its first character (a
+# marked request reaches the harness as marker-prefixed chat rather than a
+# parser command, so routing a "/..." or "$..." through the record changes
+# nothing the parser would have seen, and typing it would only lose the
+# durable record); only --key still crosses to the endpoint.
 #
-# Stage-1 compatibility boundary: classification uses the original pre-marker
-# text, but secondmate marking still precedes every typed submission. Therefore
-# a marked parser-native secondmate invocation intentionally reaches the harness
-# as marker-prefixed chat rather than executing as a parser command. This is a
-# pre-existing interaction retained for byte compatibility in this local-inbox
-# stage; do not move the marker behind the invocation or omit it here. Follow-up
+# Stage-1 compatibility boundary: the marker still precedes a marked
+# parser-native secondmate invocation, so it reaches the harness as
+# marker-prefixed chat in its record rather than executing as a parser command.
+# Do not move the marker behind the invocation or omit it here. Follow-up
 # fm-send-secondmate-harness-invocation-r1 owns that behavior.
 #
 # From-firstmate marker: when the resolved target is a task selector whose meta
@@ -905,21 +904,17 @@ else
   fi
   # Data-plane selection (see the header): text addressed to a task selector
   # resolved through this home's metadata rides the inbox plane, unless it is
-  # a LOCAL harness-native invocation that must reach the harness's own parser
-  # - a leading "/" (slash command), or a leading "$" to a codex target (skill
-  # invocation). A remote secondmate selector always rides the inbox: its
-  # requests are marked, and a marked request reaches the harness as
-  # marker-prefixed chat rather than a parser command anyway, so no remote
-  # text has a typed plane to lose. An explicit backend target stays typed
+  # an UNMARKED harness-native invocation that must reach the harness's own
+  # parser - a leading "/" (slash command), or a leading "$" to a codex target
+  # (skill invocation). A marked secondmate request, local or remote, always
+  # rides the inbox: it reaches the harness as marker-prefixed chat rather
+  # than a parser command anyway, so the typed plane would only lose its
+  # durable record. An explicit backend target stays typed
   # even when it happens to match local metadata: it names an endpoint, not a
   # task, the same boundary that keeps it unmarked and outside --resolve-key.
-  # Classification reads the pre-marker text so a marked secondmate request
-  # and a plain crewmate steer classify identically. It deliberately does NOT
-  # promise that a marked parser-native secondmate request executes as a parser
-  # command: the pre-existing marker-first wire bytes are retained in stage 1.
   INBOX_PLANE=0
   if [ -n "$TARGET_SELECTOR" ]; then
-    if [ -n "$FIRE_AND_FORGET_ID" ] || [ "$TARGET_BACKEND" = remote ]; then
+    if [ "$MARK_FROM_FIRSTMATE" = 1 ] || [ "$TARGET_BACKEND" = remote ]; then
       INBOX_PLANE=1
     else
       case "$RESOLVE_ANSWER_TEXT" in
