@@ -950,11 +950,7 @@ if [ "$WORKER_TMUX_DIR_PRESENT" = 1 ]; then
   fi
   WORKER_TMUX_DIR=$(cat "$CONFIG/worker-tmux-dir") || exit 1
   case "$WORKER_TMUX_DIR" in
-    /*) ;;
-    *) WORKER_TMUX_DIR=invalid: ;;
-  esac
-  case "$WORKER_TMUX_DIR" in
-    *:*|*[[:space:][:cntrl:]]*)
+    *:*|*[[:space:][:cntrl:]]*|[!/]*|'')
       echo "error: config/worker-tmux-dir must contain one absolute directory path without colons or whitespace; refusing to launch an unguarded worker" >&2
       exit 1
       ;;
@@ -2620,6 +2616,11 @@ shell_quote() {
   printf '%s' "$1" | sed "s/'/'\\\\''/g"
   printf "'"
 }
+
+# The one PATH line both the launch and Claude's SessionStart hook carry
+# (config/worker-tmux-dir, header).
+WORKER_TMUX_PATH_EXPORT=
+[ -z "$WORKER_TMUX_DIR" ] || WORKER_TMUX_PATH_EXPORT="export PATH=$(shell_quote "$WORKER_TMUX_DIR"):\"\$PATH\""
 
 resolve_pi_executable() {
   local candidate dir
@@ -6611,8 +6612,7 @@ BUSY_GEN=
     # export, but sources CLAUDE_ENV_FILE after it, so SessionStart re-prepends.
     session_start_entry=
     if [ -n "$WORKER_TMUX_DIR" ]; then
-      standin_line="export PATH=$(shell_quote "$WORKER_TMUX_DIR"):\"\$PATH\""
-      j_session_start=$(json_escape "[ -z \"\${CLAUDE_ENV_FILE:-}\" ] || printf '%s\\n' $(shell_quote "$standin_line") >> \"\$CLAUDE_ENV_FILE\"")
+      j_session_start=$(json_escape "[ -z \"\${CLAUDE_ENV_FILE:-}\" ] || printf '%s\\n' $(shell_quote "$WORKER_TMUX_PATH_EXPORT") >> \"\$CLAUDE_ENV_FILE\"")
       session_start_entry="\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_session_start\"}]}],"
     fi
     hooks_json="\"hooks\":{${session_start_entry}\"UserPromptSubmit\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_submit\"}]}],${stop_entry}\"StopFailure\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_stopfail\"}]}],\"SessionEnd\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_sessionend\"}]}]}"
@@ -7810,7 +7810,7 @@ LAUNCH="export COMPACT_ADVISER_DISABLE=1; $LAUNCH"
 # launch-env-allowlist `env -i` wrapper, and reaches only the worker, never
 # this script's own tmux calls.
 if [ -n "$WORKER_TMUX_DIR" ]; then
-  LAUNCH="export PATH=$(shell_quote "$WORKER_TMUX_DIR"):\"\$PATH\"; $LAUNCH"
+  LAUNCH="$WORKER_TMUX_PATH_EXPORT; $LAUNCH"
 fi
 # When the live-harness gate has exported DISABLE_AUTOUPDATER into this spawn's
 # own environment, carry it into the launch command text so Claude Code's

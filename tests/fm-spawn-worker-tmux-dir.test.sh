@@ -102,12 +102,14 @@ test_bad_directory_refuses() {
   mkdir -p "$TMP_ROOT/empty-dir" "$TMP_ROOT/noexec-dir"
   printf '#!/bin/sh\n' > "$TMP_ROOT/noexec-dir/tmux"
   chmod -x "$TMP_ROOT/noexec-dir/tmux"
-  for name in missing empty noexec relative; do
+  for name in missing empty noexec relative colon space; do
     case "$name" in
       missing) value="$TMP_ROOT/no-such-dir"; want="$TMP_ROOT/no-such-dir/tmux is missing or not executable" ;;
       empty) value="$TMP_ROOT/empty-dir"; want="$TMP_ROOT/empty-dir/tmux is missing or not executable" ;;
       noexec) value="$TMP_ROOT/noexec-dir"; want="$TMP_ROOT/noexec-dir/tmux is missing or not executable" ;;
       relative) value=standin; want="one absolute directory path" ;;
+      colon) value="$STANDIN:/usr/bin"; want="one absolute directory path" ;;
+      space) value="$STANDIN /x"; want="one absolute directory path" ;;
     esac
     make_case "bad-$name" codex "bad-$name-a1"
     printf '%s\n' "$value" > "$HOME_DIR/config/worker-tmux-dir"

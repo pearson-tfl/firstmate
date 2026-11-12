@@ -1773,6 +1773,7 @@ Per-machine Cursor `cli-config.json` attribution-off is not this contract: it do
 
 The optional local, gitignored `config/worker-tmux-dir` holds one absolute directory, without colons or whitespace, that contains an executable `tmux` stand-in.
 When the file is present, `bin/fm-spawn.sh` puts that directory first on `PATH` for every worker it launches - ships, scouts, and secondmates, on every harness, on first launch and on relaunch - so a bare `tmux` inside the worker, and inside any script the worker runs, reaches the stand-in rather than the real binary.
+Claude Code's Bash tool rebuilds `PATH` from the login-shell snapshot, so a Claude worker also gets a `SessionStart` hook that writes the same `PATH` line to `CLAUDE_ENV_FILE`, which the Bash tool sources after that snapshot.
 When the file is absent, launches are unchanged.
 A present file that is unreadable, malformed, or names a directory without an executable regular `tmux` refuses the spawn before anything is created and names what is missing, so a worker is never launched unguarded by mistake.
 T3 Code starts the provider from its own environment, so `backend=t3code` refuses while the file exists.
