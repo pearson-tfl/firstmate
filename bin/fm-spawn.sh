@@ -431,6 +431,17 @@
 #   On backend=orca the destination is an Orca terminal whose environment comes
 #   from the Orca app and shell startup, not this home, so a nonempty allowlist
 #   without the source below prints a stderr warning and launches unchanged.
+# Worker tmux stand-in (config/worker-tmux-dir):
+#   Optional local file holding one absolute directory without colons or
+#   whitespace. When present, every launch (ship, scout, secondmate, raw command,
+#   and relaunch, on every harness) begins with `export PATH=<dir>:"$PATH"`, so a
+#   bare `tmux` inside the worker resolves to <dir>/tmux first. Absent leaves
+#   launches unchanged. A present file that is unreadable, malformed, or names a
+#   directory without an executable regular tmux refuses before any mutation,
+#   never launching an unguarded worker; backend=t3code refuses the file because
+#   T3 owns the provider environment. Only the worker's environment changes:
+#   this script's own tmux calls keep the invoking PATH. docs/configuration.md
+#   owns the operator contract.
 # Orca environment source (config/launch-env-tmux-session):
 #   Optional local file containing one exact tmux session name (letters, digits,
 #   underscores or hyphens). Only fresh Orca spawns use it; other backends are
@@ -924,6 +935,34 @@ if [ "$LAVISH_AXI_HOST_CONFIG_PRESENT" = 1 ]; then
 fi
 if ! KEEP_AI_TRAILERS=$(fm_config_source_present "$CONFIG/keep-ai-trailers"); then
   exit 1
+fi
+# config/worker-tmux-dir (header): one absolute directory holding an executable
+# tmux stand-in, prepended to every launched worker's PATH. Validated before any
+# mutation so a bad value refuses rather than launching an unguarded worker.
+if ! WORKER_TMUX_DIR_PRESENT=$(fm_config_source_present "$CONFIG/worker-tmux-dir"); then
+  exit 1
+fi
+WORKER_TMUX_DIR=
+if [ "$WORKER_TMUX_DIR_PRESENT" = 1 ]; then
+  if [ ! -f "$CONFIG/worker-tmux-dir" ] || [ ! -r "$CONFIG/worker-tmux-dir" ]; then
+    echo "error: config/worker-tmux-dir must be a readable regular file holding one absolute directory; refusing to launch an unguarded worker" >&2
+    exit 1
+  fi
+  WORKER_TMUX_DIR=$(cat "$CONFIG/worker-tmux-dir") || exit 1
+  case "$WORKER_TMUX_DIR" in
+    /*) ;;
+    *) WORKER_TMUX_DIR=invalid: ;;
+  esac
+  case "$WORKER_TMUX_DIR" in
+    *:*|*[[:space:][:cntrl:]]*)
+      echo "error: config/worker-tmux-dir must contain one absolute directory path without colons or whitespace; refusing to launch an unguarded worker" >&2
+      exit 1
+      ;;
+  esac
+  if [ ! -f "$WORKER_TMUX_DIR/tmux" ] || [ ! -x "$WORKER_TMUX_DIR/tmux" ]; then
+    echo "error: config/worker-tmux-dir names $WORKER_TMUX_DIR, which holds no executable tmux ($WORKER_TMUX_DIR/tmux is missing or not executable); refusing to launch an unguarded worker" >&2
+    exit 1
+  fi
 fi
 # Set by the forge agreement below for a forge=external ship.
 EXTERNAL_REVIEW=0
@@ -3537,6 +3576,10 @@ if [ "$BACKEND" = t3code ]; then
     codex_posture_setting="config/codex-approval-mode=$CODEX_APPROVAL_MODE"
     [ "$CODEX_PERMISSION_MODE" != restricted ] || codex_posture_setting="config/codex-permission-mode=restricted"
     echo "error: backend=t3code runs codex at T3's full-access runtime mode and cannot honor $codex_posture_setting; remove that file or choose another backend" >&2
+    exit 1
+  fi
+  if [ -n "$WORKER_TMUX_DIR" ]; then
+    echo "error: backend=t3code cannot apply config/worker-tmux-dir because T3 starts the agent with its provider instance's environment; remove that file or choose another backend" >&2
     exit 1
   fi
   if [ "$LAUNCH_ENV_ENABLED" = 1 ]; then
@@ -7753,6 +7796,13 @@ fi
 # launch and the launch-env-allowlist `env -i` wrapper.
 LAUNCH="export FM_TASK_INBOX=$(shell_quote "$STATE_REAL/$ID.inbox"); $LAUNCH"
 LAUNCH="export COMPACT_ADVISER_DISABLE=1; $LAUNCH"
+# Worker tmux stand-in (config/worker-tmux-dir, header): an export statement
+# inside the launch text, so it survives a compound raw launch and the
+# launch-env-allowlist `env -i` wrapper, and reaches only the worker, never
+# this script's own tmux calls.
+if [ -n "$WORKER_TMUX_DIR" ]; then
+  LAUNCH="export PATH=$(shell_quote "$WORKER_TMUX_DIR"):\"\$PATH\"; $LAUNCH"
+fi
 # When the live-harness gate has exported DISABLE_AUTOUPDATER into this spawn's
 # own environment, carry it into the launch command text so Claude Code's
 # auto-updater cannot rewrite the shared binary during a live run. Embedding the

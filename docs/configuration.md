@@ -9,7 +9,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | --- | --- |
 | Firstmate's code, private files, or project location | [FM_HOME](#fm_home) and [operational home layout](#operational-home-layout-and-state) |
 | Task windows and worker tools | [Runtime backend](#runtime-backend-configbackend--fm_backend) and [harness support](#harness-support) |
-| Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [account rules](#account-rules-configaccount-rules), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker loadout and workflows](#worker-loadout-and-workflows-configloadout-command-configcrew-workflows), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), and its [Orca environment source](#orca-environment-source-configlaunch-env-tmux-session) |
+| Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [account rules](#account-rules-configaccount-rules), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker loadout and workflows](#worker-loadout-and-workflows-configloadout-command-configcrew-workflows), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), its [Orca environment source](#orca-environment-source-configlaunch-env-tmux-session), and the [worker tmux stand-in](#worker-tmux-stand-in-configworker-tmux-dir) |
 | Backlog, preferences, and memory | [Backlog backend](#backlog-backend-taskstoml--configbacklog-backend), [captain preferences](#captain-preferences-datacaptainmd--datacaptain-sharedmd), [external memory tiers](#external-memory-tiers-memory-layering-section), [record export](#record-export-configrecord-export-root), and [startup memory budget](#startup-memory-budget-configstartup-memory-budget) |
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), [hung-forwarder detector notify](#hung-forwarder-detector-notify-configdetector-notify), [warm-cache compaction](#warm-cache-compaction-configwarm-compact), and [Calm preference](#calm-preference-configcalm) |
 | Persistent secondmates | [Secondmate routes](#secondmate-routes-datasecondmatesmd) |
@@ -1768,6 +1768,17 @@ A repository whose config sets `core.hooksPath` to the empty string runs no proj
 When stripping is enabled, the hooks directory is read-only, so a hook manager run inside a fleet pane (lefthook's npm postinstall, `pre-commit install`) fails instead of displacing the strip; install a project's hooks from outside the pane, where the wrappers chain them.
 The flag is a home-wide attribution choice, so it is inherited into secondmate homes under the [`secondmate-provisioning`](../.agents/skills/secondmate-provisioning/SKILL.md) inherited-local-material contract and a secondmate's own workers keep AI trailers too.
 Per-machine Cursor `cli-config.json` attribution-off is not this contract: it does not travel with Firstmate, defaults back to on when unset, and only feeds the CLI's request to the server, so it suppresses the trailer rather than preventing it.
+
+## Worker tmux stand-in (config/worker-tmux-dir)
+
+The optional local, gitignored `config/worker-tmux-dir` holds one absolute directory, without colons or whitespace, that contains an executable `tmux` stand-in.
+When the file is present, `bin/fm-spawn.sh` puts that directory first on `PATH` for every worker it launches - ships, scouts, and secondmates, on every harness, on first launch and on relaunch - so a bare `tmux` inside the worker, and inside any script the worker runs, reaches the stand-in rather than the real binary.
+When the file is absent, launches are unchanged.
+A present file that is unreadable, malformed, or names a directory without an executable regular `tmux` refuses the spawn before anything is created and names what is missing, so a worker is never launched unguarded by mistake.
+T3 Code starts the provider from its own environment, so `backend=t3code` refuses while the file exists.
+Only the worker's environment changes: Firstmate's own `tmux` calls keep the invoking `PATH`.
+The stand-in itself is supplied by the operator and is outside Firstmate; a `PATH` entry is an accident guard, not a sandbox, because a worker can still reach the real binary by its full path or by re-ordering `PATH`.
+The file is local to each home and is not inherited into secondmate homes, so each home on a machine sets it to that machine's stand-in directory.
 
 ## Project capacity (config/project-capacity)
 
