@@ -1781,6 +1781,9 @@ Only the worker's environment changes: Firstmate's own `tmux` calls keep the inv
 The stand-in itself is supplied by the operator and is outside Firstmate; a `PATH` entry is an accident guard, not a sandbox, because a worker can still reach the real binary by its full path or by re-ordering `PATH`.
 The file is local to each home and is not inherited into secondmate homes, so each home on a machine sets it to that machine's stand-in directory.
 
+Independently of this file, every ship and scout launch also starts the worker cut off from the tmux server it was launched on: `TMUX`, `TMUX_PANE`, `SSH_CONNECTION`, `SSH_CLIENT` and `SSH_TTY` are removed and `TMUX_TMPDIR` points at a private folder inside the task's temporary root, so a tmux command that names no server reaches an empty private place whatever binary or `PATH` the worker uses.
+Second mates keep their tmux environment because they supervise their own workers through it; `bin/fm-spawn.sh`'s header owns the exact mechanics and limits.
+
 ## Project capacity (config/project-capacity)
 
 The optional local, gitignored `config/project-capacity` tells Firstmate how many workers a project can run at once on this machine, for a project whose machine-local resource - a heavy test suite, a local editor stack, a device - only serves a few workers at a time.

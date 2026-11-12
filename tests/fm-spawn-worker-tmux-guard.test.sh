@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
-# tests/fm-spawn-worker-tmux-dir.test.sh - config/worker-tmux-dir puts the
-# configured tmux stand-in first on every launched worker's PATH, and a bad
-# value refuses the spawn rather than launching an unguarded worker.
+# tests/fm-spawn-worker-tmux-guard.test.sh - the two spawn-side guards against a
+# worker killing the tmux server it was launched on:
+#   - config/worker-tmux-dir puts the configured tmux stand-in first on every
+#     launched worker's PATH, and a bad value refuses the spawn rather than
+#     launching an unguarded worker;
+#   - every ship and scout launch removes TMUX, TMUX_PANE and the SSH names and
+#     points TMUX_TMPDIR at a private folder, while a secondmate keeps its tmux.
 #
 # The assertions never read bin/fm-spawn.sh's source. They drive the real spawn
 # against a fake pane and a real isolated git worktree, then EXECUTE the launch
 # command the pane received, with the harness binary replaced by a probe that
-# prints `command -v tmux` as the agent would resolve it. The pane PATH already
-# holds a different tmux first, so a pass proves the configured directory wins.
+# reports what the agent would see. The synthetic pane carries TMUX, TMUX_PANE,
+# SSH_CONNECTION and a different tmux first on PATH, so a pass proves the launch
+# changed them rather than inheriting them.
 set -u
 
 # shellcheck source=tests/fixtures.sh
 . "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 
-TMP_ROOT=$(fm_test_tmproot fm-spawn-worker-tmux-dir)
+TMP_ROOT=$(fm_test_tmproot fm-spawn-worker-tmux-guard)
+REAL_TMUX=$(command -v tmux 2>/dev/null || true)
+shell_quote_test() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 
 # The stand-in under test is a marker script; only its PATH position matters.
 STANDIN="$TMP_ROOT/standin"
@@ -45,15 +52,23 @@ run_case_spawn() {
 # Run the emitted launch in a synthetic pane whose PATH starts with the fakebin
 # (which holds its own tmux), replaying the pane exports first as the real pane
 # shell would, and print what the probe agent resolved.
-launched_tmux() {  # <harness>
+launched_probe() {  # <harness> <probe-body>
   local preamble
-  printf '#!/bin/sh\ncommand -v tmux\n' > "$FAKEBIN_DIR/$1"
+  printf '#!/bin/sh\n%s\n' "$2" > "$FAKEBIN_DIR/$1"
   chmod +x "$FAKEBIN_DIR/$1"
   preamble=$(grep '^export ' "$PANE_LOG")
-  env -i HOME="$TMP_ROOT/pane-home" PATH="$FAKEBIN_DIR:$PATH" TERM=xterm TMUX=synthetic-pane \
+  env -i HOME="$TMP_ROOT/pane-home" PATH="$FAKEBIN_DIR:$PATH" TERM=xterm \
+    TMUX=/tmp/synthetic-live/default,1,0 TMUX_PANE=%1 SSH_CONNECTION='10.0.0.1 1 10.0.0.2 22' \
     /bin/sh -c "$preamble
 $(cat "$LAUNCH_LOG")"
 }
+
+launched_tmux() { launched_probe "$1" 'command -v tmux'; }
+
+# What a worker sees of its tmux location: the three ambient names it must lose
+# and the private folder it must gain.
+# shellcheck disable=SC2016 # expanded by the probe, not here
+TMUX_ENV_PROBE='printf "%s|%s|%s|%s\n" "${TMUX-unset}" "${TMUX_PANE-unset}" "${SSH_CONNECTION-unset}" "${TMUX_TMPDIR-unset}"'
 
 test_ship_path_order() {
   local setting allow out status seen
@@ -152,7 +167,61 @@ test_claude_bash_tool_leg() {
   pass "a claude worker's SessionStart hook puts the stand-in first for its Bash tool, and an absent file adds no hook"
 }
 
+test_ship_and_scout_isolated() {
+  local kind allow id out status seen
+  for kind in ship scout; do
+    for allow in absent enabled; do
+      id="iso-$kind-$allow-a1"
+      make_case "iso-$kind-$allow" codex "$id"
+      [ "$allow" = absent ] || : > "$HOME_DIR/config/launch-env-allowlist"
+      if [ "$kind" = ship ]; then
+        out=$(run_case_spawn "$id" "$PROJ_DIR" --mode no-mistakes --yolo off)
+      else
+        out=$(run_case_spawn "$id" "$PROJ_DIR" --scout)
+      fi
+      status=$?
+      expect_code 0 "$status" "$kind spawn, allowlist $allow: $out"
+      seen=$(launched_probe codex "$TMUX_ENV_PROBE") || fail "$kind, allowlist $allow: the emitted launch failed to run"
+      assert_equals "unset|unset|unset|/tmp/fm-$id/tmux" "$seen" \
+        "a $kind worker with allowlist $allow must start without TMUX, TMUX_PANE or SSH_CONNECTION and with its private TMUX_TMPDIR"
+      [ -d "/tmp/fm-$id/tmux" ] || fail "the $kind worker's private tmux folder must exist before launch"
+      [ -z "$(find "/tmp/fm-$id/tmux" -prune \( -perm -g=r -o -perm -o=r \) -print)" ] \
+        || fail "the $kind worker's private tmux folder must be private to its owner"
+      if [ -n "$REAL_TMUX" ]; then
+        # The real tmux by full path, past the fake pane's stub, with no server
+        # anywhere it can reach: an unnamed command must address the private
+        # folder, never the pane's server.
+        seen=$(launched_probe codex "$(shell_quote_test "$REAL_TMUX") display-message -p x 2>&1; true")
+        assert_contains "$seen" "/tmp/fm-$id/tmux/tmux-" \
+          "an unnamed tmux command from a $kind worker must address its private folder"
+      fi
+    done
+  done
+  pass "ship and scout workers start without the launching tmux and SSH names and with a private tmux folder"
+}
+
+test_secondmate_keeps_tmux() {
+  local sm out status seen
+  make_case secondmate-iso codex sm-iso
+  sm="$CASE_DIR/secondmate-home"
+  mkdir -p "$sm/bin" "$sm/data"
+  printf '# Firstmate\n' > "$sm/AGENTS.md"
+  printf '%s\n' sm-iso > "$sm/.fm-secondmate-home"
+  printf 'charter for sm-iso\n' > "$sm/data/charter.md"
+  printf '%s\n' 'projects/' 'state/' 'data/' 'config/' '.no-mistakes/' > "$sm/.gitignore"
+  git -C "$sm" init -q -b main
+  out=$(run_case_spawn sm-iso "$sm" --secondmate)
+  status=$?
+  expect_code 0 "$status" "secondmate spawn: $out"
+  seen=$(launched_probe codex "$TMUX_ENV_PROBE") || fail "secondmate: the emitted launch failed to run"
+  assert_equals "/tmp/synthetic-live/default,1,0|%1|10.0.0.1 1 10.0.0.2 22|unset" "$seen" \
+    "a secondmate supervises through tmux and must keep its tmux environment"
+  pass "a secondmate launch keeps its tmux environment"
+}
+
 test_ship_path_order
 test_secondmate_path_order
 test_bad_directory_refuses
 test_claude_bash_tool_leg
+test_ship_and_scout_isolated
+test_secondmate_keeps_tmux

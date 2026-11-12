@@ -442,6 +442,21 @@
 #   T3 owns the provider environment. Only the worker's environment changes:
 #   this script's own tmux calls keep the invoking PATH. docs/configuration.md
 #   owns the operator contract.
+# Worker tmux isolation (always on for ship and scout launches, fresh and
+#   relaunch, on every pane backend): the launch begins with
+#   `unset TMUX TMUX_PANE SSH_CONNECTION SSH_CLIENT SSH_TTY` and exports
+#   TMUX_TMPDIR=/tmp/fm-<id>/tmux, a private folder inside the task temp root
+#   that teardown removes. A tmux command the worker runs without naming a server
+#   then reaches that empty folder instead of the server the worker was launched
+#   on, whatever tmux binary or PATH it uses; -L and -S scratch servers keep
+#   working. The SSH names go too because a login shell that sees SSH_CONNECTION
+#   without TMUX may attach to tmux and break the harness's shell tool. A
+#   task id is at most 64 characters, so that socket path stays inside the
+#   104-byte Unix socket limit. Secondmates keep their
+#   tmux environment because they supervise their own workers through it;
+#   steering and lifecycle control reach the worker from the supervisor's side
+#   and are unaffected. Not covered: a worker that also clears TMUX_TMPDIR, or
+#   names the live socket with -S.
 # Orca environment source (config/launch-env-tmux-session):
 #   Optional local file containing one exact tmux session name (letters, digits,
 #   underscores or hyphens). Only fresh Orca spawns use it; other backends are
@@ -7811,6 +7826,17 @@ LAUNCH="export COMPACT_ADVISER_DISABLE=1; $LAUNCH"
 # this script's own tmux calls.
 if [ -n "$WORKER_TMUX_DIR" ]; then
   LAUNCH="$WORKER_TMUX_PATH_EXPORT; $LAUNCH"
+fi
+# Worker tmux isolation (header): a ship or scout worker starts cut off from
+# the tmux server it was launched on, so a tmux command that names no server
+# reaches an empty private folder instead of the live fleet.
+if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
+  WORKER_TMUX_TMPDIR="$TASK_TMP/tmux"
+  (umask 077 && mkdir -p "$WORKER_TMUX_TMPDIR") || {
+    echo "error: could not create the worker's private tmux folder $WORKER_TMUX_TMPDIR" >&2
+    exit 1
+  }
+  LAUNCH="unset TMUX TMUX_PANE SSH_CONNECTION SSH_CLIENT SSH_TTY; export TMUX_TMPDIR=$(shell_quote "$WORKER_TMUX_TMPDIR"); $LAUNCH"
 fi
 # When the live-harness gate has exported DISABLE_AUTOUPDATER into this spawn's
 # own environment, carry it into the launch command text so Claude Code's
