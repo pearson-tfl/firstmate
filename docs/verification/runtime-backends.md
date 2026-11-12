@@ -579,6 +579,22 @@ The lab home was deleted and the test entry was removed from the store and verif
 That automated spawn case runs against a fake claude, so it asserts the store entry and the launch command and nothing more; the live arms above are what establish that the entry actually suppresses the dialog.
 The composer-classification record below observes the same gate from the other side, where an untrusted worktree left Claude, Grok, and Muse unverified because the guard reads a first-launch trust dialog as an unreadable composer.
 
+## Worker tmux stand-in through Claude's Bash tool
+
+Verified 2026-11-12 on a Linux host with Claude Code 2.1.322.
+Claude Code's Bash tool rebuilds `PATH` from its login-shell snapshot, so the stand-in directory that `config/worker-tmux-dir` exports in the launch command does not reach it on its own.
+The `SessionStart` hook `bin/fm-spawn.sh` writes for a Claude worker appends the same `PATH` line to `CLAUDE_ENV_FILE`, and the Bash tool sources that file after the snapshot.
+`tests/fm-worker-tmux-claude-env-live-e2e.test.sh` refreshes this record: it takes the hook a real spawn wrote, asks the real Claude Code to report `command -v tmux` from its Bash tool, and runs a control without the hook.
+
+```text
+$ FM_WORKER_TMUX_CLAUDE_LIVE=1 bash tests/fm-worker-tmux-claude-env-live-e2e.test.sh
+# claude: 2.1.322 (Claude Code)
+# with hook: /tmp/fm-tmuxguard-spawn/fm-worker-tmux-claude-live.mhWIuu/standin/tmux
+ok - claude 2.1.322 (Claude Code): the spawn's SessionStart hook puts the stand-in first for the Bash tool
+# control: /usr/bin/tmux
+ok - claude 2.1.322 (Claude Code): the control run without the hook does not see the stand-in
+```
+
 ## Pi seeded-secondmate project trust
 
 [`fm-spawn.sh --help`](../../bin/fm-spawn.sh) owns the seeded-secondmate project-trust approval contract and compatibility fallback.

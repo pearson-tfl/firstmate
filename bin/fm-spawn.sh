@@ -456,7 +456,8 @@
 #   tmux environment because they supervise their own workers through it;
 #   steering and lifecycle control reach the worker from the supervisor's side
 #   and are unaffected. Not covered: a worker that also clears TMUX_TMPDIR, or
-#   names the live socket with -S.
+#   names the live socket with -S. backend=t3code has no pane launch command,
+#   so its workers start with the T3 provider's environment, unisolated.
 # Orca environment source (config/launch-env-tmux-session):
 #   Optional local file containing one exact tmux session name (letters, digits,
 #   underscores or hyphens). Only fresh Orca spawns use it; other backends are
@@ -7830,7 +7831,7 @@ fi
 # Worker tmux isolation (header): a ship or scout worker starts cut off from
 # the tmux server it was launched on, so a tmux command that names no server
 # reaches an empty private folder instead of the live fleet.
-if [ "$KIND" = ship ] || [ "$KIND" = scout ]; then
+if { [ "$KIND" = ship ] || [ "$KIND" = scout ]; } && [ "$BACKEND" != t3code ]; then
   WORKER_TMUX_TMPDIR="$TASK_TMP/tmux"
   (umask 077 && mkdir -p "$WORKER_TMUX_TMPDIR") || {
     echo "error: could not create the worker's private tmux folder $WORKER_TMUX_TMPDIR" >&2

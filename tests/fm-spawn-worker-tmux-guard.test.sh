@@ -42,6 +42,17 @@ make_case() {  # <name> <harness> <id>
   fm_test_spawn_brief "$HOME_DIR" "$3"
 }
 
+make_secondmate_home() {  # <id>; prints the home path
+  local sm="$CASE_DIR/secondmate-home"
+  mkdir -p "$sm/bin" "$sm/data"
+  printf '# Firstmate\n' > "$sm/AGENTS.md"
+  printf '%s\n' "$1" > "$sm/.fm-secondmate-home"
+  printf 'charter for %s\n' "$1" > "$sm/data/charter.md"
+  printf '%s\n' 'projects/' 'state/' 'data/' 'config/' '.no-mistakes/' > "$sm/.gitignore"
+  git -C "$sm" init -q -b main
+  printf '%s\n' "$sm"
+}
+
 run_case_spawn() {
   : > "$LAUNCH_LOG"
   : > "$PANE_LOG"
@@ -97,13 +108,7 @@ test_secondmate_path_order() {
   local sm out status seen
   make_case secondmate codex sm-tmux
   printf '%s\n' "$STANDIN" > "$HOME_DIR/config/worker-tmux-dir"
-  sm="$CASE_DIR/secondmate-home"
-  mkdir -p "$sm/bin" "$sm/data"
-  printf '# Firstmate\n' > "$sm/AGENTS.md"
-  printf '%s\n' sm-tmux > "$sm/.fm-secondmate-home"
-  printf 'charter for sm-tmux\n' > "$sm/data/charter.md"
-  printf '%s\n' 'projects/' 'state/' 'data/' 'config/' '.no-mistakes/' > "$sm/.gitignore"
-  git -C "$sm" init -q -b main
+  sm=$(make_secondmate_home sm-tmux)
   out=$(run_case_spawn sm-tmux "$sm" --secondmate)
   status=$?
   expect_code 0 "$status" "secondmate spawn with worker-tmux-dir set: $out"
@@ -203,13 +208,7 @@ test_ship_and_scout_isolated() {
 test_secondmate_keeps_tmux() {
   local sm out status seen
   make_case secondmate-iso codex sm-iso
-  sm="$CASE_DIR/secondmate-home"
-  mkdir -p "$sm/bin" "$sm/data"
-  printf '# Firstmate\n' > "$sm/AGENTS.md"
-  printf '%s\n' sm-iso > "$sm/.fm-secondmate-home"
-  printf 'charter for sm-iso\n' > "$sm/data/charter.md"
-  printf '%s\n' 'projects/' 'state/' 'data/' 'config/' '.no-mistakes/' > "$sm/.gitignore"
-  git -C "$sm" init -q -b main
+  sm=$(make_secondmate_home sm-iso)
   out=$(run_case_spawn sm-iso "$sm" --secondmate)
   status=$?
   expect_code 0 "$status" "secondmate spawn: $out"
