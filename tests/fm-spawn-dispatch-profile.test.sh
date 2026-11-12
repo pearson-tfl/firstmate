@@ -698,7 +698,7 @@ test_active_dispatch_profile_allows_raw_launch_command() {
   # The unverified-adapter escape hatch is still an agent this fleet launched,
   # so it carries the compact-adviser floor and the AI-trailer strip; nothing
   # else may rewrite the captain's own command.
-  [ "$launch" = "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$HOME_DIR" "$id")unset FM_LOCK_HOLDER; $(fm_test_launch_git_prefix "$launch")custom-agent --flag" ] || fail "raw launch command changed"$'\n'"actual: $launch"
+  [ "$launch" = "$(fm_test_worker_tmux_isolation "$id")export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$HOME_DIR" "$id")unset FM_LOCK_HOLDER; $(fm_test_launch_git_prefix "$launch")custom-agent --flag" ] || fail "raw launch command changed"$'\n'"actual: $launch"
   pass "active crew-dispatch profile allows the raw launch-command escape hatch"
 }
 
@@ -2239,7 +2239,8 @@ SH
         enabled) expected=$(printf '%s\n' unset "$value" '' unset) ;;
         empty) expected=$(printf '%s\n' unset unset unset unset) ;;
       esac
-      expected="$expected"$'\n'"$HOME_DIR/user-home"$'\n'"$pane_path"$'\nxterm\nsynthetic-pane\n/synthetic/gotmp'
+      # The pane's TMUX is deliberately dropped (bin/fm-spawn.sh "Worker tmux isolation").
+      expected="$expected"$'\n'"$HOME_DIR/user-home"$'\n'"$pane_path"$'\nxterm\n\n/synthetic/gotmp'
       # The strip-hook entry must also survive the env -i boundary.
       expected="$expected"$'\n'"hooksPath=$(cd "$HOME_DIR/state" && pwd -P)/$id.git-hooks"
       [ "$result" = "$expected" ] || fail "allowlist=$setting worker environment mismatch: $result"
@@ -2578,7 +2579,7 @@ claude_expected_launch() {  # <launch> <home> <id> <permission-flag>
   # Every Claude spawn fixes its agent session id; the canonical launch carries
   # the one the task record holds, just before the launch prompt.
   session=$(recorded_session_flag "$2/state/$3.meta")
-  printf '%s' "export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$2" "$3")unset FM_LOCK_HOLDER; $(fm_test_launch_git_prefix "$1")${editor_env}env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER CLAUDE_CODE_DISABLE_WORKFLOWS=1 CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude $4 $(claude_worker_add_dirs "$2" "$3")--name '$3' --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false},\"disableWorkflows\":true}' $CLAUDE_CONTROL_CHANNEL_FLAG $session$quoted"
+  printf '%s' "$(fm_test_worker_tmux_isolation "$3")export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$2" "$3")unset FM_LOCK_HOLDER; $(fm_test_launch_git_prefix "$1")${editor_env}env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER CLAUDE_CODE_DISABLE_WORKFLOWS=1 CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude $4 $(claude_worker_add_dirs "$2" "$3")--name '$3' --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false},\"disableWorkflows\":true}' $CLAUDE_CONTROL_CHANNEL_FLAG $session$quoted"
 }
 
 test_claude_permission_mode_absent_defaults_to_bypass() {
