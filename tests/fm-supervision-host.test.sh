@@ -322,6 +322,57 @@ test_attended_close_with_unidentified_main_session_passes_to_main() {
 }
 
 
+# The main-session key, read directly: a named holder (holder:<name>, the only
+# line bin/fm-lock.sh writes) yields a key that a new session sidecar changes,
+# a pid or Windows-tagged pid line keeps its process-identity key, and a
+# missing, malformed, or empty lock yields none.
+test_main_session_key_reads_named_pid_and_tagged_holders() {
+  local home state key first second
+  home="$TMP_ROOT/main-key"
+  state="$home/state"
+  mkdir -p "$state" "$home/fakebin"
+  read_key() {
+    FM_HOME="$home" PATH="$home/fakebin:$PATH" bash -c '. "$1"; . "$2"; fm_supervision_host_main_key "$3"' \
+      _ "$ROOT/bin/fm-wake-lib.sh" "$ROOT/bin/fm-supervision-engine-lib.sh" "$state"
+  }
+
+  printf 'holder:claude\n' > "$state/.lock"
+  printf 'session-one\n' > "$state/.lock-session"
+  first=$(read_key) || fail "main-key: a named holder yielded no key"
+  [[ "$first" =~ ^holder:claude:[0-9]+$ ]] || fail "main-key: a named holder's key must name the holder and its session"
+  [ "$(read_key)" = "$first" ] || fail "main-key: the same named-holder session must keep one key"
+  printf 'session-two\n' > "$state/.lock-session"
+  second=$(read_key) || fail "main-key: a named holder with a new session yielded no key"
+  [ "$second" != "$first" ] || fail "main-key: a new main session must change the named holder's key"
+
+  printf '%s\n' "$$" > "$state/.lock"
+  key=$(read_key) || fail "main-key: a live pid holder yielded no key"
+  [[ "$key" =~ ^$$:[0-9]+:[0-9]+$ ]] || fail "main-key: a pid holder keeps its process-identity key"
+
+  # A Windows/Git Bash home whose process table lists the tagged holder.
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" MINGW64_NT-10.0-26200\n' > "$home/fakebin/uname"
+  cat > "$home/fakebin/ps" <<'SH'
+#!/usr/bin/env bash
+[ "$*" = -W ] || exec /bin/ps "$@"
+printf '%s\n' '      PID    PPID    PGID     WINPID   TTY         UID    STIME COMMAND'
+printf '%s\n' '  4201508       0       0       7204  ?              0 22:24:48 C:\Users\u\.local\bin\claude.exe'
+SH
+  chmod +x "$home/fakebin/uname" "$home/fakebin/ps"
+  printf 'win:7204\n' > "$state/.lock"
+  key=$(read_key) || fail "main-key: a Windows-tagged holder yielded no key"
+  [[ "$key" =~ ^win:7204:[0-9]+:[0-9]+$ ]] || fail "main-key: a tagged holder keeps its process-identity key"
+  rm -f "$home/fakebin/uname" "$home/fakebin/ps"
+
+  for line in 'holder:' 'holder:bad/name' 'not-a-pid' ''; do
+    printf '%s\n' "$line" > "$state/.lock"
+    read_key >/dev/null && fail "main-key: lock line '$line' must yield no key"
+  done
+  rm -f "$state/.lock"
+  read_key >/dev/null && fail "main-key: a missing lock must yield no key"
+  pass "host: the main-session key reads a named holder per session and keeps pid and tagged holders"
+}
+
+
 # The captain returns after the loop accepted a decision close away but before
 # its turn starts: the turn meets the attended rule, so the close still reaches
 # main exactly as the arm printed it instead of being scoped to nothing.
@@ -957,6 +1008,7 @@ fm_test_run \
   test_off_written_while_parked_passes_the_next_attended_close_to_main \
   test_main_only_pass_through_leaves_the_successor_watcher_running \
   test_attended_close_with_unidentified_main_session_passes_to_main \
+  test_main_session_key_reads_named_pid_and_tagged_holders \
   test_close_accepted_away_that_turns_attended_passes_to_main \
   test_attended_close_that_turns_main_only_before_its_turn_passes_to_main \
   test_primary_without_a_verified_mirror_runs_away_only \
