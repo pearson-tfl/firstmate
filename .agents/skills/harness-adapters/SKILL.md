@@ -81,7 +81,7 @@ A new tool remains undispatchable until the `verify` plan, its harness entry, ev
     "verify": {"default": ["references/common/dispatch.md", "references/common/control-and-recovery.md", "references/common/primary-hooks.md", "references/common/model-and-effort.md"]}
   },
   "harnesses": {
-    "claude": "references/harness/claude.md",
+    "claude": "references/harness/claude-code.md",
     "codex": "references/harness/codex.md",
     "opencode": "references/harness/opencode.md",
     "pi": "references/harness/pi.md",

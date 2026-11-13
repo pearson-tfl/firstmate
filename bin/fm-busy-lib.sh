@@ -947,7 +947,7 @@ fm_busy_agy_tail_busy() {
 # re-verified live on Claude Code 2.1.278, docs/verification/runtime-backends.md
 # "Launch-prompt backstop signatures") and its separate external-CLAUDE.md-
 # imports dialog ("Allow external CLAUDE.md file imports?", verified by
-# disassembly, .agents/skills/harness-adapters/references/harness/claude.md
+# disassembly, .agents/skills/harness-adapters/references/harness/claude-code.md
 # "Hook trust" sibling section). fm-claude-trust.sh pre-registers both before
 # launch; this is the backstop for when that registration did not take effect.
 # Each dialog's own question text is paired with one of its own rendered
