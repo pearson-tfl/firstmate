@@ -926,6 +926,58 @@ spawn_secondmate_capture() {
     "$ROOT/bin/fm-spawn.sh" "$id" "$home" "$@" --secondmate
 }
 
+# Seat plugins are data-only launch deltas, independent of the harness pin.
+# Parse the emitted shell command, not production source, to verify argv quoting.
+test_secondmate_seat_plugins() {
+  local label w sm launchlog out status harness
+  for label in mapped unmapped absent pi invalid missing; do
+    w="$TMP_ROOT/seat-plugins-$label"
+    sm="$w/sm"
+    launchlog="$w/launch.log"
+    mkdir -p "$w/home/config"
+    make_seeded_home "$sm" trial
+    harness=claude
+    [ "$label" != pi ] || harness=pi
+    printf '%s\n' "$w/map.json" > "$w/home/config/secondmate-seat-plugins"
+    node - "$w/map.json" "$label" <<'JS' || fail "seat map fixture failed"
+const fs = require('fs');
+const [file, label] = process.argv.slice(2);
+const launch = {plugin_dirs: ["/plugins/one with spaces", "/plugins/two's & more"], settings: {env: {TRIAL_URL: 'http://127.0.0.1:6767', TRIAL_VERSION: 'v5'}}};
+fs.writeFileSync(file, JSON.stringify({seats: {[label === 'unmapped' ? 'fm-other' : 'fm-trial']: {launch}}}));
+if (label === 'invalid') fs.writeFileSync(file, '{broken');
+JS
+    if [ "$label" = absent ]; then
+      mv "$w/home/config/secondmate-seat-plugins" "$w/pointer.archived"
+    elif [ "$label" = missing ]; then
+      mv "$w/map.json" "$w/map.archived"
+    fi
+    out=$(spawn_secondmate_capture "$w" trial "$sm" "$launchlog" --harness "$harness" 2>&1); status=$?
+    if [ "$label" = invalid ] || [ "$label" = missing ]; then
+      [ "$status" -ne 0 ] || fail "invalid configured map launched a secondmate"
+      assert_contains "$out" "secondmate seat plugins" "refusal must identify the config"
+      [ ! -s "$launchlog" ] || fail "refused seat launched a command"
+      continue
+    fi
+    expect_code 0 "$status" "seat plugin $label launch should succeed: $out"
+    python3 - "$launchlog" "$label" "$(sm_claude_settings "$w" trial)" <<'PY' || fail "seat plugin $label launch or settings mismatch"
+import json, shlex, sys
+file, label, settings = sys.argv[1:]
+with open(file) as f:
+    argv = shlex.split(f.read())
+dirs = [argv[i + 1] for i, arg in enumerate(argv[:-1]) if arg == '--plugin-dir']
+assert dirs == (["/plugins/one with spaces", "/plugins/two's & more"] if label == 'mapped' else []), dirs
+if label != 'pi':
+    with open(settings) as f:
+        data = json.load(f)
+    assert data['feedbackDrafts'] == 'off'
+    assert 'UserPromptSubmit' in data['hooks']
+    assert data.get('env', {}) == ({'TRIAL_URL': 'http://127.0.0.1:6767', 'TRIAL_VERSION': 'v5'} if label == 'mapped' else {})
+PY
+    [ ! -e "$sm/config/secondmate-seat-plugins" ] || fail "seat map pointer was inherited"
+  done
+  pass "secondmate seat plugins: mapped argv and env, inert absent/unmapped/non-Claude, invalid config refused"
+}
+
 test_spawn_backend_precedence_over_inherited_config() {
   local w sm meta launchlog out status
   w="$TMP_ROOT/spawn-backend-env-precedence"
@@ -2973,6 +3025,7 @@ test_spawn_bare_backward_compat
 test_spawn_explicit_harness_wins
 test_spawn_unverified_secondmate_harness_refused
 test_spawn_cursor_secondmate_launches_with_its_primary_contract
+test_secondmate_seat_plugins
 test_spawn_backend_precedence_over_inherited_config
 test_spawn_explicit_backend_precedence_over_env_and_inherited_config
 test_spawn_bare_harness_no_model_effort_flag
