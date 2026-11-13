@@ -182,22 +182,29 @@ fm_supervision_host_outcomes_drained() {
 
 # fm_supervision_host_main_key <state-dir>: print the key of the current main
 # session, which changes at every main session start: the session-lock holder,
-# a checksum of its process identity (fm_session_pid_identity in
-# bin/fm-session-lock-lib.sh, which reads a tagged Windows pid too), and
-# a checksum of its session sidecar, so a later session given a recycled lock
-# pid never shares it. The host keys its engine conversation and broken-session
-# latch to it; the dialog mirror (bin/fm-host-mirror.sh) keys each entry and
-# feed to it. When the holder's identity cannot be read, it prints nothing and
-# fails, so an attended wake reaches main, a mirror writer records nothing,
-# and no conversation, latch, or dialog kept under an earlier key is reused.
+# then for a pid holder a checksum of its process identity
+# (fm_session_pid_identity in bin/fm-session-lock-lib.sh, which reads a tagged
+# Windows pid too), and last a checksum of its session sidecar, so a later
+# session given a recycled lock pid or the same holder name never shares it.
+# A named holder (holder:<name>, fm_session_lock_recorded_holder) has no
+# process identity, so its sidecar alone separates its sessions.
+# The host keys its engine conversation and broken-session latch to it; the
+# dialog mirror (bin/fm-host-mirror.sh) keys each entry and feed to it. When
+# the holder's identity cannot be read, it prints nothing and fails, so an
+# attended wake reaches main, a mirror writer records nothing, and no
+# conversation, latch, or dialog kept under an earlier key is reused.
 # Needs bin/fm-wake-lib.sh sourced first.
 fm_supervision_host_main_key() {
-  local pid identity
+  local pid identity session
   pid=$(sed -n '1p' "$1/.lock" 2>/dev/null)
   _fm_wake_require_session_lock
+  session=$(sed -n '1p' "$1/.lock-session" 2>/dev/null | cksum | awk '{ print $1 }')
+  if fm_session_lock_identity_valid "$pid" && fm_session_lock_recorded_holder "$1" >/dev/null; then
+    printf '%s:%s\n' "$pid" "$session"
+    return 0
+  fi
   identity=$(fm_session_pid_identity "$pid" 2>/dev/null) && [ -n "$identity" ] || return 1
-  printf '%s:%s:%s\n' "$pid" "$(printf '%s\n' "$identity" | cksum | awk '{ print $1 }')" \
-    "$(sed -n '1p' "$1/.lock-session" 2>/dev/null | cksum | awk '{ print $1 }')"
+  printf '%s:%s:%s\n' "$pid" "$(printf '%s\n' "$identity" | cksum | awk '{ print $1 }')" "$session"
 }
 
 # fm_supervision_host_health_key <state-dir>: the key the host's
