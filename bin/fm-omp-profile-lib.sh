@@ -23,6 +23,9 @@
 # the ambient profile once the file exists. A raw omp launch command runs
 # verbatim and cannot receive the flag, so a pinned mate refuses it.
 
+# shellcheck source=bin/fm-agent-process-lib.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fm-agent-process-lib.sh"
+
 # fm_omp_profile_read <file>
 # Prints the profile name for a valid pin. Parses bytes before the shell can
 # drop NULs or trailing newlines. Returns 0 on success, 3 when the file does
