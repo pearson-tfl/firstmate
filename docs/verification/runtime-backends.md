@@ -1024,6 +1024,7 @@ The portable half lives in `test_matrix_opencode_leftbar_signals` in `tests/fm-c
 The same bytes on a plain backend read `unknown` in both states, because opencode 1.19.0 also draws a de-emphasised `~/.treehouse/fm001-b8697d/1/fm001:fm/` row inside the box that survives an unstyled capture, so the strict posture keeps deferring rather than reading `empty` there.
 Overriding `FM_COMPOSER_LEFTBAR_FOOTER_RE` to a pattern that cannot match puts the false `pending` straight back on the captured idle pane, which pins the exemption as the load-bearing signal rather than an incidental pass.
 `fm_composer_extract_selected_content` applies the same rule to the same run, so the classified-empty pane hands back no composer text and the typed pane hands back only `fix the doorbell skip`; zellij's append proof (`fm_backend_zellij_composer_observed_append` in `bin/backends/zellij.sh`) requires the extracted text to equal the prior content plus the typed text, so a footer leaking into that read fails the send instead of confirming one.
+
 ### 2026-11-13 Claude Code 2.1.323 monochrome prompt suggestion
 
 Verified on 2026-11-13 on macOS arm64 with tmux 3.7b against an installed Claude Code 2.1.323, launched twice on a private tmux socket: once under `NO_COLOR=1 FORCE_COLOR=0` and once in colour.
@@ -1044,7 +1045,17 @@ ok - claude 2.1.323 (Claude Code): colour: a real prompt suggestion reads empty
 ok - claude 2.1.323 (Claude Code): colour: real typed text reads pending
 ```
 
-The portable half is the `claude composer` cases in `tests/fm-tmux-agent-liveness.test.sh`, which draw the same unstyled row in a real tmux pane and move only the cursor column or the row's colour; they pass under a UTF-8 locale and `LC_ALL=C`.
+The portable half is the `claude composer` cases in `tests/fm-tmux-agent-liveness.test.sh`, which draw the same unstyled row, with Claude's no-break space, in a real tmux pane and move only the cursor column or the row's colour.
+Run the same day under both locales, `bash tests/fm-tmux-agent-liveness.test.sh` and `LC_ALL=C bash tests/fm-tmux-agent-liveness.test.sh` each ended:
+
+```text
+ok - claude composer: an unstyled suggestion with the cursor at its start reads empty
+ok - claude composer: unstyled text with the cursor at its end stays pending
+ok - claude composer: styled bright text stays pending even with the cursor at its start
+```
+
+Only tmux reports a cursor column, so Herdr, Zellij, cmux, Orca, and the other cursorless backends are unchanged by this rule: a monochrome Claude suggestion there reads as it did before.
+The Claude launch-line clearing of `NO_COLOR` and `FORCE_COLOR` (`bin/fm-spawn.sh`) applies on every backend, which keeps the dim run those backends rely on.
 Typed text with the cursor moved back to its start reads as a suggestion in a monochrome pane; no signal the cursor cannot see separates the two.
 
 ### Grok approval-titled bottom border

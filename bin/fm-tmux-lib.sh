@@ -83,6 +83,11 @@ fm_tmux_composer_cursor_row() {  # <target>
   tmux display-message -p -t "$1" '#{cursor_y}' 2>/dev/null
 }
 
+# fm_tmux_composer_cursor_col: the pane's cursor column, zero-based.
+fm_tmux_composer_cursor_col() {  # <target>
+  tmux display-message -p -t "$1" '#{cursor_x}' 2>/dev/null
+}
+
 # fm_tmux_composer_caps: the tmux capability descriptor - static data, not
 # logic (see the capability model in bin/fm-composer-lib.sh).
 fm_tmux_composer_caps() {
@@ -174,7 +179,7 @@ fm_tmux_composer_state() {  # <target> -> empty|pending|pending-unproven|unknown
   # A monochrome prompt suggestion reads by the cursor column, which only tmux
   # reports; fm_composer_cursor_at_text_start owns the decision.
   if [ "$verdict" = pending ]; then
-    cx=$(tmux display-message -p -t "$target" '#{cursor_x}' 2>/dev/null) || cx=
+    cx=$(fm_tmux_composer_cursor_col "$target") || cx=
     if fm_composer_cursor_at_text_start "$pane" "$cy" "$cx"; then
       verdict=empty
     fi
