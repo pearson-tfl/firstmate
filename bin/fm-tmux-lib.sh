@@ -83,31 +83,6 @@ fm_tmux_composer_cursor_row() {  # <target>
   tmux display-message -p -t "$1" '#{cursor_y}' 2>/dev/null
 }
 
-# fm_tmux_composer_cursor_at_text_start: 0 when the cursor row of <styled-pane>
-# is an UNSTYLED agent-glyph row whose text begins exactly at the pane's
-# #{cursor_x}. In a NO_COLOR pane Claude draws its prompt suggestion with no dim
-# run, so the ghost stripper cannot tell it from typing; the cursor can, because
-# it sits BEFORE a suggestion and AFTER typed text (verified live, Claude Code
-# 2.1.323 in tmux). Any SGR on the row means colour exists and the dim-style
-# check stays the only judge. The prefix width counts spaces plus the one
-# single-cell glyph, so it does not depend on the locale's character counting.
-# shortcut: typed text with the cursor moved back to its start (Home) reads as a
-# suggestion in a monochrome pane; no cursor-blind signal separates the two.
-fm_tmux_composer_cursor_at_text_start() {  # <target> <styled-pane> <cursor-row>
-  local cx row glyph rest lead1 lead2
-  cx=$(tmux display-message -p -t "$1" '#{cursor_x}' 2>/dev/null) || return 1
-  case "$cx" in ''|*[!0-9]*) return 1 ;; esac
-  row=$(printf '%s\n' "$2" | sed -n "$(($3 + 1))p")
-  case "$row" in *$'\033'*) return 1 ;; esac
-  fm_composer_leading_agent_glyph_var glyph "$row" || return 1
-  lead1=${row%%[![:space:]]*}
-  rest=${row#"$lead1"}
-  rest=${rest#"$glyph"}
-  lead2=${rest%%[![:space:]]*}
-  [ -n "${rest#"$lead2"}" ] || return 1
-  [ "$cx" -eq $((${#lead1} + 1 + ${#lead2})) ]
-}
-
 # fm_tmux_composer_caps: the tmux capability descriptor - static data, not
 # logic (see the capability model in bin/fm-composer-lib.sh).
 fm_tmux_composer_caps() {
@@ -184,7 +159,7 @@ EOF
 # `unknown` (the Command Code check below), so an `unknown` read pays one
 # process probe and a definite read never does.
 fm_tmux_composer_state() {  # <target> -> empty|pending|pending-unproven|unknown
-  local target=$1 cy pane verdict identity
+  local target=$1 cy cx pane verdict identity
   cy=$(fm_tmux_composer_cursor_row "$target") || { printf 'unknown'; return 0; }
   case "$cy" in ''|*[!0-9]*) printf 'unknown'; return 0 ;; esac
   pane=$(fm_tmux_composer_capture "$target") || { printf 'unknown'; return 0; }
@@ -196,9 +171,13 @@ fm_tmux_composer_state() {  # <target> -> empty|pending|pending-unproven|unknown
     verdict=$(fm_composer_classify_screen "$(fm_tmux_composer_caps)" "$pane" "$cy" "$identity")
     [ "$verdict" != need-identity ] || verdict=unknown
   fi
-  # A monochrome prompt suggestion: see fm_tmux_composer_cursor_at_text_start.
-  if [ "$verdict" = pending ] && fm_tmux_composer_cursor_at_text_start "$target" "$pane" "$cy"; then
-    verdict=empty
+  # A monochrome prompt suggestion reads by the cursor column, which only tmux
+  # reports; fm_composer_cursor_at_text_start owns the decision.
+  if [ "$verdict" = pending ]; then
+    cx=$(tmux display-message -p -t "$target" '#{cursor_x}' 2>/dev/null) || cx=
+    if fm_composer_cursor_at_text_start "$pane" "$cy" "$cx"; then
+      verdict=empty
+    fi
   fi
   # Cursor Agent CLI parks its terminal cursor OUTSIDE its composer, below the
   # footer, with #{cursor_flag} 0 - so on a Cursor pane tmux's cursor row is not

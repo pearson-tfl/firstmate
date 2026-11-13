@@ -807,6 +807,35 @@ EOF
   return 1
 }
 
+# fm_composer_cursor_at_text_start: 0 when row <cursor-row> of <styled-screen>
+# is an UNSTYLED agent-glyph row whose text begins exactly at zero-based column
+# <cursor-col>. In a NO_COLOR pane Claude draws its prompt suggestion with no
+# dim run, so fm_composer_strip_ghost cannot tell it from typing; the cursor
+# can, because it sits BEFORE a suggestion and AFTER typed text (verified live,
+# Claude Code 2.1.323 in tmux; docs/verification/runtime-backends.md "Composer
+# classification matrix"). Any SGR on the row means colour exists and the
+# dim-style check stays the only judge. The prefix width counts spaces plus the
+# one single-cell glyph, so it does not depend on the locale's character count.
+# Only an adapter that reports a cursor column (tmux) can ask.
+# shortcut: typed text with the cursor moved back to its start (Home) reads as a
+# suggestion in a monochrome pane; no cursor-blind signal separates the two.
+fm_composer_cursor_at_text_start() {  # <styled-screen> <cursor-row> <cursor-col>
+  local cy=$2 cx=$3 row glyph indent rest gap
+  case "$cy" in ''|*[!0-9]*) return 1 ;; esac
+  case "$cx" in ''|*[!0-9]*) return 1 ;; esac
+  row=$(printf '%s\n' "$1" | sed -n "$((cy + 1))p")
+  case "$row" in *$'\033'*) return 1 ;; esac
+  # Claude draws a no-break space after its glyph; every mapped space is one cell.
+  fm_composer_normalize_spaces_var row
+  fm_composer_leading_agent_glyph_var glyph "$row" || return 1
+  indent=${row%%[![:space:]]*}
+  rest=${row#"$indent"}
+  rest=${rest#"$glyph"}
+  gap=${rest%%[![:space:]]*}
+  [ -n "${rest#"$gap"}" ] || return 1
+  [ "$cx" -eq $((${#indent} + 1 + ${#gap})) ]
+}
+
 fm_composer_idle_matches() {
   local content=$1 idle_re=$2 idle_case=$3
   [ -n "$idle_re" ] || return 1

@@ -2935,9 +2935,9 @@ launch_template() {
   # project and fetched content. A persistent secondmate receives its own
   # supervisor contract instead, so this task-worker statement does not apply.
   # NO_COLOR and FORCE_COLOR are cleared, as devin and commandcode clear
-  # NO_COLOR, so no seat inherits a colour-off setting from the shell that
-  # launched firstmate and its pane keeps the dim styling the shared composer
-  # guard reads.
+  # NO_COLOR, so no Claude worker or secondmate inherits a colour-off setting
+  # from the shell that launched firstmate and its pane keeps the dim styling
+  # the shared composer guard reads.
   claude)
     printf '%s' 'env -u NO_COLOR -u FORCE_COLOR __CLAUDEWORKFLOWS__CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 __CLAUDEBIN__ __CLAUDEPERMFLAG__ __CLAUDEADDDIRS__--name __CLAUDENAME__ --settings __CLAUDESETTINGS__ __CLAUDELOADOUT__'
     if [ "$kind" != secondmate ]; then

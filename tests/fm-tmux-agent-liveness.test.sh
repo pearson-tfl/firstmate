@@ -541,7 +541,8 @@ claude_suggestion_screen() {  # <text> <start|end> <plain|bright>
   if [ "$colour" = bright ]; then
     printf '%s[39m❯ %s[38;2;255;255;255m%s%s[39m\n' "$e" "$e" "$text" "$e"
   else
-    printf '❯ %s\n' "$text"
+    # Claude Code 2.1.323 draws a no-break space after the glyph.
+    printf '❯\302\240%s\n' "$text"
   fi
   printf '────────────────────────────────────────\n  ⏵⏵ bypass permissions on\n'
   col=3
