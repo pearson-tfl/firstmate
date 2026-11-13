@@ -817,7 +817,7 @@ EOF
 # dim-style check stays the only judge. The prefix width counts spaces plus the
 # one single-cell glyph, so it does not depend on the locale's character count.
 # Only an adapter that reports a cursor column (tmux) can ask.
-# shortcut: typed text with the cursor moved back to its start (Home) reads as a
+# Known limit: typed text with the cursor moved back to its start (Home) reads as a
 # suggestion in a monochrome pane; no cursor-blind signal separates the two.
 fm_composer_cursor_at_text_start() {  # <styled-screen> <cursor-row> <cursor-col>
   local cy=$2 cx=$3 row glyph indent rest gap
