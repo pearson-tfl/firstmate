@@ -98,14 +98,35 @@ fm_agent_process_omp_script() {  # <interpreter> <script>
   case "$2" in /*) ;; *) return 1 ;; esac
   canonical=$(fm_cursor_canonical_path "$2") || return 1
   [ -f "$canonical" ] || return 1
-  # Match the same PATH-selected tool the launch owner trusts, not a stranger
-  # reproducing the package's directory spelling elsewhere. Never execute it.
-  installed=$(command -v omp 2>/dev/null) || return 1
-  case "$installed" in /*) ;; *) return 1 ;; esac
-  installed=$(fm_cursor_canonical_path "$installed") || return 1
-  [ "$canonical" = "$installed" ] || return 1
-  case "$canonical" in */@oh-my-pi/pi-coding-agent/dist/cli.js) return 0 ;; esac
+  # Match an installed tool the launch owner trusts (fm_omp_bin_candidates),
+  # not a stranger reproducing the package's directory spelling elsewhere.
+  # Never execute it.
+  while IFS= read -r installed; do
+    installed=$(fm_cursor_canonical_path "$installed") || continue
+    [ "$canonical" = "$installed" ] || continue
+    case "$canonical" in */@oh-my-pi/pi-coding-agent/dist/cli.js) return 0 ;; esac
+  done <<EOF
+$(fm_omp_bin_candidates)
+EOF
   return 1
+}
+
+# fm_omp_bin_candidates: every absolute omp launcher this machine trusts, one
+# per line - the PATH-selected one, then Bun's global install
+# (${BUN_INSTALL:-$HOME/.bun}/bin/omp). Bun adds its bin directory to PATH only
+# from an interactive shell profile, so a tool shell or the watcher often has no
+# omp on PATH, and a home may put a wrapper named omp first on PATH; neither may
+# turn a real omp seat ambiguous (issue #5935).
+fm_omp_bin_candidates() {
+  local p
+  p=$(command -v omp 2>/dev/null) && case "$p" in /*) printf '%s\n' "$p" ;; esac
+  p="${BUN_INSTALL:-$HOME/.bun}/bin/omp"
+  [ ! -x "$p" ] || printf '%s\n' "$p"
+}
+
+# fm_omp_bin: the omp executable a launch runs - the first candidate above.
+fm_omp_bin() {
+  fm_omp_bin_candidates | head -n 1 | grep .
 }
 
 fm_agent_process_omp_args() {  # <flattened-args>

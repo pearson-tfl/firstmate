@@ -286,8 +286,9 @@
 #   mapped. --effort maps low|medium|high|max; xhigh is omitted (cortex has
 #   no such level). A bad --model is not refused at launch: Cortex starts,
 #   then answers the first prompt with the account's available model ids.
-#   For omp (Oh My Pi), fm-spawn resolves the `omp` executable from PATH once and
-#   refuses when it is absent. Every omp launch clears the foreign harness
+#   For omp (Oh My Pi), fm-spawn resolves the `omp` executable once (PATH, then
+#   Bun's global install; bin/fm-agent-process-lib.sh fm_omp_bin) and refuses
+#   when it is absent. Every omp launch clears the foreign harness
 #   markers (omp publishes none of its own), sets the Firstmate-owned
 #   FM_OMP_HARNESS=omp detection marker, suppresses the first-run provider
 #   wizard with OMP_SKIP_SETUP=1, forces --auto-approve, pins the working
@@ -572,7 +573,7 @@
 #                  a secondmate loads it beside its two primary extensions)
 #     __PITURNEND__ absolute path to .pi/extensions/fm-primary-turnend-guard.ts in a pi secondmate home
 #     __PIWATCH__   absolute path to .pi/extensions/fm-primary-pi-watch.ts in a pi secondmate home
-#     __OMPBIN__   quoted concrete omp executable path resolved from PATH
+#     __OMPBIN__   quoted concrete omp executable path (fm_omp_bin: PATH, then Bun's install)
 #     __OMPPROFILE__ optional ` --profile '<name>'` from the per-secondmate omp
 #                  profile pin (supplies its own leading space, empty otherwise)
 #     __OMPEXT__   absolute path to state/<task-id>.omp-ext.ts (omp busy-state extension,
@@ -3434,8 +3435,8 @@ cursor)
   fi
   ;;
 omp)
-  OMP_BIN=$(resolve_pi_executable omp) || {
-    echo "error: omp executable not found on PATH; install Oh My Pi or select a different verified harness" >&2
+  OMP_BIN=$(fm_omp_bin) || {
+    echo "error: omp executable not found on PATH or in Bun's global install; install Oh My Pi or select a different verified harness" >&2
     exit 1
   }
   OMP_WORKER_CFG="$FM_ROOT/.omp/fm-worker-overlay.yml"

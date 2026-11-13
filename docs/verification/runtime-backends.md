@@ -3455,7 +3455,8 @@ omp publishes no harness marker: `PI_CODING_AGENT` is absent from the binary, an
 
 Verified on 2026-11-11 with omp 18.14.0 on macOS arm64 using real secondmates in disposable homes on a private tmux socket.
 This installation reports `bun` through both the foreground process name and tmux's current-command field; its command line names `omp` as Bun's script argument.
-`bin/fm-agent-process-lib.sh` owns the canonical package-entry predicate used by tmux: the script must resolve to the same entry as the PATH-selected `omp` launch tool.
+`bin/fm-agent-process-lib.sh` owns the canonical package-entry predicate used by tmux: the script must resolve to the same entry as a trusted `omp` launch tool, either the PATH-selected one or Bun's global install (`${BUN_INSTALL:-$HOME/.bun}/bin/omp`).
+Re-verified on 2026-11-13 with omp 18.14.0: a supervisor tool shell without Bun's directory on `PATH` read the same idle seat `ambiguous` before that fallback (the refusal behind issue #5935) and relaunched it after; the guard now runs `fm-control.sh` from such a shell.
 A bare script basename or an unrelated copy of the package directory spelling is insufficient.
 The generic process classifier used by Herdr, HC, Rex, and Tern is unchanged; this tmux-specific fix does not add Bun-script attribution to those adapters.
 No rendered prompt or busy-extension record is needed to prove liveness.
