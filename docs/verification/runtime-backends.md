@@ -147,7 +147,7 @@ The README's primary Claude launch names the main seat explicitly.
 Other backends do not receive tmux title mutations.
 
 The behavioral regression is `bash bin/fm-test-run.sh tests/fm-spawn-dispatch-profile.test.sh`.
-It covers shell-parsed Claude names, pane-id-only mutations, fresh and resumed Claude/Pi workers and secondmates, and refusal before launch when pane identity or title setup fails.
+It covers shell-parsed Claude names, pane-id-only mutations, fresh and resumed Claude/Pi workers and secondmates, refusal before launch when pane identity or title setup fails, and the launch that proceeds on a tmux without `allow-set-title`.
 For a live refresh, use a private tmux socket and scratch panes, start Claude with `--name ahrfmname-claude` and Pi, submit one simple prompt to each, and read `#{pane_title}` before and after the following pane-scoped commands (with `PANE` resolved to the scratch pane's `%` id and `LANE` set to its test lane id):
 
 ```sh
