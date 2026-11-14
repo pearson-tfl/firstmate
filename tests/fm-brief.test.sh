@@ -835,8 +835,13 @@ test_secondmate_marked_request_reporting_contract() {
 
   assert_grep 'include that exact token in your parent status reply' "$brief" \
     "secondmate charter lost correlated parent results"
-  assert_grep 'bin/fm-secondmate-report.sh <verb> <corr_id> <note>' "$brief" \
+  assert_grep "Reply with \`bin/fm-secondmate-report.sh <verb> <note>\`" "$brief" \
     "secondmate charter lost the mechanical helper invocation"
+  assert_grep 'bin/fm-secondmate-report.sh <verb> <corr_id> <note>' "$brief" \
+    "secondmate charter lost the explicit-corr form for overlapping requests"
+  if grep -Fq 'equally valid' "$brief"; then
+    fail "secondmate charter still offers a hand echo as an equal reply path"
+  fi
   assert_grep 'do not pass a status path' "$brief" \
     "secondmate charter still tells the mate to pass a hand path to the helper"
   assert_grep 'For a terse result, a status line is the whole answer.' "$brief" \
