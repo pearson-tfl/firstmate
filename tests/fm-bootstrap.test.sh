@@ -1313,7 +1313,7 @@ test_crew_dispatch_active_rules_are_verbose_bootstrap_info() {
 
 # config/pr-health-monitor is the only thing that arms the PR health monitor.
 test_pr_health_monitor_arms_only_with_its_flag() {
-  local case_dir fakebin out flag
+  local case_dir fakebin out flag f
   for flag in on off; do
     case_dir="$TMP_ROOT/pr-health-$flag"
     mkdir -p "$case_dir/home/config" "$case_dir/home/data" "$case_dir/home/state"
@@ -1329,8 +1329,11 @@ test_pr_health_monitor_arms_only_with_its_flag() {
         || fail "bootstrap did not register the PR health monitor: $(ls -A "$case_dir/home/state")"
     else
       # The exhausted-login switch is armed on every start, flag or not.
-      [ -z "$(ls -A "$case_dir/home/state" | grep -v '^exhaust-switch\.check')" ] \
-        || fail "bootstrap without the PR health flag left state: $(ls -A "$case_dir/home/state")"
+      for f in "$case_dir/home/state"/* "$case_dir/home/state"/.[!.]*; do
+        [ -e "$f" ] || continue
+        case "${f##*/}" in exhaust-switch.check.sh|exhaust-switch.check-trust) ;;
+          *) fail "bootstrap without the PR health flag left state: $(ls -A "$case_dir/home/state")" ;; esac
+      done
     fi
   done
   pass "bootstrap arms the PR health monitor only when config/pr-health-monitor exists"

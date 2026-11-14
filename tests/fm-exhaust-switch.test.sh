@@ -28,6 +28,15 @@ SH
 chmod +x "$TMP_ROOT/bin/control"
 export FM_TEST_EXHAUST_CONTROL="$TMP_ROOT/bin/control"
 
+# An omp root with one other profile that has an Anthropic login to move to.
+command -v sqlite3 >/dev/null 2>&1 || { echo "skip: sqlite3 not found"; exit 0; }
+export FM_OMP_ROOT="$TMP_ROOT/omp-root"
+mkdir -p "$FM_OMP_ROOT/profiles/spare/agent"
+sqlite3 "$FM_OMP_ROOT/profiles/spare/agent/agent.db" "create table auth_credentials (id integer primary key,
+  provider text, credential_type text, data text, disabled_cause text, identity_key text);
+  insert into auth_credentials (provider, credential_type, data)
+  values ('anthropic', 'oauth', json_object('email', 'login-spare', 'orgId', 'org-spare'));" || fail "fixture db"
+
 # omp_seat <id> <retry-after-ms> [busy|idle]: an omp seat whose session ends in a 429.
 omp_seat() {
   local id=$1 ms=$2 st=${3:-idle} gen session="$TMP_ROOT/$1.jsonl"
@@ -66,6 +75,16 @@ case "$out" in *"longwait moved from omp:busy to omp:spare"*) ;; *) fail "the ou
 [ "$(grep -c resume "$HOME_DIR/control.log")" = 1 ] || fail "the same error must never move the seat twice"
 [ -z "$(run_check)" ] || fail "a reported outcome must not be reported again"
 pass "exhaust switch: an idle omp seat on a long 429 moves once, records the login, and reports the outcome"
+
+# With no named profile to move to, the seat is left in place and the move fails.
+: > "$HOME_DIR/control.log"
+omp_seat noprofile 371640000
+FM_OMP_ROOT="$TMP_ROOT/no-omp-root" run_check >/dev/null
+FM_OMP_ROOT="$TMP_ROOT/no-omp-root" wait_record noprofile failed || fail "a move with nowhere to go must fail: $(cat "$STATE/noprofile.exhaust-switch.log")"
+[ ! -s "$HOME_DIR/control.log" ] || fail "a move with nowhere to go must not touch the seat: $(cat "$HOME_DIR/control.log")"
+out=$(FM_OMP_ROOT="$TMP_ROOT/no-omp-root" run_check)
+case "$out" in *noprofile*) ;; *) fail "the failed move must be reported: $out" ;; esac
+pass "exhaust switch: an omp seat with no other profile to move to is left in place and reported failed"
 
 # A short wait is omp's own retry, and a busy seat is left for a later cycle.
 : > "$HOME_DIR/control.log"
