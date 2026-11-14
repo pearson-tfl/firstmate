@@ -4025,15 +4025,17 @@ EOF
     # busy state has no verified semantic source, bounded so it cannot defer that
     # task's turn-ends forever. Absorb stays evidence-driven: with neither proof the
     # wake surfaces exactly as before.
-    # Separately, and checked first because it is the cheapest, a bare turn-end that
-    # only repeats one already surfaced with no status or pane change since is
-    # absorbed on a bounded re-surface cadence (signal_turnend_repeat_absorbed).
+    # Separately, and checked first, a bare turn-end that only repeats one already
+    # surfaced with no status or pane change since is absorbed on a bounded
+    # re-surface cadence (signal_turnend_repeat_absorbed); it captures the live pane
+    # only for a task with an in-bound surfaced-turn-end record.
     # Actionable -> enqueue, advance .seen-* markers, exit. Benign (a no-verb wake
     # whose crew is still executing) in always-on mode -> advance the markers so it
     # will not re-fire, log, and keep blocking without enqueuing. Both evidence
     # checks are costly (a bounded no-mistakes call, then a pane capture), so the ||
     # ordering evaluates them ONLY for a non-afk signal with no captain-relevant
-    # status span, and the capture only once the authoritative verdict comes up short.
+    # status span, and the churn capture only once the authoritative verdict comes up
+    # short.
     FM_SIGNAL_SURFACE_ENDPOINTS=''
     FM_SIGNAL_NEEDS_DECISION_FILES=''
     # shellcheck disable=SC2086  # $files is a space-separated status-path list (ids carry no spaces)
