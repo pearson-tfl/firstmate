@@ -257,6 +257,42 @@ run_send_message() {
   return "$rc"
 }
 
+test_send_message_captured_live_shape() {
+  # Replay the sanitized Claude Code 2.1.318 capture in PRIMARY, not this linked
+  # task worktree: an out-of-scope hook would allow even the negative cases.
+  local fixture="$ROOT/tests/fixtures/sendmessage-claude-2.1.318.json" mutation input rc=0
+  FM_ROOT_OVERRIDE="$PRIMARY" FM_HOME="$PRIMARY" FM_STATE_OVERRIDE="$STATE" \
+    "$CHECK" --claude < "$fixture" > "$OUT" 2> "$ERR" || rc=$?
+  [ "$rc" -eq 0 ] || fail "captured live SendMessage shape must allow, got exit $rc: $(cat "$ERR")"
+  [ ! -s "$OUT" ] && [ ! -s "$ERR" ] || fail "captured live SendMessage allow wrote output"
+
+  for mutation in \
+    '.type = "shutdown_response"' \
+    '.type = "plan_approval_response"' \
+    '.type = null' \
+    '.type = 1' \
+    '.recipient = "CTO\nother"' \
+    '.recipient = "CTO\rother"' \
+    '.recipient = null' \
+    '.recipient = ["CTO"]' \
+    '.recipient_kind = null' \
+    '.recipient_kind = 1' \
+    '.content = null' \
+    '.content = {"type":"shutdown_response"}' \
+    '.content = ["hello"]' \
+    '.content = 1' \
+    '.extra = "unknown"'; do
+    input=$(jq -c ".tool_input | $mutation" "$fixture") || fail "could not mutate captured payload: $mutation"
+    rc=0
+    run_send_message "$input" || rc=$?
+    [ "$rc" -eq 2 ] || fail "captured SendMessage mutation must deny, got exit $rc for $mutation"
+    [ ! -s "$OUT" ] || fail "captured SendMessage deny wrote stdout for $mutation"
+    jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.systemMessage | contains("blocked tool: SendMessage"))' "$ERR" >/dev/null 2>&1 \
+      || fail "captured SendMessage mutation lost its deny object for $mutation: $(cat "$ERR")"
+  done
+  pass "captured live SendMessage shape allows in primary scope; invalid alias shapes and unknown keys deny"
+}
+
 test_send_message_peer_message_is_allowed() {
   # Current Claude peers use ListAgents names; legacy uds: addresses remain
   # accepted. Recipient validation is only a string with no CR or LF.
@@ -269,7 +305,12 @@ test_send_message_peer_message_is_allowed() {
     '{"to":"","message":"hello"}' \
     '{"to":"uds:/tmp/claude-peer-1234.sock","message":"received msg-42"}' \
     '{"to":"uds:/tmp/claude-peer-1234.sock","summary":"receipt","message":"received msg-42","notify_when_idle":false}' \
-    '{"to":"researcher","summary":"receipt","message":"hello\nthere","notify_when_idle":true}'; do
+    '{"to":"researcher","summary":"receipt","message":"hello\nthere","notify_when_idle":true}' \
+    '{"to":"researcher","message":"hello","type":"message"}' \
+    '{"to":"researcher","message":"hello","recipient":""}' \
+    '{"to":"researcher","message":"hello","recipient_kind":""}' \
+    '{"to":"researcher","message":"hello","content":""}' \
+    '{"to":"researcher","message":"hello","content":"hello\nthere"}'; do
     rc=0
     run_send_message "$input" || rc=$?
     [ "$rc" -eq 0 ] || fail "plain peer message must allow, got exit $rc for $input: $(cat "$ERR")"
@@ -379,6 +420,7 @@ test_escape_hatch_allows_deliberate_use
 test_task_worktree_and_non_firstmate_repo_are_inert
 test_secondmate_home_is_in_scope
 test_stdin_transports_and_output_shapes
+test_send_message_captured_live_shape
 test_send_message_peer_message_is_allowed
 test_send_message_other_shapes_stay_denied
 test_peer_messaging_scope_is_unchanged
