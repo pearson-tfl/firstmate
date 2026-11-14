@@ -2311,8 +2311,8 @@ test_stale_recovery_generation_cannot_touch_a_newer_episode() {
 # invites the same stale acknowledgement again (the refused-ack loop).
 stale_ack_remedy() {  # <stderr-file> -> "<seq>\t<generation>"
   local seq generation
-  seq=$(sed -n 's/^wake drain: nothing was acknowledged through [0-9][0-9]*.*run bin\/fm-wake-drain.sh --ack-through \([0-9][0-9]*\) --recovery-generation [A-Za-z0-9._-][A-Za-z0-9._-]* after handling it$/\1/p' "$1")
-  generation=$(sed -n 's/^wake drain: nothing was acknowledged through [0-9][0-9]*.*run bin\/fm-wake-drain.sh --ack-through [0-9][0-9]* --recovery-generation \([A-Za-z0-9._-][A-Za-z0-9._-]*\) after handling it$/\1/p' "$1")
+  seq=$(sed -n 's/^wake drain: nothing was acknowledged through [0-9][0-9]*.*run .*bin\/fm-wake-drain.sh --ack-through \([0-9][0-9]*\) --recovery-generation [A-Za-z0-9._-][A-Za-z0-9._-]* after handling it$/\1/p' "$1")
+  generation=$(sed -n 's/^wake drain: nothing was acknowledged through [0-9][0-9]*.*run .*bin\/fm-wake-drain.sh --ack-through [0-9][0-9]* --recovery-generation \([A-Za-z0-9._-][A-Za-z0-9._-]*\) after handling it$/\1/p' "$1")
   [ -n "$seq" ] && [ -n "$generation" ] || return 1
   printf '%s\t%s\n' "$seq" "$generation"
 }
