@@ -1313,7 +1313,7 @@ test_crew_dispatch_active_rules_are_verbose_bootstrap_info() {
 
 # config/pr-health-monitor is the only thing that arms the PR health monitor.
 test_pr_health_monitor_arms_only_with_its_flag() {
-  local case_dir fakebin out flag
+  local case_dir fakebin out flag f
   for flag in on off; do
     case_dir="$TMP_ROOT/pr-health-$flag"
     mkdir -p "$case_dir/home/config" "$case_dir/home/data" "$case_dir/home/state"
@@ -1328,11 +1328,39 @@ test_pr_health_monitor_arms_only_with_its_flag() {
       [ -f "$case_dir/home/state/pr-health.check.sh" ] && [ -f "$case_dir/home/state/pr-health.check-trust" ] \
         || fail "bootstrap did not register the PR health monitor: $(ls -A "$case_dir/home/state")"
     else
-      [ -z "$(ls -A "$case_dir/home/state")" ] \
-        || fail "bootstrap without the PR health flag left state: $(ls -A "$case_dir/home/state")"
+      # The exhausted-login switch is armed on every start, flag or not.
+      for f in "$case_dir/home/state"/* "$case_dir/home/state"/.[!.]*; do
+        [ -e "$f" ] || continue
+        case "${f##*/}" in exhaust-switch.check.sh|exhaust-switch.check-trust) ;;
+          *) fail "bootstrap without the PR health flag left state: $(ls -A "$case_dir/home/state")" ;; esac
+      done
     fi
   done
   pass "bootstrap arms the PR health monitor only when config/pr-health-monitor exists"
+}
+
+# Every start arms the exhausted-login switch unless the home disarmed it.
+test_exhaust_switch_arms_unless_disarmed() {
+  local case_dir fakebin out marker
+  for marker in absent present; do
+    case_dir="$TMP_ROOT/exhaust-switch-$marker"
+    mkdir -p "$case_dir/home/config" "$case_dir/home/data" "$case_dir/home/state"
+    printf '%s\n' manual > "$case_dir/home/config/backlog-backend"
+    [ "$marker" = absent ] || : > "$case_dir/home/state/exhaust-switch.disarmed"
+    fakebin=$(make_fake_toolchain "$case_dir")
+    add_real_jq "$fakebin"
+    out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
+      FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+    [ -z "$out" ] || fail "bootstrap with the disarm marker $marker printed: $out"
+    if [ "$marker" = absent ]; then
+      [ -x "$case_dir/home/state/exhaust-switch.check.sh" ] && [ -f "$case_dir/home/state/exhaust-switch.check-trust" ] \
+        || fail "bootstrap did not arm the exhausted-login switch: $(ls -A "$case_dir/home/state")"
+    else
+      [ ! -e "$case_dir/home/state/exhaust-switch.check.sh" ] \
+        || fail "bootstrap re-armed a disarmed exhausted-login switch"
+    fi
+  done
+  pass "bootstrap arms the exhausted-login switch on every start unless the home disarmed it"
 }
 
 test_preferred_provider_validation() {
@@ -1566,5 +1594,6 @@ test_network_phases_record_per_step_elapsed_times
 test_tasks_axi_verdict_handoff_is_consumed_once
 test_crew_dispatch_active_rules_are_verbose_bootstrap_info
 test_pr_health_monitor_arms_only_with_its_flag
+test_exhaust_switch_arms_unless_disarmed
 test_preferred_provider_validation
 test_crew_dispatch_validation

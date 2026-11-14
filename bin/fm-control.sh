@@ -96,9 +96,8 @@
 #              worker account pin (bin/fm-worker-account-lib.sh) here, so a pin
 #              that no longer resolves or is signed out refuses before the old
 #              agent stops.
-#              A replacement omp secondmate likewise passes its per-secondmate
-#              omp profile pin (bin/fm-omp-profile-lib.sh) before the old agent
-#              stops.
+#              A replacement omp agent likewise passes its omp profile choice
+#              (bin/fm-omp-profile-lib.sh) before the old agent stops.
 #              The same pre-stop refusal applies to this home's worker tool
 #              exclusions (bin/fm-exclude-tools-lib.sh): a malformed list, or a
 #              replacement runtime that cannot hide the listed tools.
@@ -120,7 +119,8 @@
 #   resume     Relaunch onto the task's RECORDED agent session instead of a
 #              fresh one, so the agent comes back with its whole conversation.
 #              Every Claude Code, Pi, and pi-signed spawn fixes that session id
-#              at launch and records it as agent_session_id=
+#              at launch and records it as agent_session_id=, and an omp
+#              agent records its live session file in state/<id>.omp-session
 #              (bin/fm-control-lib.sh's fm_control_agent_session_flag owns the
 #              per-adapter flags). It is the same transaction as relaunch, in
 #              the same endpoint and worktree, with three differences: the
@@ -1106,7 +1106,7 @@ resolve_relaunch_profile() {
   TARGET_ACCOUNT_ROOT=${account_selection#*$'\t'}
   TARGET_ACCOUNT_ROOT=${TARGET_ACCOUNT_ROOT%%$'\t'*}
   fm_omp_profile_select "$TARGET_HARNESS" "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" \
-    "$account_mate" >/dev/null || return 1
+    "$account_mate" "" "$account_project" >/dev/null || return 1
   # Likewise polytoken's launch profile and wiring refusals
   # (bin/fm-polytoken-lib.sh owns them). The launch owner retires the prior
   # incarnation's own generated hook layer, so only one it did not generate
@@ -1248,7 +1248,9 @@ resume_preflight() {
     || die "task $ID was launched from the raw command '$RECORDED_HARNESS', whose session cannot be resumed; relaunch it with an explicit --harness instead"
   fm_control_agent_session_flag "$HARNESS" resume >/dev/null \
     || die "$HARNESS has no verified resume form for an exact agent session; relaunch $ID instead, which restarts it from its instructions"
-  RESUME_SESSION_ID=$(fm_meta_get "$META" agent_session_id)
+  RESUME_SESSION_ID=
+  [ "$HARNESS" != omp ] || RESUME_SESSION_ID=$(fm_omp_session_file "$STATE" "$ID")
+  [ -n "$RESUME_SESSION_ID" ] || RESUME_SESSION_ID=$(fm_meta_get "$META" agent_session_id)
   [ -n "$RESUME_SESSION_ID" ] \
     || die "task $ID records no agent session id (it was spawned before spawns fixed one), so there is no exact session to resume; relaunch it instead, which restarts it from its instructions"
   [ "$TARGET_HARNESS" = "$HARNESS" ] \

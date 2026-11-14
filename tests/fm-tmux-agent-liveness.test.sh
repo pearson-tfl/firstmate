@@ -230,6 +230,24 @@ wait_for_state "$SESSION:bun-package-collision" ambiguous \
   || fail "a stranger's package-shaped path must not match the installed omp tool"
 pass "tmux liveness: unrelated Bun scripts, eval, and basename/package-path collisions remain ambiguous"
 
+# Issue #5935: the supervisor's shell often lacks Bun's bin directory on PATH
+# (only an interactive profile adds it), and a home may put a wrapper named omp
+# first on PATH. Neither may turn a real omp seat ambiguous; the stranger stays
+# ambiguous either way.
+mkdir -p "$LAB/bun-install/bin" "$LAB/wrapper"
+ln -s ../../node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js "$LAB/bun-install/bin/omp"
+printf '#!/bin/sh\nexec true\n' > "$LAB/wrapper/omp"
+chmod +x "$LAB/wrapper/omp"
+for case_path in "${PATH#"$LAB/script-bin:"}" "$LAB/wrapper:${PATH#"$LAB/script-bin:"}"; do
+  [ "$(PATH=$case_path command -v omp 2>/dev/null)" != "$LAB/script-bin/omp" ] \
+    || fail "the off-PATH case must not resolve the fixture through PATH"
+  verdict=$(PATH=$case_path BUN_INSTALL="$LAB/bun-install" fm_backend_tmux_agent_state "$SESSION:omp-script")
+  [ "$verdict" = alive ] || fail "omp under BUN_INSTALL must classify alive without PATH (got $verdict)"
+  verdict=$(PATH=$case_path BUN_INSTALL="$LAB/bun-install" fm_backend_tmux_agent_state "$SESSION:bun-package-collision")
+  [ "$verdict" = ambiguous ] || fail "a stranger's package-shaped path must stay ambiguous off PATH (got $verdict)"
+done
+pass "tmux liveness: omp seat stays attributed with omp off PATH or behind a wrapper (issue #5935)"
+
 # --- omp's bare binary name -------------------------------------------------
 # omp (Oh My Pi) runs as a single binary whose live process name is exactly
 # `omp`, with no path component to fall back on, so the anchored name is the

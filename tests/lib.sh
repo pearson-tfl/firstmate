@@ -76,6 +76,13 @@ unset TASKS_AXI_FILE TASKS_AXI_BACKEND
 # can find the CLI; a case that verifies detection sets these itself.
 unset REX_SESSION REX_BLOCK
 
+# Keep the suite off this machine's real omp profiles and exhausted-login
+# record (bin/fm-omp-profile-lib.sh, bin/fm-worker-account-lib.sh): both paths
+# name nothing, so an omp launch stays ambient and no login reads exhausted
+# unless a case builds its own.
+export FM_OMP_ROOT="${TMPDIR:-/tmp}/fm-test-no-omp-root.$$"
+export FM_EXHAUSTED_LOGINS="${TMPDIR:-/tmp}/fm-test-no-exhausted-logins.$$"
+
 # Write the tracked default backlog configuration into a fixture home. Never copy
 # "$ROOT/.tasks.toml": an operator's primary checkout keeps a gitignored override
 # there (for example a beads backend at its live backlog), so a copy points the

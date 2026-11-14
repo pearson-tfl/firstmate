@@ -3455,7 +3455,8 @@ omp publishes no harness marker: `PI_CODING_AGENT` is absent from the binary, an
 
 Verified on 2026-11-11 with omp 18.14.0 on macOS arm64 using real secondmates in disposable homes on a private tmux socket.
 This installation reports `bun` through both the foreground process name and tmux's current-command field; its command line names `omp` as Bun's script argument.
-`bin/fm-agent-process-lib.sh` owns the canonical package-entry predicate used by tmux: the script must resolve to the same entry as the PATH-selected `omp` launch tool.
+`bin/fm-agent-process-lib.sh` owns the canonical package-entry predicate used by tmux: the script must resolve to the same entry as a trusted `omp` launch tool, either the PATH-selected one or Bun's global install (`${BUN_INSTALL:-$HOME/.bun}/bin/omp`).
+The guard runs `fm-control.sh` from a shell whose `PATH` lacks omp's directory, as a supervisor tool shell usually does, so the Bun-install candidate is what attributes the seat.
 A bare script basename or an unrelated copy of the package directory spelling is insufficient.
 The generic process classifier used by Herdr, HC, Rex, and Tern is unchanged; this tmux-specific fix does not add Bun-script attribution to those adapters.
 No rendered prompt or busy-extension record is needed to prove liveness.
@@ -3467,7 +3468,7 @@ FM_OMP_CONTROL_LIVE=1 FM_OMP_CONTROL_LIVE_PROFILE=slowgp \
   bin/fm-test-run.sh tests/fm-control-omp-live-e2e.test.sh
 ```
 
-Observed output (the guard also prints the evidence directory and old/new agent process IDs):
+Observed output on 2026-11-14 with omp 18.14.0 and `FM_OMP_CONTROL_LIVE_PROFILE=sub2` (the guard also prints the evidence directory and old/new agent process IDs):
 
 ```text
 ok - omp omp/18.14.0: without-extension secondmate relaunched
@@ -3520,7 +3521,7 @@ A throwaway scout was spawned through `bin/fm-spawn.sh --scout --harness omp --m
 
 ### Profile flag
 
-Verified on 2026-10-24 against omp 18.4.3 (`~/.bun/bin/omp`, a Bun package install) on macOS 15 arm64, for the [per-secondmate omp profile](../configuration.md#per-secondmate-omp-profile) pin.
+Verified on 2026-10-24 against omp 18.4.3 (`~/.bun/bin/omp`, a Bun package install) on macOS 15 arm64, for the per-mate pin of the [omp profile choice](../configuration.md#omp-profile-choice).
 omp extracts `--profile` from anywhere in its arguments, so the flag Firstmate places right after the executable and before `--config` is honored, and it applies to subcommands such as the catalog check's `models --json`:
 
 ```text
@@ -3534,6 +3535,53 @@ Error: Invalid OMP profile "BAD". Profile names must match ^[a-z0-9][a-z0-9._-]{
 
 `bin/fm-omp-profile-lib.sh` enforces the same name rule before launch, and `tests/fm-omp-harness.test.sh` pins the flag position, the profile-scoped catalog check, and the unpinned launch through a fake omp.
 Repeat these commands after an omp upgrade to refresh this record.
+
+### Exhausted-login signals
+
+Verified on 2026-11-14 against omp 18.14.0 (`~/.bun/bin/omp`) on macOS arm64, for the [exhausted-login switch](../configuration.md#exhausted-login-switch).
+When a provider answers 429 with a `retry-after-ms` beyond `retry.maxDelayMs` (300000 by default), omp stops with `Retry failed after 1 attempts: Provider requested 371640000ms wait, exceeds retry.maxDelayMs (300000ms)` and writes the failure to its session file as an assistant message with `stopReason` `error`, `errorStatus` 429, an `errorMessage` ending in `retry-after-ms=<ms>`, and `completedAt` in milliseconds.
+The busy extension's `ctx.sessionManager.getSessionFile()` names that file, which omp keeps under `<profile>/agent/sessions/<working directory relative to HOME, / as ->/`.
+In a disposable lab on the same date, `bin/fm-exhaust-switch.sh` driven by a real `bin/fm-watch.sh` cycle moved a seat failing that way through `bin/fm-control.sh <id> resume` from a stubbed profile to a profile with a real login; the session id and session file were unchanged afterward and the seat answered on the new login.
+`--profile` wins over an inherited `OMP_PROFILE`:
+
+```text
+$ OMP_PROFILE=BAD OMP_SKIP_SETUP=1 omp --profile sub2 --version
+omp/18.14.0
+$ OMP_PROFILE=sub2 OMP_SKIP_SETUP=1 omp --profile BAD --version
+Error: Invalid OMP profile "BAD". Profile names must match ^...
+```
+
+The token-free guard runs a real seat against a local stub that answers every call with that 429, and stands in for the control plane so no login is touched:
+
+```text
+$ bin/fm-test-run.sh tests/fm-exhaust-switch-omp-live-e2e.test.sh
+ok - omp omp/18.14.0: the switch reads a real seat's long 429, session file and idle state, records the login, and resumes it
+ok - omp omp/18.14.0: 5 real profile database(s) carry the auth_credentials columns the login mapping reads
+```
+
+Claude Code 2.1.325 tags both its usage stops and a transient server throttle as an assistant API error message with `error` `rate_limit`; only the text tells them apart.
+Counting those messages' text across this machine's `~/.claude/projects` transcripts, digits folded to `N`:
+
+```text
+$ grep -rh --include='*.jsonl' '"error":"rate_limit"' ~/.claude/projects \
+    | jq -r 'select(.isApiErrorMessage==true) | ([.message.content[]?|select(.type=="text")|.text]|join(""))' \
+    | cut -c1-70 | sed -E 's/[0-9]+/N/g' | sort | uniq -c | sort -rn | head -7
+ 310 API Error: Server is temporarily limiting requests (not your usage lim
+  79 You've hit your session limit · resets N:Npm (Europe/London)
+  66 You've reached your Fable limit. Run /usage-credits to continue or swi
+  33 You've hit your individual spend limit · run /usage-credits to ask you
+  29 You've hit your N-hour limit · resets N:Nam (Europe/London)
+  24 You're out of usage credits. Run /usage-credits to keep using Fable N.
+  23 You've hit your weekly limit · resets Nam (Europe/London)
+```
+
+`bin/fm-exhaust-switch.sh` counts a usage stop only when the text starts with "You've hit your", "You've reached your", or "You're out of usage", and `tests/fm-exhaust-switch.test.sh` pins the throttle as not a stop.
+A new usage-stop wording that matches neither form leaves the seat where it is rather than moving it, so after a Claude Code upgrade run the token-free guard, which replays the last week's real records through the switch and fails naming the version on any unrecognised wording:
+
+```text
+$ bin/fm-test-run.sh tests/fm-exhaust-switch-claude-live-e2e.test.sh
+ok - Claude Code 2.1.325 (Claude Code): 7 distinct rate_limit wordings from real transcripts read correctly as usage stop or throttle
+```
 
 ### Remote second mate on Linux
 

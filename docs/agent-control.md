@@ -62,13 +62,14 @@ T3 Code has no composer and its `/mcp` tools offer no session stop, so `exit` re
 `exit` stops an agent and preserves everything else.
 Removing a worktree, closing an endpoint, or discarding work stays with [`bin/fm-teardown.sh`](../bin/fm-teardown.sh), which owns the landed-work test.
 
-**`resume` acts only on a session the spawn fixed.**
+**`resume` acts only on a session the launch recorded.**
 Every Claude Code, Pi, and pi-signed launch, fresh or relaunched, passes an exact session id it minted and records it as `agent_session_id=` in the task record ([`fm_control_agent_session_flag`](../bin/fm-control-lib.sh) owns the per-adapter flags).
 `resume` is the relaunch transaction below onto that recorded session: Claude Code reopens it with `--resume <id>` and Pi with `--session-id <id>`, in the same endpoint and worktree, keeping the recorded harness, model, and effort.
+omp has no flag that fixes a session id at launch, so its spawn-written extension records the live session file in `state/<id>.omp-session` instead, and `resume` reopens that file with `--resume <file>`; a session file resumes under any omp profile, which is how the [exhausted-login switch](configuration.md#exhausted-login-switch) moves a seat to another login.
 The resumed session already holds its brief and conversation, so the brief is not rewritten; the inbox check and any `--note` become its first prompt instead.
 An agent already stopped with `exit` is simply launched again on its session.
 One exception is a Herdr-backed Pi relaunch that keeps the pane's bound session (below): the bound reference is the runtime's, not one the spawn pinned, so it records no id and `resume` refuses for that task.
-`resume` refuses before anything stops for a task with no recorded id, a raw launch command, or any other adapter: codex, grok, gemini, devin, commandcode, cortex, and kiro resume only from a session id printed at exit (kiro also has a cwd-scoped `--resume`, and its sessions live under the per-task `KIRO_HOME`), polytoken resumes only from a session id held in its own sessions registry, opencode continues the most recent session for the cwd, and omp, kimi, and agy have no verified general pane-resume contract.
+`resume` refuses before anything stops for a task with no recorded id, a raw launch command, or any other adapter: codex, grok, gemini, devin, commandcode, cortex, and kiro resume only from a session id printed at exit (kiro also has a cwd-scoped `--resume`, and its sessions live under the per-task `KIRO_HOME`), polytoken resumes only from a session id held in its own sessions registry, opencode continues the most recent session for the cwd, and kimi and agy have no verified general pane-resume contract.
 `relaunch` stays the default restart, on a freshly minted session id.
 `relaunch` uses the brief on disk - not a harness-private session - as the durable instruction when the backend can prove the old agent stopped and the composer is empty; Devin on Herdr currently fails that composer check and refuses.
 T3 Code cannot host a fresh replacement agent in a thread, so `relaunch` refuses before stopping anything.
@@ -114,7 +115,7 @@ Keep the backup until recovery is complete; it is not a prompt to submit.
    A recorded raw-command basename that differs from its resolved adapter cannot reproduce the command actually running, so relaunch refuses before the checkpoint unless the caller passes an explicit `--harness` to choose the replacement runtime deliberately.
    A harness change resets model and effort unless they are named too, because a model chosen for one adapter does not transfer to another.
    A Claude or Pi replacement must also pass the home's [worker account pin](configuration.md#worker-account-pin-configclaude-account-configpi-account), or for Claude its [account rules](configuration.md#account-rules-configaccount-rules) when present, or a secondmate's own [per-secondmate account pin](configuration.md#per-secondmate-account-pins) when one is set, so a pin that no longer resolves or is signed out refuses before the old agent stops.
-   An omp secondmate replacement likewise passes its [per-secondmate omp profile](configuration.md#per-secondmate-omp-profile) file check before the old agent stops.
+   An omp replacement likewise passes its [omp profile choice](configuration.md#omp-profile-choice) before the old agent stops.
    Ship and scout replacements also pass the [worker tool exclusion checks](configuration.md#worker-tool-exclusions-configcrew-exclude-tools) at this step.
 2. **Safe checkpoint.**
    The recorded worktree must exist and be a worktree root; its head and dirty state are recorded.
