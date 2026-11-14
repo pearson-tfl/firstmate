@@ -21,12 +21,8 @@
 #           retry-after-ms beyond FM_EXHAUST_MIN_WAIT_MS (default 300000, omp's
 #           own retry.maxDelayMs default), so omp gave up retrying.
 #   claude  ~/.claude/projects/*/<agent_session_id>.jsonl (the shared
-#           transcript the `account` verb moves). Exhausted when the last
-#           assistant entry is an API error message with error "rate_limit"
-#           whose text is Claude Code's own usage stop ("You've hit your ...
-#           limit", "You've reached your ... limit", "You're out of usage
-#           credits"); its transient server throttle carries the same error tag
-#           and is ignored.
+#           transcript the `account` verb moves). Exhausted on Claude Code's
+#           own usage-stop text, never its transient throttle (claude_exhaustion).
 # A seat is moved only once its busy state reads idle (bin/fm-busy-lib.sh), so
 # a seat still retrying or working is left until a later cycle, and each error
 # is acted on once (state/<id>.exhaust-switch keeps its key).
@@ -57,9 +53,9 @@ MIN_WAIT_MS=${FM_EXHAUST_MIN_WAIT_MS:-300000}
 CONTROL_BIN="$SCRIPT_DIR/fm-control.sh"
 # Test seam: an isolated suite may stand in for the control plane.
 [ "${FM_TEST_SEAM:-}" != 1 ] || CONTROL_BIN=${FM_TEST_EXHAUST_CONTROL:-$CONTROL_BIN}
-# Claude's stop names no wait; hold its login this long unless cswap shows a
-# later reset. shortcut: a fixed fallback, read the stop's own reset text if
-# five hours proves wrong in practice.
+# Claude's stop names no machine-readable wait; hold its login this long.
+# shortcut: a fixed five hours, parse the stop's own "resets ..." text if that
+# proves wrong in practice.
 CLAUDE_HOLD_SECONDS=${FM_EXHAUST_CLAUDE_HOLD_SECONDS:-18000}
 
 # shellcheck source=bin/fm-backend.sh
@@ -94,11 +90,8 @@ omp_exhaustion() {
 }
 
 # claude_exhaustion <session-file>: "<error-key> <until-epoch>" for a usage stop.
-# Claude also tags a transient server throttle "rate_limit" ("API Error: Server
-# is temporarily limiting requests (not your usage limit)"); only its own
-# usage-stop wording counts ("You've hit your session limit", "You've reached
-# your Fable limit", "You're out of usage credits"), per the dated record in
-# docs/verification/runtime-backends.md.
+# The accepted wording and the throttle it rejects are the dated record in
+# docs/verification/runtime-backends.md "Exhausted-login signals".
 claude_exhaustion() {
   local key
   key=$(tail -n 400 "$1" | jq -rs '
@@ -199,13 +192,24 @@ action_check() {
 }
 
 action_move() {  # <id> <login>
-  local id=$1 login=$2 meta="$STATE/$1.meta" out rc target to project
+  local id=$1 login=$2 meta="$STATE/$1.meta" out rc target to project list
   case "$(fm_meta_get "$meta" harness)" in
     omp)
-      out=$("$CONTROL_BIN" "$id" resume \
-        --note "Firstmate moved this seat to another login because $login ran out of usage; carry on with your task." 2>&1)
-      rc=$?
-      to="omp:$(fm_meta_get "$meta" omp_profile)"
+      list=$(fm_account_rules_list 2>/dev/null)
+      if [ -z "$(fm_omp_profile_logins "$list")" ]; then
+        # Without a named profile the resume would land on the same login.
+        out="error: no omp profile under $(fm_omp_root)/profiles has a login to move to"
+        rc=1
+      else
+        out=$("$CONTROL_BIN" "$id" resume \
+          --note "Firstmate moved this seat to another login because $login ran out of usage; carry on with your task." 2>&1)
+        rc=$?
+        to="omp:$(fm_meta_get "$meta" omp_profile)"
+        if [ "$rc" -eq 0 ] && [ "$(fm_omp_profile_login "$(fm_meta_get "$meta" omp_profile)" "$list")" = "$login" ]; then
+          out="error: the resumed seat is still on $login"
+          rc=1
+        fi
+      fi
       ;;
     claude)
       project=$(fm_worker_account_project "$(fm_meta_get "$meta" project)")
