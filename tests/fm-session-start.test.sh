@@ -196,6 +196,7 @@ case "${1:-}" in
           task_header 1
         fi
         printf '  held-queued,queued,ship,firstmate,Held queued work,none,captain,%s\n' "$hold_value"
+        [ -z "${FM_FAKE_TASKS_AXI_EXTRA_HELD:-}" ] || printf '%s\n' "$FM_FAKE_TASKS_AXI_EXTRA_HELD"
         ;;
       *'--state queued'*'--blocked'*)
         task_header 1
@@ -2331,8 +2332,8 @@ EOF
 
 test_ordinary_startup_bytes_unchanged() {
   startup_byte_fixture > "$TMP_ROOT/startup-digest.txt"
-  cmp -s "$ROOT/tests/fixtures/session-start-ordinary.txt" "$TMP_ROOT/startup-digest.txt" \
-    || fail "ordinary startup output changed from the pre-compaction public-output fixture: $(diff -u "$ROOT/tests/fixtures/session-start-ordinary.txt" "$TMP_ROOT/startup-digest.txt")"
+  cmp -s "$ROOT/tests/fixtures/session-start-ordinary.digest" "$TMP_ROOT/startup-digest.txt" \
+    || fail "ordinary startup output changed from the pre-compaction public-output fixture: $(diff -u "$ROOT/tests/fixtures/session-start-ordinary.digest" "$TMP_ROOT/startup-digest.txt")"
   pass "ordinary startup digest remains byte-identical to the pre-compaction fixture"
 }
 
@@ -2415,6 +2416,82 @@ EOF
   assert_contains "$out" "preserve title reason" "manual re-emit dropped title-line hold metadata"
   assert_not_contains "$out" "private body" "manual re-emit printed task bodies"
   pass "re-emit omits hold reasons and duplicate rows only through tasks-axi, preserving recovery fields/fallback"
+}
+
+# make_fake_ntn <fakebin>: an ntn whose board data source reads unless
+# FM_FAKE_NTN_DOWN=1, and whose pages are $FM_FAKE_NTN_PAGES/<id>.json.
+make_fake_ntn() {
+  cat > "$1/ntn" <<'SH'
+#!/usr/bin/env bash
+[ "${FM_FAKE_NTN_SLEEP:-0}" = 0 ] || sleep "$FM_FAKE_NTN_SLEEP"
+[ "${FM_FAKE_NTN_DOWN:-0}" = 0 ] || { echo 'fake ntn: network unreachable' >&2; exit 1; }
+case "$2" in
+  v1/data_sources/*) printf '{}\n' ;;
+  v1/pages/*) cat "$FM_FAKE_NTN_PAGES/${2#v1/pages/}.json" 2>/dev/null || { echo 'not found' >&2; exit 1; } ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "$1/ntn"
+}
+
+fake_card() {  # <dir> <page-id> <data-source-id> <state> [in_trash]
+  printf '{"object":"page","id":"%s","in_trash":%s,"archived":false,"parent":{"type":"data_source_id","data_source_id":"%s"},"properties":{"State":{"type":"select","select":{"name":"%s"}}}}\n' \
+    "$2" "${5:-false}" "$3" "$4" > "$1/$2.json"
+}
+
+test_captain_board_leaves_out_only_proven_items() {
+  local rec root home fakebin out pages ds=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+  local open=11111111111111111111111111111111 done=22222222222222222222222222222222
+  local trashed=33333333333333333333333333333333 elsewhere=44444444444444444444444444444444
+  local encoded rows
+  rec=$(new_world captain-board)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_tasks_axi_compact "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  make_fake_ntn "$fakebin"
+  printf 'holder:other-main\n' > "$home/state/.lock"
+  printf '# Backlog\n' > "$home/data/backlog.md"
+  pages="$home/pages"; mkdir -p "$pages"
+  fake_card "$pages" "$open" "$ds" 'Waiting for you'
+  fake_card "$pages" "$done" "$ds" Done
+  fake_card "$pages" "$trashed" "$ds" 'Waiting for you' true
+  fake_card "$pages" "$elsewhere" ffffffffffffffffffffffffffffffff 'Waiting for you'
+  printf 'notion-cards=%s\n' "$ds" > "$home/config/captain-board"
+  # The proven reason is stored encoded, as bin/fm-captain-hold.sh writes it.
+  encoded=fm-hold-v1:$(printf 'Your call, card https://app.notion.com/p/Card-%s (rec: yes)' "$open" | perl -MMIME::Base64 -0777 -ne 'print encode_base64($_, "")')
+  rows=$(printf '  %s\n' \
+    "on-board,queued,ship,firstmate,On the board,none,captain,$encoded" \
+    "card-done,queued,ship,firstmate,Card done,none,captain,https://app.notion.com/p/X-$done" \
+    "card-trashed,queued,ship,firstmate,Card trashed,none,captain,https://www.notion.so/$trashed" \
+    "other-list,queued,ship,firstmate,Other list,none,captain,https://app.notion.com/p/$elsewhere" \
+    "no-link,queued,ship,firstmate,No link,none,captain,https://github.com/o/r/pull/1" \
+    "parked-card,queued,ship,firstmate,Parked with card,none,parked,https://app.notion.com/p/$open")
+  run_board() {
+    FM_FAKE_TASKS_AXI_EXTRA_HELD=$rows FM_FAKE_NTN_PAGES=$pages FM_LOCK_HOLDER=test-main \
+      run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" "$@"
+  }
+  for mode in ordinary --reemit; do
+    if [ "$mode" = ordinary ]; then out=$(run_board); else out=$(run_board --reemit); fi
+    assert_not_contains "$out" "On the board" "$mode: a held item proven open on the board was still printed"
+    assert_contains "$out" "1 captain-held item(s) left out" "$mode: the left-out count is missing"
+    for kept in "Card done" "Card trashed" "Other list" "No link" "Parked with card" "Held queued work"; do
+      assert_contains "$out" "$kept" "$mode: an item not proven on the board was left out ($kept)"
+    done
+    assert_contains "$out" "Compact startup digest" "$mode: an in-flight row was left out"
+  done
+  out=$(FM_FAKE_NTN_DOWN=1 run_board)
+  for kept in "On the board" "Card done" "No link"; do
+    assert_contains "$out" "$kept" "an unreachable board still left out a held item ($kept)"
+  done
+  assert_contains "$out" "every held item is printed" "an unreachable board was not disclosed"
+  assert_contains "$out" "cannot read Notion data source" "the board failure diagnostic is missing"
+  out=$(FM_FAKE_NTN_SLEEP=5 FM_CAPTAIN_BOARD_TIMEOUT=1 run_board)
+  assert_contains "$out" "On the board" "a board check past its bound still left out a held item"
+  assert_contains "$out" "passed its 1s bound" "a timed-out board check was not disclosed"
+  pass "captain's board: only items proven open on the board leave the held listing; an unreachable or slow board keeps all"
 }
 
 test_reemit_cue_survives_the_hook_output_preview() {
@@ -3106,6 +3183,7 @@ EOF
 }
 
 test_ordinary_startup_bytes_unchanged
+test_captain_board_leaves_out_only_proven_items
 test_reemit_compacts_only_waiting_lane_history
 test_reemit_backlog_projection_and_overlap
 test_context_digest_absent_empty_present

@@ -232,6 +232,15 @@
 #             tails and all safety, wake, supervision and memory output remain.
 #             Ordinary startup output is unchanged.
 #
+# CAPTAIN'S BOARD. With config/captain-board present (both modes, tasks-axi
+# backlogs only), a captain-held item whose title or hold reason cites a card
+# that bin/fm-captain-board.sh confirms open on the captain's board, read live
+# now, is left out of the held group; one line counts what was left out. That
+# check is the digest's one synchronous network read: opt-in, and bounded by
+# FM_CAPTAIN_BOARD_TIMEOUT (default 15s). A check that fails, times out or
+# proves nothing leaves every held item printed in full, and in-flight rows are
+# never left out. Without the file the output is unchanged.
+#
 #   --source  The native session-open source, supplied only by
 #             fm-sessionstart-run.sh. A genuine `startup` that owns the active
 #             session lock records AGENTS.md's SHA-256 baseline only after the
@@ -415,6 +424,8 @@ case "$ENDPOINT_TIMEOUT" in ''|*[!0-9]*) ENDPOINT_TIMEOUT=10 ;; esac
 [ "$ENDPOINT_TIMEOUT" -gt 0 ] 2>/dev/null || ENDPOINT_TIMEOUT=10
 BACKLOG_FIELDS=blocked_by,hold_kind,hold_reason
 [ "$REEMIT" -eq 0 ] || BACKLOG_FIELDS=blocked_by,hold_kind,hold_until
+BOARD_TIMEOUT=${FM_CAPTAIN_BOARD_TIMEOUT:-15}
+case "$BOARD_TIMEOUT" in ''|*[!0-9]*|0) BOARD_TIMEOUT=15 ;; esac
 
 RULE='================================================================================'
 SUBRULE='--------------------------------------------------------------------------------'
@@ -547,6 +558,53 @@ print_reemit_held() {
   '
 }
 
+# "<id><TAB><url>" for each URL in a captain-held row's title or decoded hold
+# reason, read from a tasks-axi listing by its header's column names.
+captain_held_urls() {
+  fm_hold_reason_decode_stream | perl -CS -MJSON::PP -ne '
+    if (/^tasks\[\d+\]\{([^}]*)\}:/) { my @n = split /,/, $1; %c = map { $n[$_] => $_ } 0 .. $#n; next }
+    next unless %c && /^  (.*)$/;
+    my @f = map { /^"/ ? JSON::PP->new->allow_nonref->decode($_) : $_ } $1 =~ /("(?:[^"\\]|\\.)*"|[^,]+)/g;
+    next unless ($f[$c{hold_kind}] // "") eq "captain";
+    print "$f[$c{id}]\t$_\n" for (join " ", @f[$c{title}, $c{hold_reason}]) =~ m{https?://[^\s"<>()]+}g;
+  '
+}
+
+# Sets BOARD_PROVEN (newline-separated ids) and BOARD_NOTE for the held group.
+check_captain_board() {
+  local path=$1 listing dir msg
+  BOARD_PROVEN='' BOARD_NOTE=''
+  [ -f "$CONFIG/captain-board" ] || return 0
+  # The pairs go through a file: a timed child's stdin is not guaranteed.
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/fm-captain-board.XXXXXX") || dir=
+  if [ -n "$dir" ] \
+    && listing=$(tasks-axi list --file "$path" --state held --fields hold_kind,hold_reason 2>"$dir/err") \
+    && printf '%s\n' "$listing" | captain_held_urls > "$dir/pairs" \
+    && BOARD_PROVEN=$(fm_run_timed "$BOARD_TIMEOUT" "$SCRIPT_DIR/fm-captain-board.sh" \
+      "$CONFIG/captain-board" "$dir/pairs" 2>>"$dir/err"); then
+    if [ -n "$BOARD_PROVEN" ]; then
+      BOARD_NOTE="($(printf '%s\n' "$BOARD_PROVEN" | wc -l | tr -d ' ') captain-held item(s) left out: each cites a card open on the captain's board, checked live now; bin/fm-tasks-axi.sh list --state held lists every held item)"
+    else
+      BOARD_NOTE="(captain's board checked live now: no captain-held item cites an open card, so every held item is printed)"
+    fi
+  else
+    BOARD_PROVEN=
+    msg=$(head -n 1 "$dir/err" 2>/dev/null)
+    BOARD_NOTE="(captain's board check failed or passed its ${BOARD_TIMEOUT}s bound: ${msg:-no diagnostic}; every held item is printed)"
+  fi
+  [ -z "$dir" ] || rm -rf "$dir"
+}
+
+# Drop listing rows whose id (first field) is in BOARD_PROVEN.
+omit_board_proven() {
+  [ -n "$BOARD_PROVEN" ] || { cat; return; }
+  awk -v ids="$BOARD_PROVEN" '
+    BEGIN { n = split(ids, a, "\n"); for (i = 1; i <= n; i++) drop[a[i]] = 1 }
+    /^  / { id = $0; sub(/^  /, "", id); sub(/,.*/, "", id); if (id in drop) next }
+    { print }
+  '
+}
+
 print_backlog_tasks_axi_compact() {
   local path=$1 in_flight held blocked ready err
   if ! in_flight=$(tasks-axi list --file "$path" --state in_flight --fields "$BACKLOG_FIELDS" 2>&1); then
@@ -558,6 +616,7 @@ print_backlog_tasks_axi_compact() {
   elif ! ready=$(tasks-axi ready --file "$path" 2>&1); then
     err=$ready
   else
+    check_captain_board "$path"
     if [ "$REEMIT" -eq 1 ]; then
       printf 'compact backlog listing (tasks-axi re-emit; hold reasons omitted, use bin/fm-tasks-axi.sh show <id> --full; overlapping in-flight/held rows shown once; ready queued bounded to %s; task bodies omitted)\n' "$QUEUED_LIMIT"
     else
@@ -571,11 +630,12 @@ print_backlog_tasks_axi_compact() {
       # IDs are the first field of tasks-axi listing rows. Do not parse titles
       # or reasons as CSV: those fields may contain quoted commas/newlines.
       # Re-emit requests no reason/body fields, so each identity is one row.
-      print_reemit_held "$in_flight" "$held"
+      print_reemit_held "$in_flight" "$held" | omit_board_proven
     else
       printf '\nheld (captain- or time-gated; an in-flight item that is also held appears in both groups):\n'
-      printf '%s\n' "$held" | fm_hold_reason_decode_stream | strip_axi_help
+      printf '%s\n' "$held" | fm_hold_reason_decode_stream | strip_axi_help | omit_board_proven
     fi
+    [ -z "$BOARD_NOTE" ] || printf '%s\n' "$BOARD_NOTE"
     printf '\nblocked queued:\n'
     printf '%s\n' "$blocked" | fm_hold_reason_decode_stream | strip_axi_help
     printf '\nready queued (dispatchable now):\n'
