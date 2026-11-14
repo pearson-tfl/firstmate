@@ -377,12 +377,46 @@ fm_account_rules_parse() {
   ' -- "$1"
 }
 
-# fm_account_rules_pick <config-dir> <project-name>
-# Prints the cswap account number the valid rules choose for the project.
-# On refusal prints one error and returns 1.
-fm_account_rules_pick() {
-  local config=$1 project=$2 rules forbidden='' allowed='' list picked line name want
-  rules=$(fm_account_rules_parse "$config/account-rules") || return 1
+# --- Exhausted logins -------------------------------------------------------
+# A login that answered a long rate-limit wait is recorded here by
+# bin/fm-exhaust-switch.sh, so no launch on this machine picks it until the
+# wait it was given has passed, whichever home launches. cswap's own usage
+# figure can be stale for days, so this observed refusal is the stronger fact.
+# One line per record: "<login> <until-epoch> <recorded-epoch> <source>", where
+# login is cswap:<num>, or login:<digest> / omp:<profile> for an omp login cswap
+# does not list (bin/fm-omp-profile-lib.sh). The file is append-only; the
+# latest unexpired line for a login wins.
+
+fm_login_exhausted_file() {
+  printf '%s\n' "${FM_EXHAUSTED_LOGINS:-${XDG_STATE_HOME:-$HOME/.local/state}/firstmate/exhausted-logins}"
+}
+
+# fm_login_exhausted_list: prints each login whose recorded wait has not passed.
+fm_login_exhausted_list() {
+  local f
+  f=$(fm_login_exhausted_file)
+  [ -f "$f" ] || return 0
+  awk -v now="$(date +%s)" '$2 ~ /^[0-9]+$/ && $2 > now { print $1 }' "$f" | sort -u
+}
+
+# fm_login_exhausted_record <login> <until-epoch> <source>
+fm_login_exhausted_record() {
+  local f
+  f=$(fm_login_exhausted_file)
+  mkdir -p "$(dirname "$f")" && printf '%s %s %s %s\n' "$1" "$2" "$(date +%s)" "$3" >> "$f"
+}
+
+# fm_account_rules_ranked <config-dir> <project-name> <cswap-list-json>
+# Prints "<num> <rank>" for every cswap account the rules allow the project,
+# best first: rank is the higher of the 5-hour and 7-day used percentage, or
+# 1000 when cswap has no current figure; an account at 100 or above, or with an
+# unexpired exhausted-login record, is left out. An absent rules file allows
+# every account. On malformed rules or list prints one error and returns 1.
+fm_account_rules_ranked() {
+  local config=$1 project=$2 list=$3 rules='' forbidden='' allowed='' line name want
+  if [ -e "$config/account-rules" ] || [ -L "$config/account-rules" ]; then
+    rules=$(fm_account_rules_parse "$config/account-rules") || return 1
+  fi
   want=$(printf '%s' "$project" | tr '[:upper:]' '[:lower:]')
   while IFS= read -r line; do
     case "$line" in
@@ -395,30 +429,48 @@ fm_account_rules_pick() {
       ;;
     esac
   done <<<"$rules"
-  list=$(fm_run_timed "$FM_ACCOUNT_RULES_CSWAP_SECONDS" cswap list --json 2>/dev/null </dev/null) || {
-    echo "error: config/account-rules needs cswap's account list, but cswap list --json failed; check that cswap is installed and on PATH" >&2
-    return 1
-  }
-  picked=$(printf '%s\n' "$list" | jq -r \
-    --arg forbidden "$forbidden" --arg allowed "$allowed" '
+  printf '%s\n' "$list" | jq -r \
+    --arg forbidden "$forbidden" --arg allowed "$allowed" \
+    --arg exhausted "$(fm_login_exhausted_list | tr '\n' ' ')" '
     if .schemaVersion != 1 then error("schema") else . end
     | ($forbidden | split(" ") | map(select(. != "") | tonumber)) as $no
     | ($allowed | split(" ") | map(select(. != "") | tonumber)) as $only
+    | ($exhausted | split(" ")) as $out
     | [ .accounts[]
         | select((.number | IN($no[])) | not)
         | select(($only | length) == 0 or (.number | IN($only[])))
+        | select(("cswap:\(.number)" | IN($out[])) | not)
         | { n: .number,
             u: (if .usageStatus == "ok"
                 then ([.usage.fiveHour.pct?, .usage.sevenDay.pct?] | map(select(type == "number")) | max)
                 else null end) }
         | .rank = (.u // 1000)
         | select(.rank < 100 or .u == null) ]
-    | sort_by(.rank, .n) | .[0].n // empty' 2>/dev/null) || {
+    | sort_by(.rank, .n) | .[] | "\(.n) \(.rank)"' 2>/dev/null || {
     echo "error: config/account-rules needs cswap's account list in schemaVersion 1, and cswap list --json printed something else" >&2
     return 1
   }
+}
+
+# fm_account_rules_list: cswap's account list, or one error and return 1.
+fm_account_rules_list() {
+  fm_run_timed "$FM_ACCOUNT_RULES_CSWAP_SECONDS" cswap list --json 2>/dev/null </dev/null || {
+    echo "error: config/account-rules needs cswap's account list, but cswap list --json failed; check that cswap is installed and on PATH" >&2
+    return 1
+  }
+}
+
+# fm_account_rules_pick <config-dir> <project-name> [<excluded-num>]
+# Prints the cswap account number the valid rules choose for the project,
+# skipping excluded-num (the account a move is leaving).
+# On refusal prints one error and returns 1.
+fm_account_rules_pick() {
+  local config=$1 project=$2 exclude=${3:-} list ranked picked
+  list=$(fm_account_rules_list) || return 1
+  ranked=$(fm_account_rules_ranked "$config" "$project" "$list") || return 1
+  picked=$(printf '%s\n' "$ranked" | awk -v x="$exclude" '$1 != "" && $1 != x { print $1; exit }')
   if [ -z "$picked" ]; then
-    echo "error: config/account-rules allows no cswap account with headroom for project '$project' (forbidden:${forbidden:- none}; allowed: ${allowed:-every account})" >&2
+    echo "error: config/account-rules allows no cswap account with headroom for project '$project' (rules, usage, and exhausted logins in $(fm_login_exhausted_file) leave none${exclude:+ besides $exclude})" >&2
     return 1
   fi
   printf '%s\n' "$picked"

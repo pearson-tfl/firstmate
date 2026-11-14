@@ -1592,7 +1592,7 @@ Other runners keep their own pins.
 Each line is blank, a `#` comment, `forbid <num>...`, or `project <name> <num>...`, where the numbers are cswap account numbers and `<name>` is the project directory's own name (for a secondmate, its home directory's name), compared without regard to case.
 For example, `forbid 3` and `project bb-signal-prototype 5 4` keep account 3 out of every launch and keep that project's workers on accounts 5 and 4.
 A project with no line chooses from every account, and a forbid always wins.
-Among the allowed accounts the one with the lowest current usage wins, an account at its limit is skipped, and an account whose usage cswap cannot report ranks last.
+Among the allowed accounts the one with the lowest current usage wins, an account at its limit or [recorded exhausted](#exhausted-login-switch) is skipped, and an account whose usage cswap cannot report ranks last.
 
 Valid rules edits apply at the next launch without terminal approval.
 Malformed or unreadable rules still refuse the launch, even when the lane has an account-move override.
@@ -1603,32 +1603,49 @@ Every account choice appends one line to `data/account-switches.log` naming the 
 The spawn reports the choice as `account=cswap:<num>` and records it in the task record.
 This section owns the format, the ranking, validation, and the report; [`bin/fm-worker-account-lib.sh`](../bin/fm-worker-account-lib.sh) owns the cswap mechanics, and [runtime backend verification](verification/runtime-backends.md#account-rules-through-cswap) records the live check against the real cswap and Claude.
 
-### Per-secondmate omp profile
+### omp profile choice
 
-To launch one local omp secondmate under its own isolated omp profile, create `config/secondmate-accounts/<id>/omp-profile` in the primary home.
-Use the secondmate's registered identifier for `<id>`.
+Every canonical omp launch from this machine - ship, scout, or local secondmate, at spawn, relaunch, and recovery - runs under a named omp profile (`omp --profile <name>`, with that profile's own logins, sessions, settings, and caches) chosen by how much usage its login has left.
+The candidates are the profiles under omp's own root (`$HOME/${PI_CONFIG_DIR:-.omp}/profiles`) that hold an enabled Anthropic login in `agent/agent.db`, read without writing.
+Each profile's login is matched to a `cswap list --json` account by login and organization, and the profiles are ranked exactly as [account rules](#account-rules-configaccount-rules) rank cswap accounts, including this home's `forbid` and `project` lines when it has `config/account-rules`.
+Profiles that share a login therefore share one budget: they rank together and are skipped together.
+A login cswap does not list ranks after every listed one, and a `project` line, which names cswap accounts, excludes it.
+A login recorded as exhausted by the [exhausted-login switch](#exhausted-login-switch) is skipped until its recorded wait passes, whichever home recorded it.
+The model catalog check before launch reads the chosen profile, the task record carries `omp_profile=<name>`, and the choice is reported in `data/account-switches.log` as `omp:<name>`, like an account-rules choice.
+A machine with no named profile holding an Anthropic login launches with no `--profile` flag, unchanged.
+When every candidate is forbidden, out of headroom, or exhausted, the launch refuses rather than landing on an exhausted login.
+A raw omp launch command runs verbatim and keeps its own profile choice.
+
+To pin one local omp secondmate to a profile instead, create `config/secondmate-accounts/<id>/omp-profile` in the primary home, using the secondmate's registered identifier for `<id>`.
 The file holds one omp profile name on a single line, with an optional final newline.
 The name must match omp's own profile rule, `^[a-z0-9][a-z0-9._-]{0,63}$`, must not end in `.`, and must not be a Windows reserved device name (`con`, `prn`, `aux`, `nul`, `com0`-`com9`, `lpt0`-`lpt9`), alone or with an extension such as `nul.x`.
+The pin is the explicit override: it wins over the usage choice, except while its login is recorded exhausted, when the launch chooses by usage instead and prints a notice naming the pin.
+Only a local secondmate's own omp agent reads a pin; ships, scouts, other runners, and remote secondmates never do, another secondmate's file never applies, and there is no home-wide pin file.
+The pin is independent of the [per-secondmate account pins](#per-secondmate-account-pins), which select a Claude or Pi login root rather than an omp profile.
 
-When the file is present, that secondmate's omp agent launches as `omp --profile <name>`, so it uses that profile's own logins, sessions, settings, and caches rather than the primary's default omp profile.
-The model catalog check before launch reads the same profile.
-When the file is absent, the launch carries no `--profile` flag and is unchanged.
-There is no home-wide fallback file.
-
-Only a local secondmate's own omp agent reads this file.
-Ships, scouts, other runners, and remote secondmates never read it, and another secondmate's file never applies.
-The profile pin is independent of the [per-secondmate account pins](#per-secondmate-account-pins), which select a Claude or Pi login root rather than an omp profile.
-
-For example, `config/secondmate-accounts/speak4/omp-profile` containing `speak4` launches the local secondmate named `speak4` with `omp --profile speak4`.
-An empty, malformed, or unreadable file refuses with its path before any worker endpoint, local copy, or task record exists, and never falls back to the default profile.
+For example, `config/secondmate-accounts/speak4/omp-profile` containing `speak4` launches the local secondmate named `speak4` with `omp --profile speak4` while that login has usage left.
+An empty, malformed, or unreadable pin refuses with its path before any worker endpoint, local copy, or task record exists.
 A raw omp launch command cannot carry the flag, so a pinned secondmate refuses one; launch it with `--harness omp`.
 Firstmate does not create, sign in, or copy an omp profile; sign in to it yourself with `omp --profile <name>`.
-
-The spawn prints the pin as `omp_profile=` and records the same field in the task record.
-Every spawn, control-plane relaunch, and automatic recovery reads the file again, and a relaunch checks it before stopping the current agent.
 After changing a live mate's pin, use `bin/fm-control.sh <id> relaunch` to apply it.
-The file stays in the primary home and is not inherited or copied into the secondmate's home, because a secondmate does not launch secondmates.
-[`bin/fm-omp-profile-lib.sh`](../bin/fm-omp-profile-lib.sh) owns parsing and the refusals.
+The pin file stays in the primary home and is not inherited or copied into the secondmate's home, because a secondmate does not launch secondmates.
+[`bin/fm-omp-profile-lib.sh`](../bin/fm-omp-profile-lib.sh) owns the mechanics.
+
+### Exhausted-login switch
+
+`bin/fm-exhaust-switch.sh arm` adds one check to this home's watcher cycle that moves a seat off a login that has run out of usage, onto the best other login, on the same conversation; `disarm` removes it.
+It needs no job of its own and acts only on this home's own local seats.
+On each cycle it reads each omp and Claude seat's own session file, never its screen.
+An omp seat has run out when its last reply failed with a 429 whose `retry-after-ms` is beyond `FM_EXHAUST_MIN_WAIT_MS` (default 300000, omp's own `retry.maxDelayMs`), the case in which omp stops retrying.
+A Claude seat has run out when its last reply is Claude Code's usage-limit stop (an API error message with error `rate_limit`).
+A seat that is still working is left for a later cycle; once it reads idle, the switch records the login as exhausted and starts the move, and each failure is acted on once.
+An omp seat is resumed on its own session file under the profile the [omp profile choice](#omp-profile-choice) now picks; a Claude seat is moved with `fm-control.sh <id> account <num>` to the cswap account the account rules rank best, leaving out the one it ran out on.
+The move appears in `data/account-switches.log` like any other account choice, and the check prints one line when a move starts and one when it ends, which the watcher delivers as a notification.
+Remote secondmates and raw-command seats are not moved.
+
+Exhausted logins are recorded machine-wide in `${FM_EXHAUSTED_LOGINS:-${XDG_STATE_HOME:-$HOME/.local/state}/firstmate/exhausted-logins}`, one line per record: the login (`cswap:<num>`, or `login:<digest>` or `omp:<profile>` for an omp login cswap does not list), the Unix time its wait ends, the time it was recorded, and the seat that hit it.
+An omp login's wait ends when the 429 said; a Claude login is held for `FM_EXHAUST_CLAUDE_HOLD_SECONDS` (default 18000).
+Every launch that chooses an account or omp profile skips a login whose wait has not ended, and an expired line no longer counts.
 
 ## Lavish server address (config/lavish-axi-host)
 

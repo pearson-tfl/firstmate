@@ -533,13 +533,15 @@
 #   its cswap account through the same seam instead of config/claude-account,
 #   records account=cswap:<num>, and appends one data/account-switches.log
 #   line per choice; docs/configuration.md "Account rules" owns the contract.
-# Per-secondmate omp profile (config/secondmate-accounts/<id>/omp-profile):
-#   Opt-in, and read only for a local secondmate's own omp agent;
-#   bin/fm-omp-profile-lib.sh owns the file and its refusals. A pinned launch
-#   carries --profile <name> right after the omp executable (__OMPPROFILE__),
-#   the catalog check runs under the same profile, and the pin is recorded as
-#   omp_profile= in the task record and on the spawned line. Every spawn,
-#   relaunch, and recovery re-reads the file; an absent file changes nothing.
+# omp profile: every canonical omp launch runs on the profile whose login has
+#   the most usage left, or a local secondmate's
+#   config/secondmate-accounts/<id>/omp-profile pin unless its login is
+#   recorded exhausted; bin/fm-omp-profile-lib.sh owns the choice and its
+#   refusals. The profile rides --profile <name> right after the omp executable
+#   (__OMPPROFILE__), the catalog check runs under it, it is recorded as
+#   omp_profile= in the task record and on the spawned line, and a usage choice
+#   appends a data/account-switches.log line. Every spawn, relaunch, and
+#   recovery chooses again; no named profile changes nothing.
 #   Launch templates live in launch_template() below; placeholders replaced before launch:
 #     __BRIEF__    absolute path to data/<task-id>/brief.md
 #     __CLAUDENAME__ the shell-quoted task or secondmate id for Claude's display name
@@ -564,8 +566,8 @@
 #                  own leading space, and is empty on every fresh spawn and for
 #                  every other harness)
 #     __AGENTSESSION__ the exact agent session flag and id on a Claude Code,
-#                  Pi, or pi-signed launch (agent_session_args below owns it;
-#                  supplies its own trailing space, empty for every other harness)
+#                  Pi, or pi-signed launch, and on an omp resume (agent_session_args
+#                  below owns it; supplies its own trailing space, empty otherwise)
 #     __TURNEND__  absolute path to state/<task-id>.turn-ended (for harnesses whose
 #                  turn-end signal rides the launch command, e.g. codex -c notify=[...])
 #     __PIEXT__    absolute path to state/<task-id>.pi-ext.ts (pi busy-state extension,
@@ -3013,7 +3015,7 @@ launch_template() {
   # session_stop continuation. The busy extension is the exception: it lives
   # outside the home, so discovery never sees it, and -e is the only load.
   omp)
-    printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS __FMLOCKHOLDER__ FM_OMP_HARNESS=omp OMP_SKIP_SETUP=1 __OMPBIN____OMPPROFILE__ --config __OMPWORKERCFG__ --auto-approve --cwd __WORKTREE__ __MODELFLAG____EFFORTFLAG__-e __OMPEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
+    printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS __FMLOCKHOLDER__ FM_OMP_HARNESS=omp OMP_SKIP_SETUP=1 __OMPBIN____OMPPROFILE__ --config __OMPWORKERCFG__ --auto-approve --cwd __WORKTREE__ __MODELFLAG____EFFORTFLAG____AGENTSESSION__-e __OMPEXT__ "$(__OPINPUT__ encode launch-brief < __BRIEF__)"'
     ;;
   # agy (Antigravity CLI): --prompt-interactive "<brief>" starts the supervised
   # interactive session and auto-submits it, so the brief rides the launch
@@ -3439,6 +3441,9 @@ omp)
     echo "error: omp executable not found on PATH or in Bun's global install; install Oh My Pi or select a different verified harness" >&2
     exit 1
   }
+  # A Bun-installed omp is a Bun script, and Bun sits beside it: found off
+  # PATH, it still needs that directory on PATH to run its catalog check.
+  case ":$PATH:" in *":${OMP_BIN%/*}:"*) ;; *) PATH="${OMP_BIN%/*}:$PATH"; export PATH ;; esac
   OMP_WORKER_CFG="$FM_ROOT/.omp/fm-worker-overlay.yml"
   [ -f "$OMP_WORKER_CFG" ] || {
     echo "error: omp worker posture overlay missing at $OMP_WORKER_CFG; a worker launched without it can park on the captain's own approval or plan-mode settings" >&2
@@ -3495,17 +3500,6 @@ if [ "$EFFORT" = ultra ]; then
     echo "error: --effort ultra requires the canonical --harness pi or pi-signed launch so its native flag cannot be omitted" >&2
     exit 1
   }
-fi
-# Per-secondmate omp profile pin (header above): resolved before any endpoint,
-# worktree, or record exists, and before the catalog check that must read the
-# same profile. A ship or scout passes no mate, so it never reads a pin.
-OMP_PROFILE_MATE=
-[ "$KIND" != secondmate ] || OMP_PROFILE_MATE=$ID
-OMP_PROFILE_RAW=
-[ "$RAW_LAUNCH" = 0 ] || OMP_PROFILE_RAW=$ARG3
-OMP_PROFILE_PIN=$(fm_omp_profile_select "$HARNESS" "$CONFIG" "$OMP_PROFILE_MATE" "$OMP_PROFILE_RAW") || exit 1
-if [ "$HARNESS" = omp ]; then
-  omp_model_validate "$OMP_BIN" "$MODEL" "$OMP_PROFILE_PIN" || exit 1
 fi
 if [ "$HARNESS" = agy ]; then
   agy_model_validate "$AGY_BIN" "$MODEL" || exit 1
@@ -3570,6 +3564,22 @@ if [ "$KIND" = secondmate ] && [ -n "$FIRSTMATE_HOME" ]; then
   WORKER_ACCOUNT_PROJECT=$(fm_worker_account_project "$(resolved_existing_dir "$FIRSTMATE_HOME" 2>/dev/null || printf '%s' "$FIRSTMATE_HOME")")
 else
   WORKER_ACCOUNT_PROJECT=$(fm_worker_account_project "$PROJ")
+fi
+# omp profile (header above; bin/fm-omp-profile-lib.sh): the secondmate pin,
+# else the usage pick, resolved before any endpoint, worktree, or record
+# exists, and before the catalog check that must read the same profile. A ship
+# or scout passes no mate, so it never reads a pin.
+OMP_PROFILE_MATE=
+[ "$KIND" != secondmate ] || OMP_PROFILE_MATE=$ID
+OMP_PROFILE_RAW=
+[ "$RAW_LAUNCH" = 0 ] || OMP_PROFILE_RAW=$ARG3
+OMP_PROFILE_CHOICE=$(fm_omp_profile_select "$HARNESS" "$CONFIG" "$OMP_PROFILE_MATE" "$OMP_PROFILE_RAW" "$WORKER_ACCOUNT_PROJECT") || exit 1
+OMP_PROFILE_PIN=${OMP_PROFILE_CHOICE%%$'\t'*}
+# The profile this task ran on before, read now, before the record is rewritten.
+OMP_PROFILE_FROM=
+[ "$RELAUNCH" -eq 0 ] || OMP_PROFILE_FROM=$(fm_meta_get "$RELAUNCH_META" omp_profile)
+if [ "$HARNESS" = omp ]; then
+  omp_model_validate "$OMP_BIN" "$MODEL" "$OMP_PROFILE_PIN" || exit 1
 fi
 WORKER_ACCOUNT_OVERRIDE=${FM_CONTROL_ACCOUNT:-}
 if [ -z "$WORKER_ACCOUNT_OVERRIDE" ] && [ "$RELAUNCH" -eq 1 ]; then
@@ -3810,7 +3820,10 @@ new_agent_session_uuid() {
 agent_session_args() {
   local flag prior=
   [ "$RAW_LAUNCH" = 0 ] || return 0
-  [ "$RESUME_SESSION" -eq 0 ] || prior=$(fm_meta_get "$RELAUNCH_META" agent_session_id)
+  if [ "$RESUME_SESSION" -eq 1 ]; then
+    [ "$HARNESS" != omp ] || prior=$(fm_omp_session_file "$STATE" "$ID")
+    [ -n "$prior" ] || prior=$(fm_meta_get "$RELAUNCH_META" agent_session_id)
+  fi
   if [ "$RESUME_SESSION" -eq 1 ]; then
     flag=$(fm_control_agent_session_flag "$HARNESS" resume) || {
       echo "error: $HARNESS has no verified resume form for an exact session; relaunch $ID instead" >&2
@@ -7011,6 +7024,7 @@ EOF
 // inner turn boundary and stays a wake NOTIFICATION touch for the watcher,
 // never current-state truth.
 import { execFile } from "node:child_process";
+import { writeFileSync } from "node:fs";
 const notifyTurnEnd = $busy_notify_turnend;
 const busyEvent = (state: string, event: string) =>
   new Promise<void>((resolve) => {
@@ -7019,8 +7033,21 @@ const busyEvent = (state: string, event: string) =>
       "--gen", "$BUSY_GEN", "--source", "omp-ext", "--event", event,
     ], () => resolve());
   });
+// The live session file, for bin/fm-control.sh resume and
+// bin/fm-exhaust-switch.sh (bin/fm-omp-profile-lib.sh fm_omp_session_file).
+const recordSession = (_event: any, ctx: any) => {
+  try {
+    const file = ctx?.sessionManager?.getSessionFile?.();
+    if (file) writeFileSync("$STATE_REAL/$ID.omp-session", file + "\\n");
+  } catch {}
+};
 export default function (pi: any) {
-  pi.on("agent_start", () => busyEvent("busy", "agent-start"));
+  pi.on("session_start", recordSession);
+  pi.on("session_switch", recordSession);
+  pi.on("agent_start", (event: any, ctx: any) => {
+    recordSession(event, ctx);
+    return busyEvent("busy", "agent-start");
+  });
   pi.on("agent_end", (event: any) => {
     if (event && event.willContinue === true) return;
     return busyEvent("idle", "agent-end");
@@ -8298,4 +8325,8 @@ cswap:*)
   fm_account_rules_report "$DATA" "$ID" "${WORKER_ACCOUNT_FROM:-none}" "$WORKER_ACCOUNT_DECLARED"
   ;;
 esac
+# A usage-chosen omp profile reports the same way, as omp:<profile>.
+if [ "${OMP_PROFILE_CHOICE#*$'\t'}" = usage ]; then
+  fm_account_rules_report "$DATA" "$ID" "${OMP_PROFILE_FROM:+omp:}${OMP_PROFILE_FROM:-none}" "omp:$OMP_PROFILE_PIN"
+fi
 echo "spawned $ID harness=$HARNESS kind=$KIND$SPAWN_DELIVERY window=$META_WINDOW worktree=$WT$SPAWN_ACCOUNT"

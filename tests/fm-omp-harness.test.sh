@@ -52,6 +52,8 @@ export NODE_NO_WARNINGS=1
 # backend that consumes the generic process classifier.
 # shellcheck source=bin/fm-agent-process-lib.sh
 . "$ROOT/bin/fm-agent-process-lib.sh"
+# shellcheck source=bin/fm-omp-profile-lib.sh
+. "$ROOT/bin/fm-omp-profile-lib.sh"
 mkdir -p "$TMP_ROOT/script-bin" "$TMP_ROOT/node_modules/@oh-my-pi/pi-coding-agent/dist" "$TMP_ROOT/unrelated"
 printf '// package entry fixture\n' > "$TMP_ROOT/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"
 chmod +x "$TMP_ROOT/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"
@@ -424,13 +426,14 @@ const handlers = {};
 mod.default({ on: (name, fn) => { handlers[name] = fn; } });
 // ctx.isIdle() reads false at a natural TUI agent_end on omp; the extension
 // must go idle on a plain agent_end regardless of it.
-const ctx = { isIdle: () => false };
+const ctx = { isIdle: () => false, sessionManager: { getSessionFile: () => process.env.SESSION_FILE } };
 switch (process.env.MODE) {
   case "handlers": console.log(Object.keys(handlers).sort().join(" ")); break;
   case "agent-start": await handlers["agent_start"]({ type: "agent_start" }, ctx); break;
   case "end-continuing": await handlers["agent_end"]({ type: "agent_end", willContinue: true }, ctx); break;
   case "end-final": await handlers["agent_end"]({ type: "agent_end" }, ctx); break;
   case "turn-end": await handlers["turn_end"]({ type: "turn_end", turnIndex: 0 }, ctx); break;
+  case "session-start": await handlers["session_start"]({ type: "session_start" }, ctx); break;
   default: throw new Error("unknown mode " + process.env.MODE);
 }
 if (process.env.MODE === "turn-end") {
@@ -473,10 +476,115 @@ test_busy_extension_lifecycle() {
   out=$(drive_omp_ext "$ext" end-final) || fail "final agent_end drive failed: $out"
   [ "$(fm_busy_classify tmux fake:w omp "$id" "$state")" = "idle omp-ext" ] || fail "a plain agent_end must classify 'idle omp-ext'"
 
+  # The live session file is recorded for resume and the exhaustion watcher,
+  # and an agent_start refreshes it.
+  printf '{}\n' > "$CASE_DIR/session-a.jsonl"
+  printf '{}\n' > "$CASE_DIR/session-b.jsonl"
+  SESSION_FILE="$CASE_DIR/session-a.jsonl" drive_omp_ext "$ext" session-start >/dev/null || fail "session_start drive failed"
+  [ "$(fm_omp_session_file "$state" "$id")" = "$CASE_DIR/session-a.jsonl" ] || fail "session_start must record the live session file"
+  SESSION_FILE="$CASE_DIR/session-b.jsonl" drive_omp_ext "$ext" agent-start >/dev/null || fail "agent_start drive failed"
+  [ "$(fm_omp_session_file "$state" "$id")" = "$CASE_DIR/session-b.jsonl" ] || fail "agent_start must refresh the recorded session file"
+
   # A record from another harness's writer is never trusted for omp.
   fm_busy_source_trusted omp pi-ext && fail "omp must not trust the Pi extension's records"
   fm_busy_source_trusted omp omp-ext || fail "omp must trust its own extension's records"
   pass "omp extension: agent_start busy, willContinue stays busy, plain agent_end idle, turn_end a notification"
+}
+
+# --- Usage-based omp profile choice ---------------------------------------------
+
+# make_omp_profile <root> <profile> [<login> <org>]: a profile directory whose
+# agent.db holds an enabled anthropic login, or none when login is omitted.
+make_omp_profile() {
+  mkdir -p "$1/profiles/$2/agent"
+  sqlite3 "$1/profiles/$2/agent/agent.db" "create table auth_credentials (id integer primary key,
+    provider text, credential_type text, data text, disabled_cause text, identity_key text);" || return 1
+  [ -n "${3:-}" ] || return 0
+  sqlite3 "$1/profiles/$2/agent/agent.db" "insert into auth_credentials (provider, credential_type, data)
+    values ('anthropic', 'oauth', json_object('email', '$3', 'orgId', '$4'));"
+}
+
+# make_cswap_list <fakebin> <json>: a cswap whose list --json prints json.
+make_cswap_list() {
+  printf '%s\n' "$2" > "$1/cswap-list.json"
+  # shellcheck disable=SC2016 # $1 belongs to the generated script
+  printf '#!/bin/sh\n[ "$1" = list ] && exec cat %q\nexit 1\n' "$1/cswap-list.json" > "$1/cswap"
+  chmod +x "$1/cswap"
+}
+
+test_profile_choice_by_usage_exhaustion_rules_and_pin() {
+  local world root fakebin config out
+  command -v sqlite3 >/dev/null 2>&1 || { pass "omp profile choice: skipped, sqlite3 absent"; return 0; }
+  world="$TMP_ROOT/profile-choice"
+  root="$world/omp-root"
+  fakebin="$world/bin"
+  config="$world/config"
+  mkdir -p "$fakebin" "$config/secondmate-accounts/sm"
+  make_omp_profile "$root" busy one@example.test org-1 || fail "fixture db"
+  make_omp_profile "$root" spare two@example.test org-2 || fail "fixture db"
+  make_omp_profile "$root" spare2 two@example.test org-2 || fail "fixture db"
+  make_omp_profile "$root" stranger three@example.test org-3 || fail "fixture db"
+  make_omp_profile "$root" nologin || fail "fixture db"
+  make_cswap_list "$fakebin" '{"schemaVersion":1,"accounts":[
+    {"number":1,"email":"one@example.test","organizationUuid":"org-1","usageStatus":"ok","usage":{"fiveHour":{"pct":80},"sevenDay":{"pct":20}}},
+    {"number":2,"email":"two@example.test","organizationUuid":"org-2","usageStatus":"ok","usage":{"fiveHour":{"pct":10},"sevenDay":{"pct":30}}},
+    {"number":3,"email":"gone@example.test","organizationUuid":"org-9","usageStatus":"ok","usage":{"fiveHour":{"pct":0},"sevenDay":{"pct":0}}}]}'
+  select_profile() {  # <mate> [<project>]
+    PATH="$fakebin:$PATH" FM_OMP_ROOT="$root" FM_EXHAUSTED_LOGINS="$world/exhausted" bash -c '
+      . "$1/bin/fm-omp-profile-lib.sh"; fm_omp_profile_select omp "$2" "$3" "" "${4:-proj}"' _ "$ROOT" "$config" "$@" 2>&1
+  }
+  out=$(select_profile "")
+  [ "$out" = "spare"$'\t'"usage" ] || fail "the least-used login (cswap 2, 30%) must win, first profile by name: $out"
+  out=$(PATH="$fakebin:$PATH" FM_OMP_ROOT="$root" bash -c '. "$1/bin/fm-omp-profile-lib.sh"; fm_omp_profile_logins "$(cswap list --json)"' _ "$ROOT")
+  case "$out" in *example.test*) fail "a login must never be printed: $out" ;; esac
+  printf '%s\n' "$out" | grep -qx "spare2"$'\t'"cswap:2" || fail "profiles sharing a login must map to one cswap account: $out"
+  printf '%s\n' "$out" | grep -q "^stranger"$'\t'"login:[0-9a-f]\{12\}$" || fail "an unlisted login maps to a digest key: $out"
+  printf '%s\n' "$out" | grep -q "^nologin" && fail "a profile without an anthropic login is never a candidate: $out"
+  # Recording cswap 2 exhausted retires both of its profiles at once.
+  printf 'cswap:2 %s 0 test\n' "$(( $(date +%s) + 3600 ))" > "$world/exhausted"
+  out=$(select_profile "")
+  [ "$out" = "busy"$'\t'"usage" ] || fail "an exhausted login's profiles must all be skipped: $out"
+  # An expired record no longer counts.
+  printf 'cswap:2 %s 0 test\n' "$(( $(date +%s) - 1 ))" > "$world/exhausted"
+  [ "$(select_profile "")" = "spare"$'\t'"usage" ] || fail "an expired exhausted record must not count"
+  # Rules: forbid applies by cswap number; a project line excludes unlisted logins.
+  printf 'forbid 2\n' > "$config/account-rules"
+  [ "$(select_profile "")" = "busy"$'\t'"usage" ] || fail "a forbidden account's profiles must be skipped"
+  printf 'project proj 2\n' > "$config/account-rules"
+  printf 'cswap:2 %s 0 test\n' "$(( $(date +%s) + 3600 ))" > "$world/exhausted"
+  out=$(select_profile "")
+  case "$out" in *"refusing to launch on an exhausted login"*) ;; *) fail "nothing allowed and unexhausted must refuse: $out" ;; esac
+  rm -f "$config/account-rules"
+  # Unknown-usage logins come after every listed one, so they are a last resort.
+  printf 'cswap:1 %s 0 test\ncswap:2 %s 0 test\n' "$(( $(date +%s) + 3600 ))" "$(( $(date +%s) + 3600 ))" > "$world/exhausted"
+  [ "$(select_profile "")" = "stranger"$'\t'"usage" ] || fail "an unlisted login is still usable when every listed one is exhausted"
+  # The pin is the explicit override, except while its login is exhausted.
+  : > "$world/exhausted"
+  printf 'busy\n' > "$config/secondmate-accounts/sm/omp-profile"
+  [ "$(select_profile sm)" = "busy"$'\t'"pin" ] || fail "a healthy pin must win over the usage pick"
+  printf 'cswap:1 %s 0 test\n' "$(( $(date +%s) + 3600 ))" > "$world/exhausted"
+  out=$(select_profile sm)
+  case "$out" in *"recorded exhausted; launching on spare by usage instead"*spare$'\t'usage) ;; *) fail "an exhausted pin must yield to the usage pick and say so: $out" ;; esac
+  # No profile at all keeps the ambient launch.
+  [ -z "$(PATH="$fakebin:$PATH" FM_OMP_ROOT="$world/none" bash -c '. "$1/bin/fm-omp-profile-lib.sh"; fm_omp_profile_select omp /nonexistent "" "" p' _ "$ROOT")" ] \
+    || fail "a machine with no omp profile must keep the ambient launch"
+  pass "omp profile choice: least-used login, shared logins one budget, exhausted and forbidden skipped, pin overrides unless exhausted"
+}
+
+test_spawn_records_and_reports_a_usage_choice() {
+  local rec id=omp-usage-q9 out root
+  command -v sqlite3 >/dev/null 2>&1 || { pass "omp usage spawn: skipped, sqlite3 absent"; return 0; }
+  rec=$(make_spawn_case usage-spawn omp "$id")
+  read_case_record "$rec"
+  root="$CASE_DIR/omp-root"
+  make_omp_profile "$root" spare two@example.test org-2 || fail "fixture db"
+  make_cswap_list "$FAKEBIN_DIR" '{"schemaVersion":1,"accounts":[{"number":2,"email":"two@example.test","organizationUuid":"org-2","usageStatus":"ok","usage":{"fiveHour":{"pct":10}}}]}'
+  out=$(FM_OMP_ROOT="$root" run_scout_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --harness omp)
+  expect_code 0 $? "an omp spawn with profiles should succeed: $out"
+  assert_contains "$(cat "$LAUNCH_LOG")" "/omp' --profile 'spare' --config" "the usage pick must ride --profile right after the executable"
+  assert_grep 'omp_profile=spare' "$HOME_DIR/state/$id.meta" "the record must carry the chosen profile"
+  assert_grep "task=$id from=none to=omp:spare" "$HOME_DIR/data/account-switches.log" "the choice must be reported like a rules-chosen account"
+  pass "fm-spawn: an omp ship or scout launches on the usage-chosen profile, recorded and reported"
 }
 
 # --- 4. Control, composer, supervision model -----------------------------------
@@ -1002,6 +1110,8 @@ test_secondmate_omp_profile_pin
 test_secondmate_omp_profile_absent_or_foreign_adds_nothing
 test_secondmate_omp_profile_malformed_refuses
 test_busy_extension_lifecycle
+test_profile_choice_by_usage_exhaustion_rules_and_pin
+test_spawn_records_and_reports_a_usage_choice
 test_control_composer_and_model_tables
 test_ownership_proof_is_omp_keyed
 test_turnend_guard_extension_compels_one_continuation
