@@ -284,7 +284,7 @@ if "$queue_pending"; then
   if [ "$READ_ONLY" -eq 1 ]; then
     echo "WARNING: queued wakes pending - left untouched because this session lacks verified fleet-lock ownership." >&2
   elif [ "$GUARD_ACTOR" != branch ]; then
-    echo "WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else." >&2
+    echo "WARNING: queued wakes pending - drain them with $(fm_wake_drain_cmd) before anything else." >&2
   fi
 elif "$queue_branch_held"; then
   echo "NOTICE: wake rows held by the live supervision branch - it presents and acknowledges them; do not drain them from here." >&2
