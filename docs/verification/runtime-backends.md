@@ -3540,7 +3540,8 @@ Repeat these commands after an omp upgrade to refresh this record.
 
 Verified on 2026-11-14 against omp 18.14.0 (`~/.bun/bin/omp`) on macOS arm64, for the [exhausted-login switch](../configuration.md#exhausted-login-switch).
 When a provider answers 429 with a `retry-after-ms` beyond `retry.maxDelayMs` (300000 by default), omp stops with `Retry failed after 1 attempts: Provider requested 371640000ms wait, exceeds retry.maxDelayMs (300000ms)` and writes the failure to its session file as an assistant message with `stopReason` `error`, `errorStatus` 429, an `errorMessage` ending in `retry-after-ms=<ms>`, and `completedAt` in milliseconds.
-The busy extension's `ctx.sessionManager.getSessionFile()` names that file, and `omp --resume <file>` under another `--profile` continues the same session id with the other profile's login.
+The busy extension's `ctx.sessionManager.getSessionFile()` names that file, which omp keeps under `<profile>/agent/sessions/<working directory relative to HOME, / as ->/`.
+In a disposable lab on the same date, `bin/fm-exhaust-switch.sh` driven by a real `bin/fm-watch.sh` cycle moved a seat failing that way through `bin/fm-control.sh <id> resume` from a stubbed profile to a profile with a real login; the session id and session file were unchanged afterward and the seat answered on the new login.
 `--profile` wins over an inherited `OMP_PROFILE`:
 
 ```text
@@ -3575,7 +3576,12 @@ $ grep -rh --include='*.jsonl' '"error":"rate_limit"' ~/.claude/projects \
 ```
 
 `bin/fm-exhaust-switch.sh` counts a usage stop only when the text starts with "You've hit your", "You've reached your", or "You're out of usage", and `tests/fm-exhaust-switch.test.sh` pins the throttle as not a stop.
-Repeat the tally after a Claude Code upgrade; a new usage-stop wording that matches neither form leaves the seat where it is rather than moving it.
+A new usage-stop wording that matches neither form leaves the seat where it is rather than moving it, so after a Claude Code upgrade run the token-free guard, which replays the last week's real records through the switch and fails naming the version on any unrecognised wording:
+
+```text
+$ bin/fm-test-run.sh tests/fm-exhaust-switch-claude-live-e2e.test.sh
+ok - Claude Code 2.1.325 (Claude Code): 7 distinct rate_limit wordings from real transcripts read correctly as usage stop or throttle
+```
 
 ### Remote second mate on Linux
 

@@ -86,6 +86,20 @@ out=$(FM_OMP_ROOT="$TMP_ROOT/no-omp-root" run_check)
 case "$out" in *noprofile*) ;; *) fail "the failed move must be reported: $out" ;; esac
 pass "exhaust switch: an omp seat with no other profile to move to is left in place and reported failed"
 
+# A seat spawned before the session record existed is found in omp's own folder.
+: > "$HOME_DIR/control.log"
+omp_seat legacy 371640000
+rm -f "$STATE/legacy.omp-session"
+printf 'worktree=%s\n' "$TMP_ROOT/wt-legacy" >> "$STATE/legacy.meta"
+legacy_dir="$FM_OMP_ROOT/profiles/busy/agent/sessions/$(printf '%s' "${TMP_ROOT#"${HOME%/}"}/wt-legacy" | tr '/' '-')"
+mkdir -p "$legacy_dir"
+mv "$TMP_ROOT/legacy.jsonl" "$legacy_dir/2026-11-13T00-00-00-000Z_legacy.jsonl"
+out=$(run_check)
+case "$out" in *"legacy ran out of usage on omp:busy"*) ;; *) fail "a pre-record seat must be found through omp's session folder: $out" ;; esac
+wait_record legacy "done" || fail "the legacy move must finish: $(cat "$STATE/legacy.exhaust-switch.log")"
+run_check >/dev/null
+pass "exhaust switch: a seat spawned before the session record is found through omp's own session folder"
+
 # A short wait is omp's own retry, and a busy seat is left for a later cycle.
 : > "$HOME_DIR/control.log"
 omp_seat shortwait 120000

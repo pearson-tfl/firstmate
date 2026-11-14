@@ -1587,7 +1587,7 @@ When `config/account-rules` exists, every fresh Claude spawn from that home pick
 Both profile preparation and the actual Claude launch use `cswap run <num> --share-history --`, including secondmates and resumed sessions.
 The global login is never switched, so other sessions and background jobs that use their own saved tokens are unaffected.
 `config/claude-account`, or a per-secondmate Claude pin, beside the rules file refuses the launch rather than being used.
-Other runners keep their own pins.
+Pi keeps its own pin; omp profiles follow the [omp profile choice](#omp-profile-choice), which reads these rules too.
 
 Each line is blank, a `#` comment, `forbid <num>...`, or `project <name> <num>...`, where the numbers are cswap account numbers and `<name>` is the project directory's own name (for a secondmate, its home directory's name), compared without regard to case.
 For example, `forbid 3` and `project bb-signal-prototype 5 4` keep account 3 out of every launch and keep that project's workers on accounts 5 and 4.
@@ -1644,9 +1644,11 @@ An omp seat is resumed on its own session file under the profile the [omp profil
 The move appears in `data/account-switches.log` like any other account choice, and the check prints one line when a move starts and one when it ends, which the watcher delivers as a notification.
 Remote secondmates and raw-command seats are not moved.
 
-Exhausted logins are recorded machine-wide in `${FM_EXHAUSTED_LOGINS:-${XDG_STATE_HOME:-$HOME/.local/state}/firstmate/exhausted-logins}`, one line per record: the login (`cswap:<num>`, or `login:<digest>` or `omp:<profile>` for an omp login cswap does not list), the Unix time its wait ends, the time it was recorded, and the seat that hit it.
+Exhausted logins are recorded machine-wide in `${FM_EXHAUSTED_LOGINS:-${XDG_STATE_HOME:-$HOME/.local/state}/firstmate/exhausted-logins}`, one line per record: the login (`cswap:<num>`, or `login:<digest>` or `omp:<profile>` for an omp login cswap does not list, `omp:default` for omp's unnamed default profile), the Unix time its wait ends, the time it was recorded, and the seat that hit it.
 An omp login's wait ends when the 429 said; a Claude login is held for `FM_EXHAUST_CLAUDE_HOLD_SECONDS` (default 18000).
 Every launch that chooses an account or omp profile skips a login whose wait has not ended, and an expired line no longer counts.
+The record is shared by every Firstmate home on the machine, secondmate homes included, so a login one home finds exhausted is avoided by all of them, and each home's own switch moves only that home's seats.
+An omp seat spawned before its session file was recorded is found through omp's own session folder for its profile and working directory.
 
 ## Lavish server address (config/lavish-axi-host)
 
