@@ -1,0 +1,539 @@
+FM_TEST_BEGIN 2026-11-14T19:28:41Z tests/fm-calm-pi-extension.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-14T19:28:41Z tests/fm-agy-harness.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - Pi calm resolves its persistent home independently of Pi's launch directory
+ok - Pi calm compatibility evidence never rejects a Pi version for being newer than 0.82.0, and still fails closed on a missing or malformed version
+ok - a missing collapsed-thinking presentation API degrades only that Calm adapter with a clear skip reason, while the rest of Calm still registers
+ok - missing Pi presentation class exports reach the independent adapter degradation path
+ok - Calm hides queued Firstmate rows only on a session that can keep them, keeps hidden ones out of the editor on Escape, delivers them once in order, and leaves unsupported sessions and Calm off stock
+ok - Calm registers none of its 7 built-in tool wrappers at load while config/calm is off, and all 7 synchronously at load while config/calm is on
+ok - Calm's first same-session /calm activation claims every uncontested built-in, leaves a foreign bash tool fully intact and callable, warns prominently and logs the contested name, and only rows constructed before that activation - the documented bound - fail to retroactively collapse
+ok - Pi calm centralizes transcript visibility, preserves execution/export data, keeps Pi's stock working row visible while no run is active, and persists its choice across session starts
+ok - Pi calm on collapses mid-turn assistant working notes to zero height while Calm off keeps them, leaves streaming, truncated-final, and genuine final replies untouched, never mutates the messages, ignores every /calm argument, and restores a legacy persisted max as ordinary Calm on
+ok - Pi operational follow-up E2E processes exact user-role notifications once while Calm hides current and adjacent rows, Calm off and absent render them, and restart preserves semantics
+ok - Pi 1.5.2 with Calm on hides and retains queued Firstmate input through Escape, delivers it once, and leaves Calm off stock
+ok - Pi Calm native /skill:ahoy geometry keeps every collapsed thinking and tool block at zero height while preserving expansion, history, restart, and Calm-off rendering
+ok - Pi Calm working ship keeps its centered two-row asymmetric Unicode boat inside a deterministic long-wave trough, paints all water standard blue and the whole boat standard yellow with balanced resets, keeps ANSI-stripped width exact, reverses cleanly at both edges and every width, clamps visible and hidden resizes, falls back deterministically when narrow, freezes and resumes across settle/start without hidden-time jumps or duplicate timers, resets only on a fresh session, and leaves Calm-off visibility untouched
+ok - SKIP: no standalone Pi Calm extension is installed, so dual-install coverage used the pinned shared-slot contract; set FM_STANDALONE_CALM_SHIP to check one
+ok - the rendered-export-DOM guard renders in one pass, retries a bounded number of Chrome start-up failures, and reports the Chrome binary, Chrome version, Pi version, exit status, and Chrome diagnostic when every attempt fails
+not ok - Chrome or Chromium is required for rendered export DOM assertions; set FM_CHROME_BIN to one
+FM_TEST_END 2026-11-14T19:29:20Z tests/fm-calm-pi-extension.test.sh exit=1 duration_ms=39516 gate_skip=false
+ok - fm-harness.sh: ancestry detects a natively-named agy command
+ok - fm-harness.sh: ancestry rejects unrelated agy mentions
+ok - fm-harness.sh: no inherited launcher marker claims the agy identity
+ok - fm-control-lib: agy mechanics are Escape once, no clear key, and /quit
+ok - fm-busy-lib: only the pinned esc-to-cancel row carries the agy busy verdict
+ok - fm-composer-lib: agy delivery signatures never cross harnesses
+ok - fm-busy-lib: agy classifies busy on its marker and unknown without it
+ok - bin/fm-agent-process-lib.sh: agy is an agent, fragments are not
+ok - herdr exit detection: done with a live registry and an agy process view stays live and refuses replacement
+ok - herdr exit detection: a registered status over a shell-only pane is stale-agent and still refuses closing
+ok - herdr exit detection: a registered pane with an agy foreground stays live however its shell ranks
+ok - herdr exit detection: only a positively unregistered pane is agent-free
+ok - herdr exit detection: malformed and failed reads stay unknown
+ok - fm-spawn: agy launch carries brief, model, effort, and autonomy with cleared markers
+ok - fm-spawn: agy omits xhigh from the launch but records it in task metadata
+ok - fm-spawn: an unlisted agy model refuses before pane creation
+ok - fm-spawn: an unreachable agy listing establishes nothing and launches
+ok - fm-spawn: a hung agy listing is cut off by the shared bound and launches unvalidated
+ok - fm-spawn: a zero FM_AGY_MODELS_TIMEOUT is clamped to the default bound
+ok - fm-agy-trust.sh: registers the logical and resolved worktree paths and preserves the store
+ok - fm-agy-trust.sh: creates agy's settings store when none exists
+ok - fm-agy-trust.sh: refuses every out-of-scope path and never rewrites a broken store
+ok - fm-spawn: agy pre-registers the worktree and launches straight into a busy turn
+ok - fm-spawn: agy answers a dialog that renders anyway exactly once, then confirms busy
+ok - fm-spawn: on an unregistered path a premature busy verdict waits for the dialog to be answered
+ok - fm-spawn: a busy verdict on an unregistered path without a dialog fails and closes the endpoint
+ok - fm-spawn: an agy dialog that never turns busy fails the spawn and closes the endpoint
+ok - fm-spawn: a missing agy executable refuses before pane creation
+ok - fm-spawn: agy secondmate pre-trusts the secondmate home and records kind=secondmate
+ok - fm-spawn: agy arms no busy wiring and writes no sidecar
+FM_TEST_END 2026-11-14T19:29:41Z tests/fm-agy-harness.test.sh exit=0 duration_ms=59843 gate_skip=false
+FM_TEST_BEGIN 2026-11-14T19:29:41Z tests/fm-secondmate-safety.test.sh family=secondmate expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-14T19:29:41Z tests/fm-secondmate-restart.test.sh family=secondmate expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-14T19:29:41Z tests/fm-secondmate-liveness.test.sh family=secondmate expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-14T19:29:41Z tests/fm-secondmate-lifecycle-e2e.test.sh family=secondmate expected_gate_skip=none
+ok - seed: registry scope+projects, charter copied, clones+origins, no-mistakes init in subhome only
+ok - spawn: launches in the subhome with persistent charter, records routing meta
+ok - send: a bare fm-<id> secondmate enqueues a marked request and rings the meta window
+ok - handoff: in-scope items move verbatim, out-of-scope stays, idempotent
+ok - recovery: respawns from the durable registry and persistent home
+ok - teardown: removes the home, then clears meta and the registry route
+FM_TEST_END 2026-11-14T19:29:57Z tests/fm-secondmate-lifecycle-e2e.test.sh exit=0 duration_ms=16598 gate_skip=false
+ok - fm_backend_tmux_agent_state: separates live, dead, missing, ambiguous, and unreadable
+ok - fm_backend_tmux_agent_state: rejects malformed targets before probing tmux
+ok - fm_backend_herdr_agent_state: preserves missing/no-agent/live/unknown husk behavior
+ok - fm_backend_agent_state: routes tmux/Herdr and keeps Zellij unverified
+ok - sweep: a confirmed-dead secondmate endpoint is killed and respawned
+ok - sweep: secondmate recovery resolves its durable account despite a different ambient login
+ok - sweep: distinct secondmate relaunches serialize across the task-set lock
+ok - sweep: a tmux secondmate whose close fails keeps the existing best-effort kill and guarded spawn
+ok - sweep: an already-live secondmate is untouched and distinguishable in verbose diagnostics
+ok - sweep: an authoritatively missing Pi secondmate window is relaunched
+ok - sweep: an authoritatively missing pi-signed secondmate window is relaunched
+ok - sweep: an existing ambiguous Pi process prevents duplicate recovery
+ok - sweep: transient target unreadability never licenses recovery
+ok - sweep: failed relaunch diagnostics distinguish a confidently missing endpoint
+ok - sweep: an unverified harness blocks recovery with a concrete diagnostic
+ok - sweep: idempotent by construction - a live secondmate is never re-touched on a later run
+ok - sweep: skipped entirely under FM_BOOTSTRAP_DETECT_ONLY=1, exactly like the other mutating sweeps
+ok - sweep: a silent no-op with no kind=secondmate meta present (a secondmate home's own natural scoping)
+ok - sweep: a mate mid-episode under the shared liveness lock is skipped entirely
+ok - relaunch: the spawn timeout bounds the lock wait before touching the endpoint
+ok - sweep: an unreadable or unwritable relaunch ledger refuses to kill or spawn
+ok - poll probe: remote states map to the same contract as local, one call each
+ok - poll probe: unreachable or inconclusive remote reads preserve the route
+# all fm-secondmate-liveness tests passed
+FM_TEST_END 2026-11-14T19:30:32Z tests/fm-secondmate-liveness.test.sh exit=0 duration_ms=50825 gate_skip=false
+ok - T1 persist is a gate, and asks for open records and task status only
+ok - T2 the mate persists before anything is stopped
+ok - T2b an arrived persist answer is resolved before timeout
+ok - T2c a reply between the preliminary scan and timeout decision wins
+ok - T3 a runtime that cannot prove a restart falls back to the re-read message
+ok - T4 every named mate is accounted for, including one this home does not know
+ok - T5 a refused restart leaves the mate running and reports an unknown outcome
+ok - T8 a local restart re-resolves this home's pin and reports the runtime that came up
+ok - native Ultra survives local restart and the remote restart transport
+ok - T6 a remote mate restarts through the host-local control plane over the fm-on hop
+ok - T6a a remote mate with a per-mate override restarts onto that override, not the default pin
+ok - T6b a remote mate with no override line still restarts onto the default pin
+ok - T6d a legacy pin file still restarts the mate onto its first line
+ok - T6c an unreadable per-mate pin falls back to the re-read path with its agent left running
+ok - T7 an unreachable host is reported honestly instead of claimed as reloaded
+ok - T9 the persist gate retains its explicitly allocated correlation
+ok - T10 pending persist answers are polled as one fleet
+ok - T11 post-stop restart failure is never misreported as a nudge
+ok - T12 relaunch waits do not block fleet persistence polling
+ok - T13 a dead restart worker cannot hang the parent
+ok - T14 a result published during reaping is honored
+ok - T15 an already-current live mate is named by the update pass and genuinely restarted
+ok - T16 an already-current mate with an unprovable runtime keeps the honest nudge path
+ok - T17 a T3 mate is routed to the re-read message by both passes, never restarted
+# all fm-secondmate-restart tests passed
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+FM_TEST_END 2026-11-14T19:30:58Z tests/fm-secondmate-restart.test.sh exit=0 duration_ms=77523 gate_skip=false
+ok - FM_HOME parameterizes data and state paths
+ok - fm-lock status is scoped per home
+ok - seed allows overlapping project clone lists and drops the owns/owner routing
+ok - home-seed validation rejects registry records no operational parser can consume
+ok - home seeding refuses broken registry symlinks before provisioning
+ok - home seeding refuses unreadable registries before provisioning
+ok - home seed validation rejects duplicate home routes
+ok - home seed validation rejects duplicate id routes
+ok - home seed validation rejects nested home routes
+leased worktree for dash
+ok - home seeding durably leases treehouse-acquired dash homes under the secondmate id
+ok - home seeding returns rejected acquired homes through treehouse
+ok - home seed rollback warns when treehouse-acquired return fails
+ok - home seeding leaves unsafe acquired active homes untouched
+ok - home seeding rolls back failed clone attempts without residue
+ok - home seeding refuses direct seed without filled charter text
+ok - home seeding refuses unfilled placeholder charters
+ok - home seeding refuses empty normalized charter fields
+ok - home seeding scaffolds, registers, and spawns a project-less home end to end
+ok - secondmate spawn resolves home validation and projects from punctuated registry fields
+ok - secondmate spawn refuses ambiguous, supplied-home, and metadata-home registry bindings
+ok - home seeding validates reused project-less charters before mutation
+ok - home seeding refuses project-less conversion of a populated home
+ok - home seeding handles spaced project names in project-less refusal and registry queries
+ok - home seeding refuses project-less homes whose projects directory cannot be inspected
+ok - home seeding refuses project-less homes with symlinked projects directories
+ok - home seeding refuses project-less homes with non-directory projects paths
+ok - home seeding refuses project-less homes whose project registry cannot be inspected
+ok - home seeding fails loudly on accidental project omission and rejects mixed --no-projects
+ok - home seeding refuses local-only projects
+ok - home seeding refuses a registry entry whose posture does not resolve
+ok - home seeding refuses registry delimiter home paths
+ok - home seeding refuses active home and repo root
+ok - home seeding refuses homes marked for another id
+ok - home seeding refuses homes registered to another id
+ok - home seeding refuses same-id reassignment to a different home
+ok - home seeding refuses registered home overlaps
+ok - remote-backed subhome seeding requires a source origin
+ok - remote-backed subhome seeding validates existing destination origins
+ok - home seeding resolves relative source origins against the source project
+ok - home seeding skips initialized existing no-mistakes clones
+ok - home seeding refuses uninitialized existing no-mistakes clones
+ok - home seeding refuses project destinations outside the subhome
+ok - home seeding refuses operational directories outside the subhome
+ok - home seeding refuses symlinked and non-regular leaf files
+ok - home reseeding preserves and enforces the durable parent binding
+ok - secondmate spawn validates homes before launch
+ok - secondmate spawn refuses operational directories outside the subhome
+ok - fm-send refuses a bare firstmate window with no metadata in this home
+ok - secondmate teardown retires empty homes and releases routing
+ok - the supervision branch cannot retire a secondmate and leaves it fully intact
+ok - secondmate teardown refuses ambiguous and identity-mismatched registry bindings
+ok - normal secondmate teardown sweeps process events before removal
+ok - secondmate teardown preserves state when process-event sweeping is unavailable
+ok - later teardown refusals preserve active process-event sources
+ok - force teardown sweeps nested secondmate homes before deletion
+ok - force teardown preserves nested process-event restoration status and recovery state
+ok - secondmate teardown refuses to hide failed leased-home return
+ok - secondmate teardown raw-removes plain-clone homes, including a leaked read-only strip dir
+ok - secondmate force teardown discards child work
+ok - forced secondmate teardown refuses duplicated descendant pool slots
+ok - secondmate force teardown preserves child worktree after unproven lock refusal
+ok - force teardown allows non-state operational directory symlinks inside the subhome
+ok - force teardown refuses operational directory symlinks outside the subhome
+ok - secondmate teardown refuses homes containing registered nested homes
+ok - secondmate teardown refuses nested homes from the child registry
+ok - force teardown validates subhome before child cleanup
+ok - forced teardown refuses a non-directory descendant state path
+ok - forced teardown refuses a symlinked descendant state path
+ok - forced teardown locks a descendant whose state directory was absent
+ok - forced teardown refuses while a fresh task is being published in the home
+ok - a fresh spawn refuses to publish while a forced teardown owns the task set
+ok - a fresh spawn refusal identifies another spawn as the task-set holder
+ok - a fresh remote secondmate spawn refuses while the task set is owned
+ok - force teardown refuses child worktrees inside the active home
+ok - force teardown refuses child worktrees inside the firstmate repo
+ok - force teardown refuses unregistered child worktree paths
+ok - secondmate teardown path-boundary matrix refuses unmarked/ancestor/active-descendant/repo-descendant homes
+ok - idle kind=secondmate pane is healthy and not stale
+ok - secondmate charter brief is idle by default and does not self-initiate work
+ok - fm-backlog-handoff aborts atomically on unmatched, in-flight, and unregistered targets
+ok - fm-backlog-handoff refuses Done items under whitespace section headings and unsafe homes
+FM_TEST_END 2026-11-14T19:31:14Z tests/fm-secondmate-safety.test.sh exit=0 duration_ms=93407 gate_skip=false
+FM_TEST_BEGIN 2026-11-14T19:31:14Z tests/fm-tangle-guard.test.sh family=session-bootstrap expected_gate_skip=none
+ok - fm_primary_tangle_branch: feature branch alarms; default/detached/non-git stay silent
+ok - fm-guard: bordered tangle banner fires only for a feature branch and suppresses repair commands in read-only mode
+ok - fm-bootstrap: TANGLE problem line fires only for a feature branch and suppresses repair commands in detect-only mode
+ok - fm-brief: ship brief asserts worktree isolation before the branch step
+ok - fm-spawn: aborts unless the resolved worktree is a genuine, isolated worktree
+ok - fm-spawn: appends windows by session-colon, pins the name, and targets the window id
+FM_TEST_END 2026-11-14T19:31:24Z tests/fm-tangle-guard.test.sh exit=0 duration_ms=10161 gate_skip=false
+FM_TEST_BEGIN 2026-11-14T19:31:24Z tests/fm-secondmate-busy-contract-live-e2e.test.sh family=live-harness-optin expected_gate_skip=live-capability
+# skip: claude is not installed on this machine, so its secondmate busy contract is unverified here
+# skip: opencode is not installed on this machine, so its secondmate busy contract is unverified here
+# pi 1.5.2: real process stayed up; pane tail classify=unknown launch-prompt
+ok - pi 1.5.2: a tmux secondmate spawn arms a busy verdict the active-turn gate can see
+# skip: pi-signed is not installed on this machine, so its secondmate busy contract is unverified here
+# skip: omp is not installed on this machine, so its secondmate busy contract is unverified here
+# skip: grok is not installed on this machine, so its secondmate busy contract is unverified here
+# skip: codex is not installed on this machine, so its secondmate busy contract is unverified here
+# checked 1 harness(es); absent: claude opencode pi-signed omp grok codex
+ok - secondmate busy contract live guard checked every installed harness
+FM_TEST_END 2026-11-14T19:31:31Z tests/fm-secondmate-busy-contract-live-e2e.test.sh exit=0 duration_ms=6982 gate_skip=false
+FM_TEST_BEGIN 2026-11-14T19:31:31Z tests/fm-spawn-loadout.test.sh family=unclassified expected_gate_skip=none
+ok - a claude crewmate spawned with a loadout role starts on that role's launch string
+ok - a loadout launch keeps Firstmate's model and effort axes
+ok - a loadout spawn refuses a missing command, a non-claude harness, a failing command, and an empty tool list
+ok - the workflows lever is off by default, on by flag or home default, and wins over a role's setting; every claude launch clears NO_COLOR and FORCE_COLOR
+ok - unreadable lines, a non-executable command, a bad home default, and misplaced levers are refused
+ok - a loadout launch keeps config/claude-permission-mode and drops the role's own mode in either form
+ok - a loadout line that would drop Firstmate's worker hooks is refused without echoing it
+FM_TEST_END 2026-11-14T19:32:30Z tests/fm-spawn-loadout.test.sh exit=0 duration_ms=58671 gate_skip=false
+FM_TEST_SUMMARY total=9 failed=1 skipped_gate=0 duration_ms=229759
+FM_TEST_SUMMARY_FAMILY family=live-harness-optin count=1 duration_ms=6982 failed=0
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=2 duration_ms=99359 failed=1
+FM_TEST_SUMMARY_FAMILY family=secondmate count=4 duration_ms=238353 failed=0
+FM_TEST_SUMMARY_FAMILY family=session-bootstrap count=1 duration_ms=10161 failed=0
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=58671 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-secondmate-safety.test.sh duration_ms=93407
+FM_TEST_SLOWEST rank=2 script=tests/fm-secondmate-restart.test.sh duration_ms=77523
+FM_TEST_SLOWEST rank=3 script=tests/fm-agy-harness.test.sh duration_ms=59843
+FM_TEST_SLOWEST rank=4 script=tests/fm-spawn-loadout.test.sh duration_ms=58671
+FM_TEST_SLOWEST rank=5 script=tests/fm-secondmate-liveness.test.sh duration_ms=50825
+FM_TEST_SLOWEST rank=6 script=tests/fm-calm-pi-extension.test.sh duration_ms=39516
+FM_TEST_SLOWEST rank=7 script=tests/fm-secondmate-lifecycle-e2e.test.sh duration_ms=16598
+FM_TEST_SLOWEST rank=8 script=tests/fm-tangle-guard.test.sh duration_ms=10161
+FM_TEST_SLOWEST rank=9 script=tests/fm-secondmate-busy-contract-live-e2e.test.sh duration_ms=6982
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/order-12386/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/arrived-at-bound-30713/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/answer-at-timeout-decision-19113/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/unknown-11625/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/pin-5283/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/native-local-29178/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/concurrent-waits-2149/home/state/sm2.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/post-stop-9370/home/state/sm1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/relaunch-polling-16376/home/state/sm2.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-test-run.ctcaek/w4/tmp/fm-secondmate-restart.ut96Nm/already-current-22190/home/state/sm1.git-hooks/sendemail-validate': Permission denied

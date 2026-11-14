@@ -1,0 +1,8 @@
+tmux 3.4
+pane=%0
+invalid option: allow-set-title
+set-option rc=1
+select-pane rc=0
+title=lane-x
+invalid option: allow-set-title
+bad-pane set-option rc=1

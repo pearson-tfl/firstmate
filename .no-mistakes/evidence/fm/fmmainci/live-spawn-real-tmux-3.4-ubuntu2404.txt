@@ -1,0 +1,15 @@
+real tmux 3.4 on /tmp/fm-live34.nwG28b/tmux/tmux-1001/lab
+fm-spawn exit=0
+warning: /tmp/fm-live34.nwG28b/home/data/live-tmux34/launch-brief.md records no ship branch; defaulting to legacy branch fm/live-tmux34
+warning: /tmp/fm-live34.nwG28b/home/data/live-tmux34/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+spawned live-tmux34 harness=claude kind=ship mode=no-mistakes yolo=off window=fm:fm-live-tmux34 worktree=/tmp/fm-live34.nwG28b/wt
+--- lane pane screen:
+$ export COMPACT_ADVISER_DISABLE=1
+$ export FM_TASK_ID=live-tmux34
+$ . '/tmp/fm-live-tmux34+4478065ee461aeef1591435efebe550cf7878c2a165378b2fc8eb98f96bc3bde/launch.s1794684658.294133.24652.sh'
+CLAUDE-STUB-LAUNCHED
+--- real tmux panes after spawn:
+pane=%0 window=sh title=f51f0a453ba1 cmd=sh
+pane=%1 window=fm-live-tmux34 title=live-tmux34 cmd=sh
+--- %0 allow-set-title: invalid option: allow-set-title
+--- %1 allow-set-title: invalid option: allow-set-title

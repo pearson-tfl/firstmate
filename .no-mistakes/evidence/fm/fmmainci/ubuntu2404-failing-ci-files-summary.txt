@@ -1,0 +1,13 @@
+FM_TEST_END 2026-11-14T19:36:54Z tests/fm-session-start.test.sh exit=0 duration_ms=215303 gate_skip=false
+FM_TEST_END 2026-11-14T19:31:56Z tests/fm-wake-queue.test.sh exit=0 duration_ms=195261 gate_skip=false
+FM_TEST_END 2026-11-14T19:29:20Z tests/fm-calm-pi-extension.test.sh exit=1 duration_ms=39516 gate_skip=false
+FM_TEST_END 2026-11-14T19:29:41Z tests/fm-agy-harness.test.sh exit=0 duration_ms=59843 gate_skip=false
+FM_TEST_END 2026-11-14T19:29:57Z tests/fm-secondmate-lifecycle-e2e.test.sh exit=0 duration_ms=16598 gate_skip=false
+FM_TEST_END 2026-11-14T19:30:32Z tests/fm-secondmate-liveness.test.sh exit=0 duration_ms=50825 gate_skip=false
+FM_TEST_END 2026-11-14T19:30:58Z tests/fm-secondmate-restart.test.sh exit=0 duration_ms=77523 gate_skip=false
+FM_TEST_END 2026-11-14T19:31:14Z tests/fm-secondmate-safety.test.sh exit=0 duration_ms=93407 gate_skip=false
+FM_TEST_END 2026-11-14T19:31:24Z tests/fm-tangle-guard.test.sh exit=0 duration_ms=10161 gate_skip=false
+FM_TEST_END 2026-11-14T19:31:31Z tests/fm-secondmate-busy-contract-live-e2e.test.sh exit=0 duration_ms=6982 gate_skip=false
+FM_TEST_END 2026-11-14T19:32:30Z tests/fm-spawn-loadout.test.sh exit=0 duration_ms=58671 gate_skip=false
+FM_TEST_END 2026-11-14T19:37:04Z tests/fm-spawn-dispatch-profile.test.sh exit=0 duration_ms=503295 gate_skip=false
+FM_TEST_END 2026-11-14T19:38:19Z tests/fm-calm-pi-extension.test.sh exit=0 duration_ms=50286 gate_skip=false
