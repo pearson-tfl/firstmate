@@ -1811,6 +1811,21 @@ fm_treehouse_project_lock_path() {  # <project-dir>
   printf '%s/.treehouse-project-%s.lock\n' "$root/state" "$hash"
 }
 
+# Native Treehouse --root scope for new worker slots (requires Treehouse 2.2+).
+# Treehouse keys pools by origin URL, so its default global root conflates
+# independent clones. Anchor the explicit root in the canonical Git common
+# directory: linked worktrees and symlink aliases of one clone share a pool,
+# but two clones never do. Treehouse appends .treehouse/<repo>-<remote-hash>.
+# This overrides Treehouse root config/env only for fresh worker acquisitions;
+# relaunch and explicit-path returns keep using recorded slots, including old
+# global pools. Resolution is read-only and never migrates or removes a slot.
+fm_treehouse_clone_root() {  # <project-dir>
+  local common
+  common=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  common=$(CDPATH='' cd -- "$common" 2>/dev/null && pwd -P) || return 1
+  printf '%s/firstmate-treehouse\n' "$common"
+}
+
 # A Treehouse slot has the managed pool's fixed <pool>/<slot>/<repo> layout.
 # Require both its pool state and the same Git common directory as the recorded
 # project; an ordinary linked worktree is not evidence that Treehouse owns it.

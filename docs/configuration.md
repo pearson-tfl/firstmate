@@ -571,6 +571,8 @@ For spawn-capable adapters, the runtime session-provider backend controls where 
 | `hc` | Experimental; no dedicated real-backend CI lane | [`docs/hc-backend.md`](hc-backend.md) |
 
 Treehouse remains the worktree provider for tmux, herdr, zellij, cmux, paseo, rex, t3code, tern, and hc, since herdr, zellij, cmux, paseo, rex, t3code, tern, and hc are session providers only; Orca provides both the task worktree and terminal endpoint.
+New worker allocation requires Treehouse v2.2.0+ with native `--root` support and uses clone-local pools instead of sharing slots across independent clones of one origin.
+`fm_treehouse_clone_root` in `bin/fm-wake-lib.sh` owns root selection and compatibility with recorded slots in older pools; `bin/fm-spawn.sh` refuses unsupported Treehouse builds before opening a worker endpoint.
 
 ### Backend selection order
 

@@ -123,6 +123,8 @@ make_treehouse_fakebin() {  # <dir> -> echoes fakebin dir
   cat > "$fb/treehouse" <<'SH'
 #!/usr/bin/env bash
 set -u
+# A capability probe must not acquire a slot or change the fake server world.
+for arg in "$@"; do [ "$arg" != --help ] || exit 0; done
 printf '{"tool":"treehouse","args":"%s","cwd":"%s"}\n' "$*" "$PWD" >> "${FM_T3_TREEHOUSE_LOG:?}"
 case "${1:-}" in
   get)
@@ -1530,8 +1532,8 @@ test_spawn_leases_slot_creates_thread_and_starts_launch_turn() {
   thread=$(bash -c '. "$1"; fm_meta_get "$2" t3_thread_id' _ "$ROOT/bin/fm-backend.sh" "$state/$id.meta")
   case "$thread" in mcp:*) ;; *) fail "meta t3_thread_id should be the id T3 assigned, got '$thread'" ;; esac
   [ "$(t3_dispatch_types)" = "t3_thread_launch t3_thread_send" ] || fail "spawn must launch an idle thread, then send the brief, got '$(t3_dispatch_types)'"
-  [ "$(t3_log_line_of 'r.tool === "treehouse" && r.args === "get --lease --lease-holder '"$id"'" && r.cwd === "'"$proj"'"')" -gt 0 ] \
-    || fail "spawn must lease the slot with treehouse get --lease --lease-holder <id> from the project"
+  [ "$(t3_log_line_of 'r.tool === "treehouse" && r.args === "get --root '"$proj"'/.git/firstmate-treehouse --lease --lease-holder '"$id"'" && r.cwd === "'"$proj"'"')" -gt 0 ] \
+    || fail "spawn must lease the slot with an explicit clone root and lease holder from the project"
   local create turn
   create=$(t3_log_line_of 'r.tool === "t3_thread_launch"')
   turn=$(t3_log_line_of 'r.tool === "t3_thread_send"')
