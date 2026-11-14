@@ -182,6 +182,9 @@ case "$1" in
   set-option|select-pane)
     printf '%s\n' "$*" >> "$(dirname "$0")/lane-title.log"
     [ "$failure" != "$1" ] || exit 1
+    # tmux before 3.5 has no allow-set-title pane option.
+    [ "$failure" != unsupported ] || [ "$1" != set-option ] \
+      || { printf 'invalid option: allow-set-title\n' >&2; exit 1; }
     ;;
 esac
 exec "$(dirname "$0")/tmux-fixture" "$@"
@@ -261,6 +264,21 @@ test_lane_title_failure_stops_before_harness_launch() {
     fi
   done
   pass "invalid pane identity and failed title setup stop before launching the harness"
+}
+
+test_lane_title_without_title_policy_option_still_launches() {
+  local rec id out status
+  id=lane-title-old-tmux
+  rec=$(make_spawn_case "$id" claude "$id")
+  read_case_record "$rec"
+  install_lane_tmux_probe
+  printf 'unsupported\n' > "$FAKEBIN_DIR/title-failure"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  status=$?
+  expect_code 0 "$status" "a tmux without allow-set-title should still launch: $out"
+  assert_contains "$(cat "$FAKEBIN_DIR/lane-title.log")" "select-pane -t %901 -T $id" \
+    "the lane title must still be set when the title policy option is unknown"
+  pass "a tmux without the allow-set-title option still sets the lane title and launches"
 }
 
 test_no_profile_keeps_claude_profile_defaults() {
@@ -2845,6 +2863,7 @@ test_launch_preserves_inherited_git_config
 test_worker_launch_delivers_role_scope
 test_lane_titles_for_fresh_and_resumed_workers_and_secondmates
 test_lane_title_failure_stops_before_harness_launch
+test_lane_title_without_title_policy_option_still_launches
 test_no_profile_keeps_claude_profile_defaults
 test_claude_launch_brief_publishes_record_doorbell
 test_claude_secondmate_launch_brief_publishes_into_its_own_home

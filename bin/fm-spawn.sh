@@ -6248,8 +6248,15 @@ if [ "$BACKEND" = tmux ]; then
     echo "error: could not resolve task $ID's tmux pane id; refusing title changes" >&2
     exit 1
   fi
-  if ! tmux set-option -p -t "$lane_pane" allow-set-title off ||
-    ! tmux select-pane -t "$lane_pane" -T "$ID"; then
+  # tmux before 3.5 has no allow-set-title; there the lane title is still set,
+  # but applications may retitle the pane. Any other failure still refuses.
+  if ! title_err=$(tmux set-option -p -t "$lane_pane" allow-set-title off 2>&1) &&
+    [[ "$title_err" != *"invalid option: allow-set-title"* ]]; then
+    [ -z "$title_err" ] || printf '%s\n' "$title_err" >&2
+    echo "error: could not set task $ID's tmux pane title" >&2
+    exit 1
+  fi
+  if ! tmux select-pane -t "$lane_pane" -T "$ID"; then
     echo "error: could not set task $ID's tmux pane title" >&2
     exit 1
   fi

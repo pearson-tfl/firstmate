@@ -1541,7 +1541,7 @@ test_perl_timeout_fallback_reports_signal_death_nonzero() {
 }
 
 test_abnormal_digest_death_banners_and_exits_zero() {
-  local rec root home fakebin out status=0
+  local rec root home fakebin out status=0 real_mkdir
   [ -r /proc/self/stat ] || { echo "skip: /proc not readable (the digest-death shape needs process ancestry)"; return 0; }
   rec=$(new_world digest-death-banner)
   IFS='|' read -r root home fakebin <<EOF
@@ -1549,11 +1549,12 @@ $rec
 EOF
   make_fake_toolchain "$fakebin"
   make_fake_ps_claude "$fakebin"
-  # Replace the harness ps with one that TERMs the digest process itself when
-  # fm-lock.sh invokes it: the shape where the digest child dies mid-stage
+  # Shadow mkdir with one that TERMs the digest process itself when fm-lock.sh
+  # invokes it (fm-lock.sh creates its state directory on every run): the
+  # shape where the digest child dies mid-stage
   # from something other than its runtime bound, which the parent used to
   # swallow silently (no banner, exit 0, rest of the digest gone).
-  # ps sits below fm-lock.sh below the digest bash, so walk /proc upward.
+  # mkdir sits below fm-lock.sh below the digest bash, so walk /proc upward.
   # Flattened cmdline matching alone is useless: timeout's bash -c inner shell
   # and the timeout wrapper carry the script path as an ARGV element, and the
   # lock stage's own command substitution leaves a subshell whose argv is
@@ -1565,8 +1566,8 @@ EOF
   # so the env marker stops the walk above the digest child and below the
   # wrapper whose death would skip the banner entirely. Kill that topmost
   # marker carrier: the digest bash whose death the parent must banner.
-  mv "$fakebin/ps" "$fakebin/ps.real"
-  cat > "$fakebin/ps" <<SH
+  real_mkdir=$(command -v mkdir)
+  cat > "$fakebin/mkdir" <<SH
 #!/usr/bin/env bash
 set -u
 case "\$(tr '\\0' ' ' < /proc/\$PPID/cmdline 2>/dev/null)" in
@@ -1588,9 +1589,9 @@ case "\$(tr '\\0' ' ' < /proc/\$PPID/cmdline 2>/dev/null)" in
     [ -n "\$target" ] && kill -TERM "\$target" 2>/dev/null
     ;;
 esac
-exec "$fakebin/ps.real" "\$@"
+exec "$real_mkdir" "\$@"
 SH
-  chmod +x "$fakebin/ps"
+  chmod +x "$fakebin/mkdir"
 
   out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH") || status=$?
 
