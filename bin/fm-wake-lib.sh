@@ -1862,7 +1862,10 @@ fm_worktree_archive_leftovers() {  # <worktree> <archive-root> <task-id> <stage>
     fi
   done < "$list"
   rm -f "$list"
-  [ "$rc" -eq 0 ] || return 1
+  if [ "$rc" -ne 0 ]; then
+    [ -z "$archive" ] || printf 'leftovers of %s partly archived in %s\n' "$wt" "$archive" >&2
+    return 1
+  fi
   [ -z "$archive" ] || printf '%s\n' "$archive"
 }
 
