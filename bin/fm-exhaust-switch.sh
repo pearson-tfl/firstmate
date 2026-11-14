@@ -5,7 +5,9 @@
 # Usage:
 #   fm-exhaust-switch.sh [check]   one pass over this home's local seats
 #   fm-exhaust-switch.sh arm       run `check` on the watcher's check cycle
-#   fm-exhaust-switch.sh disarm    stop running it there
+#   fm-exhaust-switch.sh arm --default   the same unless this home disarmed it
+#                                  (bin/fm-bootstrap.sh runs this at every start)
+#   fm-exhaust-switch.sh disarm    stop running it there and keep it off
 #   fm-exhaust-switch.sh move <task-id> <login>   (internal: one detached move)
 #   fm-exhaust-switch.sh --help
 #
@@ -20,8 +22,11 @@
 #           own retry.maxDelayMs default), so omp gave up retrying.
 #   claude  ~/.claude/projects/*/<agent_session_id>.jsonl (the shared
 #           transcript the `account` verb moves). Exhausted when the last
-#           assistant entry is an API error message with error "rate_limit",
-#           Claude Code's usage-limit stop.
+#           assistant entry is an API error message with error "rate_limit"
+#           whose text is Claude Code's own usage stop ("You've hit your ...
+#           limit", "You've reached your ... limit", "You're out of usage
+#           credits"); its transient server throttle carries the same error tag
+#           and is ignored.
 # A seat is moved only once its busy state reads idle (bin/fm-busy-lib.sh), so
 # a seat still retrying or working is left until a later cycle, and each error
 # is acted on once (state/<id>.exhaust-switch keeps its key).
@@ -47,6 +52,7 @@ CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 export FM_HOME
 CHECK_ID=exhaust-switch
 CHECK_SHIM="$STATE/$CHECK_ID.check.sh"
+DISARMED="$STATE/$CHECK_ID.disarmed"
 MIN_WAIT_MS=${FM_EXHAUST_MIN_WAIT_MS:-300000}
 CONTROL_BIN="$SCRIPT_DIR/fm-control.sh"
 # Test seam: an isolated suite may stand in for the control plane.
@@ -88,11 +94,19 @@ omp_exhaustion() {
 }
 
 # claude_exhaustion <session-file>: "<error-key> <until-epoch>" for a usage stop.
+# Claude also tags a transient server throttle "rate_limit" ("API Error: Server
+# is temporarily limiting requests (not your usage limit)"); only its own
+# usage-stop wording counts ("You've hit your session limit", "You've reached
+# your Fable limit", "You're out of usage credits"), per the dated record in
+# docs/verification/runtime-backends.md.
 claude_exhaustion() {
   local key
   key=$(tail -n 400 "$1" | jq -rs '
     map(select(.type == "assistant")) | last // empty
-    | select(.isApiErrorMessage == true and .error == "rate_limit") | .timestamp' 2>/dev/null)
+    | select(.isApiErrorMessage == true and .error == "rate_limit")
+    | select([.message.content[]? | select(.type == "text") | .text] | join("")
+        | test("^You(\u0027ve| have) (hit|reached) your |^You\u0027re out of usage"))
+    | .timestamp' 2>/dev/null)
   [ -n "$key" ] || return 0
   printf '%s %s\n' "$key" "$(( $(date +%s) + CLAUDE_HOLD_SECONDS ))"
 }
@@ -217,6 +231,9 @@ action_move() {  # <id> <login>
 
 action_arm() {
   local home tmp
+  if [ "${1:-}" = --default ]; then
+    [ ! -e "$DISARMED" ] || return 0
+  fi
   home=$(CDPATH='' cd -- "$FM_HOME" 2>/dev/null && pwd -P) || { echo "error: cannot resolve FM_HOME $FM_HOME" >&2; return 1; }
   [ -d "$STATE" ] && [ ! -L "$STATE" ] && [ ! -L "$CHECK_SHIM" ] || { echo "error: $CHECK_SHIM is unsafe to write" >&2; return 1; }
   tmp=$(umask 077; mktemp "$STATE/.fm-exhaust-switch-check.XXXXXX") || return 1
@@ -231,14 +248,18 @@ action_arm() {
   # An unregistered shim makes the watcher raise an untrusted-check alarm.
   FM_HOME="$home" "$SCRIPT_DIR/fm-check-register.sh" "$CHECK_ID" >/dev/null \
     || { rm -f -- "$CHECK_SHIM"; echo "error: could not register $CHECK_SHIM" >&2; return 1; }
+  rm -f -- "$DISARMED"
   printf 'armed: state/%s.check.sh\n' "$CHECK_ID"
 }
 
 case "${1:-check}" in
   check) action_check ;;
   move) [ "$#" -eq 3 ] || { usage >&2; exit 2; }; action_move "$2" "$3" ;;
-  arm) action_arm ;;
-  disarm) "$SCRIPT_DIR/fm-check-unregister.sh" "$CHECK_ID" && printf 'disarmed: state/%s.check.sh\n' "$CHECK_ID" ;;
+  arm) action_arm "${2:-}" ;;
+  disarm)
+    : > "$DISARMED" && "$SCRIPT_DIR/fm-check-unregister.sh" "$CHECK_ID" \
+      && printf 'disarmed: state/%s.check.sh\n' "$CHECK_ID"
+    ;;
   -h|--help) usage ;;
   *) usage >&2; exit 2 ;;
 esac

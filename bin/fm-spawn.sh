@@ -576,8 +576,8 @@
 #     __PITURNEND__ absolute path to .pi/extensions/fm-primary-turnend-guard.ts in a pi secondmate home
 #     __PIWATCH__   absolute path to .pi/extensions/fm-primary-pi-watch.ts in a pi secondmate home
 #     __OMPBIN__   quoted concrete omp executable path (fm_omp_bin: PATH, then Bun's install)
-#     __OMPPROFILE__ optional ` --profile '<name>'` from the per-secondmate omp
-#                  profile pin (supplies its own leading space, empty otherwise)
+#     __OMPPROFILE__ optional ` --profile '<name>'` from the omp profile choice
+#                  (pin or usage; supplies its own leading space, empty otherwise)
 #     __OMPEXT__   absolute path to state/<task-id>.omp-ext.ts (omp busy-state extension,
 #                  written by this script; outside the worktree so omp's cwd-only
 #                  auto-discovery cannot load it a second time; a secondmate names
@@ -3574,12 +3574,12 @@ OMP_PROFILE_MATE=
 OMP_PROFILE_RAW=
 [ "$RAW_LAUNCH" = 0 ] || OMP_PROFILE_RAW=$ARG3
 OMP_PROFILE_CHOICE=$(fm_omp_profile_select "$HARNESS" "$CONFIG" "$OMP_PROFILE_MATE" "$OMP_PROFILE_RAW" "$WORKER_ACCOUNT_PROJECT") || exit 1
-OMP_PROFILE_PIN=${OMP_PROFILE_CHOICE%%$'\t'*}
+OMP_PROFILE_CHOSEN=${OMP_PROFILE_CHOICE%%$'\t'*}
 # The profile this task ran on before, read now, before the record is rewritten.
 OMP_PROFILE_FROM=
 [ "$RELAUNCH" -eq 0 ] || OMP_PROFILE_FROM=$(fm_meta_get "$RELAUNCH_META" omp_profile)
 if [ "$HARNESS" = omp ]; then
-  omp_model_validate "$OMP_BIN" "$MODEL" "$OMP_PROFILE_PIN" || exit 1
+  omp_model_validate "$OMP_BIN" "$MODEL" "$OMP_PROFILE_CHOSEN" || exit 1
 fi
 WORKER_ACCOUNT_OVERRIDE=${FM_CONTROL_ACCOUNT:-}
 if [ -z "$WORKER_ACCOUNT_OVERRIDE" ] && [ "$RELAUNCH" -eq 1 ]; then
@@ -7387,9 +7387,9 @@ preserve_relaunch_meta() {
     echo "account_root=${WORKER_ACCOUNT_ROOT:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
     [ -z "$CLAUDE_DRAFT_DIR" ] || echo "claude_draft_dir=$CLAUDE_DRAFT_DIR"
   fi
-  # The per-secondmate omp profile pin, only when one applies, so every other
-  # task record stays byte-identical.
-  [ -z "$OMP_PROFILE_PIN" ] || echo "omp_profile=$OMP_PROFILE_PIN"
+  # The chosen omp profile (pin or usage), only when one applies, so every
+  # other task record stays byte-identical.
+  [ -z "$OMP_PROFILE_CHOSEN" ] || echo "omp_profile=$OMP_PROFILE_CHOSEN"
   # The exact agent session id, only on an adapter that can be pinned to one,
   # so every other task record stays byte-identical.
   [ -z "$AGENT_SESSION_ID" ] || echo "agent_session_id=$AGENT_SESSION_ID"
@@ -7624,7 +7624,7 @@ gemini) LAUNCH=${LAUNCH//__GEMINISETTINGS__/"$(shell_quote "$STATE_REAL/$ID.gemi
 omp)
   LAUNCH=${LAUNCH//__OMPBIN__/"$(shell_quote "$OMP_BIN")"}
   OMPPROFILE=
-  [ -z "$OMP_PROFILE_PIN" ] || OMPPROFILE=" --profile $(shell_quote "$OMP_PROFILE_PIN")"
+  [ -z "$OMP_PROFILE_CHOSEN" ] || OMPPROFILE=" --profile $(shell_quote "$OMP_PROFILE_CHOSEN")"
   LAUNCH=${LAUNCH//__OMPPROFILE__/$OMPPROFILE}
   ;;
 devin)
@@ -8312,7 +8312,7 @@ SPAWN_DELIVERY=
 SPAWN_ACCOUNT=
 [ -z "$WORKER_ACCOUNT" ] || SPAWN_ACCOUNT=" account=$WORKER_ACCOUNT_DECLARED"
 [ -z "$WORKER_ACCOUNT_PROVIDER" ] || SPAWN_ACCOUNT="$SPAWN_ACCOUNT account_provider=$WORKER_ACCOUNT_PROVIDER"
-[ -z "$OMP_PROFILE_PIN" ] || SPAWN_ACCOUNT="$SPAWN_ACCOUNT omp_profile=$OMP_PROFILE_PIN"
+[ -z "$OMP_PROFILE_CHOSEN" ] || SPAWN_ACCOUNT="$SPAWN_ACCOUNT omp_profile=$OMP_PROFILE_CHOSEN"
 # Opt-in fleet activity ledger (docs/fleet-ledger.md); off costs one file test.
 [ ! -e "$CONFIG/fleet-ledger" ] || [ "$RELAUNCH" -eq 1 ] || FM_HOME=$FM_HOME FM_STATE_OVERRIDE=$STATE FM_CONFIG_OVERRIDE=$CONFIG "$SCRIPT_DIR/fm-fleet-ledger.sh" dispatched "$ID" "$KIND" "${PROJ_ABS##*/}" "$HARNESS" "$MODEL" || true
 # Opt-in Herdr project groups (docs/herdr-backend.md "Project groups") tag the
@@ -8327,6 +8327,6 @@ cswap:*)
 esac
 # A usage-chosen omp profile reports the same way, as omp:<profile>.
 if [ "${OMP_PROFILE_CHOICE#*$'\t'}" = usage ]; then
-  fm_account_rules_report "$DATA" "$ID" "${OMP_PROFILE_FROM:+omp:}${OMP_PROFILE_FROM:-none}" "omp:$OMP_PROFILE_PIN"
+  fm_account_rules_report "$DATA" "$ID" "${OMP_PROFILE_FROM:+omp:}${OMP_PROFILE_FROM:-none}" "omp:$OMP_PROFILE_CHOSEN"
 fi
 echo "spawned $ID harness=$HARNESS kind=$KIND$SPAWN_DELIVERY window=$META_WINDOW worktree=$WT$SPAWN_ACCOUNT"

@@ -1727,6 +1727,12 @@ if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" != 1 ]; then
     "$SCRIPT_DIR/fm-pr-health.sh" arm >/dev/null \
       || echo "MISSING: the PR health monitor could not be armed; owned PRs are not watched"
   fi
+  # Seats that run out of usage move themselves (docs/configuration.md
+  # "Exhausted-login switch"); a home that ran `disarm` stays off.
+  if local_phase && command -v jq >/dev/null 2>&1 && [ -x "$SCRIPT_DIR/fm-exhaust-switch.sh" ]; then
+    "$SCRIPT_DIR/fm-exhaust-switch.sh" arm --default >/dev/null \
+      || echo "MISSING: the exhausted-login switch could not be armed; seats that run out of usage will not move"
+  fi
   if [ -n "$fleet_sync_pid" ]; then
     wait "$fleet_sync_pid" || true
     cat "$fleet_sync_out"

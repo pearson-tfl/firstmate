@@ -1633,11 +1633,12 @@ The pin file stays in the primary home and is not inherited or copied into the s
 
 ### Exhausted-login switch
 
-`bin/fm-exhaust-switch.sh arm` adds one check to this home's watcher cycle that moves a seat off a login that has run out of usage, onto the best other login, on the same conversation; `disarm` removes it.
+Every home runs one check on its watcher cycle that moves a seat off a login that has run out of usage, onto the best other login, on the same conversation.
+`bin/fm-bootstrap.sh` arms it at every session start with `bin/fm-exhaust-switch.sh arm --default`; `disarm` removes it and keeps it off across restarts until an explicit `arm`.
 It needs no job of its own and acts only on this home's own local seats.
 On each cycle it reads each omp and Claude seat's own session file, never its screen.
 An omp seat has run out when its last reply failed with a 429 whose `retry-after-ms` is beyond `FM_EXHAUST_MIN_WAIT_MS` (default 300000, omp's own `retry.maxDelayMs`), the case in which omp stops retrying.
-A Claude seat has run out when its last reply is Claude Code's usage-limit stop (an API error message with error `rate_limit`).
+A Claude seat has run out when its last reply is Claude Code's usage stop: an API error message with error `rate_limit` whose text reads "You've hit your ... limit", "You've reached your ... limit", or "You're out of usage credits"; the transient server throttle that carries the same error tag ("not your usage limit") is ignored.
 A seat that is still working is left for a later cycle; once it reads idle, the switch records the login as exhausted and starts the move, and each failure is acted on once.
 An omp seat is resumed on its own session file under the profile the [omp profile choice](#omp-profile-choice) now picks; a Claude seat is moved with `fm-control.sh <id> account <num>` to the cswap account the account rules rank best, leaving out the one it ran out on.
 The move appears in `data/account-switches.log` like any other account choice, and the check prints one line when a move starts and one when it ends, which the watcher delivers as a notification.
@@ -3354,6 +3355,9 @@ FM_PROCEVENT_OWNER_LEASE_SECONDS=600    # how long a source runner keeps going w
 FM_PROCEVENT_OWNER_CHECK_SECONDS=15     # a runner guard's detection interval, read twice per interval; 1..3600
 FM_PROCEVENT_LAUNCH_FLOOR_SECONDS=1     # minimum interval between launches of one registration generation's source command; 1..3600
 FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=3   # how long reconcile waits for the runners it started to prove they are running; 1..600, keep well below FM_POLL
+FM_EXHAUSTED_LOGINS=                    # machine-wide exhausted-login record; default $XDG_STATE_HOME/firstmate/exhausted-logins ("Exhausted-login switch")
+FM_EXHAUST_MIN_WAIT_MS=300000           # an omp 429 retry-after beyond this moves the seat
+FM_EXHAUST_CLAUDE_HOLD_SECONDS=18000    # how long a Claude usage stop holds its login
 FM_WHEN_OUTPUT_TAIL_BYTES=8192          # bound on the command-output tail inside one condition->action outcome document
 FM_CODEX_WATCH_CHECKPOINT=180   # seconds per foreground watcher checkpoint in Codex primary supervision
 FM_CODEX_WATCH_CHECKPOINT_AWAY=3600  # requested away checkpoint bound on a home that runs the supervision host; longer of this and attended bound, capped at 27000

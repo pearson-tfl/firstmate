@@ -82,13 +82,22 @@ mkdir -p "$claude_root/.claude/projects/-wt"
 printf 'window=fake:cl\nharness=claude\nkind=ship\naccount=cswap:1\nproject=/x/proj\nagent_session_id=sess-1\n' > "$STATE/cl.meta"
 gen=$("$ROOT/bin/fm-busy-event.sh" arm "$STATE" cl --state idle --source claude-hook --event test)
 printf 'busy_gen=%s\n' "$gen" >> "$STATE/cl.meta"
-printf '{"type":"assistant","isApiErrorMessage":true,"error":"rate_limit","apiErrorStatus":429,"timestamp":"2026-11-03T11:22:53.741Z","message":{"content":[{"type":"text","text":"limit"}]}}\n' \
-  > "$claude_root/.claude/projects/-wt/sess-1.jsonl"
+claude_stop() {  # <text>: the seat's last turn is a rate_limit stop with this text
+  jq -nc --arg t "$1" '{type:"assistant",isApiErrorMessage:true,error:"rate_limit",apiErrorStatus:429,timestamp:"2026-11-03T11:22:53.741Z",message:{content:[{type:"text",text:$t}]}}' \
+    > "$claude_root/.claude/projects/-wt/sess-1.jsonl"
+}
 cat > "$TMP_ROOT/bin/cswap" <<'SH'
 #!/bin/sh
 printf '%s\n' '{"schemaVersion":1,"accounts":[{"number":1,"usageStatus":"ok","usage":{"fiveHour":{"pct":5}}},{"number":2,"usageStatus":"ok","usage":{"fiveHour":{"pct":40}}}]}'
 SH
 chmod +x "$TMP_ROOT/bin/cswap"
+# Claude's transient server throttle carries the same error tag but is not a usage stop.
+claude_stop 'API Error: Server is temporarily limiting requests (not your usage limit) · Rate limited'
+[ -z "$(HOME=$claude_root PATH="$TMP_ROOT/bin:$PATH" run_check)" ] || fail "a transient throttle must not move a Claude seat"
+if [ -s "$HOME_DIR/control.log" ] || grep -q cswap:1 "$FM_EXHAUSTED_LOGINS" 2>/dev/null; then
+  fail "a transient throttle must neither move the seat nor record the login exhausted"
+fi
+claude_stop "You've hit your session limit · resets 3:20pm (Europe/London)"
 out=$(HOME=$claude_root PATH="$TMP_ROOT/bin:$PATH" run_check)
 case "$out" in *"cl ran out of usage on cswap:1"*) ;; *) fail "a Claude usage stop must start a move: $out" ;; esac
 HOME=$claude_root PATH="$TMP_ROOT/bin:$PATH" wait_record cl "done" || fail "the Claude move must finish: $(cat "$STATE/cl.exhaust-switch.log")"
@@ -100,4 +109,9 @@ out=$(bash "$ROOT/bin/fm-exhaust-switch.sh" arm) || fail "arm failed: $out"
 [ -x "$STATE/exhaust-switch.check.sh" ] && [ -f "$STATE/exhaust-switch.check-trust" ] || fail "arm must write and register the shim"
 out=$(bash "$ROOT/bin/fm-exhaust-switch.sh" disarm) || fail "disarm failed: $out"
 [ ! -e "$STATE/exhaust-switch.check.sh" ] && [ ! -e "$STATE/exhaust-switch.check-trust" ] || fail "disarm must remove the shim and its trust"
-pass "exhaust switch: arm registers the watcher check and disarm retires it"
+bash "$ROOT/bin/fm-exhaust-switch.sh" arm --default >/dev/null || fail "a default arm must succeed quietly"
+[ ! -e "$STATE/exhaust-switch.check.sh" ] || fail "the startup default arm must respect a disarmed home"
+bash "$ROOT/bin/fm-exhaust-switch.sh" arm >/dev/null || fail "an explicit arm must succeed"
+bash "$ROOT/bin/fm-exhaust-switch.sh" arm --default >/dev/null || fail "a repeat default arm must succeed"
+[ -x "$STATE/exhaust-switch.check.sh" ] && [ -f "$STATE/exhaust-switch.check-trust" ] || fail "an explicit arm must re-enable the check"
+pass "exhaust switch: arm registers the watcher check, disarm retires it and keeps the startup default off"

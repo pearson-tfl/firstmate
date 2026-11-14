@@ -520,15 +520,15 @@ test_profile_choice_by_usage_exhaustion_rules_and_pin() {
   fakebin="$world/bin"
   config="$world/config"
   mkdir -p "$fakebin" "$config/secondmate-accounts/sm"
-  make_omp_profile "$root" busy one@example.test org-1 || fail "fixture db"
-  make_omp_profile "$root" spare two@example.test org-2 || fail "fixture db"
-  make_omp_profile "$root" spare2 two@example.test org-2 || fail "fixture db"
-  make_omp_profile "$root" stranger three@example.test org-3 || fail "fixture db"
+  make_omp_profile "$root" busy login-one org-1 || fail "fixture db"
+  make_omp_profile "$root" spare login-two org-2 || fail "fixture db"
+  make_omp_profile "$root" spare2 login-two org-2 || fail "fixture db"
+  make_omp_profile "$root" stranger login-three org-3 || fail "fixture db"
   make_omp_profile "$root" nologin || fail "fixture db"
   make_cswap_list "$fakebin" '{"schemaVersion":1,"accounts":[
-    {"number":1,"email":"one@example.test","organizationUuid":"org-1","usageStatus":"ok","usage":{"fiveHour":{"pct":80},"sevenDay":{"pct":20}}},
-    {"number":2,"email":"two@example.test","organizationUuid":"org-2","usageStatus":"ok","usage":{"fiveHour":{"pct":10},"sevenDay":{"pct":30}}},
-    {"number":3,"email":"gone@example.test","organizationUuid":"org-9","usageStatus":"ok","usage":{"fiveHour":{"pct":0},"sevenDay":{"pct":0}}}]}'
+    {"number":1,"email":"login-one","organizationUuid":"org-1","usageStatus":"ok","usage":{"fiveHour":{"pct":80},"sevenDay":{"pct":20}}},
+    {"number":2,"email":"login-two","organizationUuid":"org-2","usageStatus":"ok","usage":{"fiveHour":{"pct":10},"sevenDay":{"pct":30}}},
+    {"number":3,"email":"login-gone","organizationUuid":"org-9","usageStatus":"ok","usage":{"fiveHour":{"pct":0},"sevenDay":{"pct":0}}}]}'
   select_profile() {  # <mate> [<project>]
     PATH="$fakebin:$PATH" FM_OMP_ROOT="$root" FM_EXHAUSTED_LOGINS="$world/exhausted" bash -c '
       . "$1/bin/fm-omp-profile-lib.sh"; fm_omp_profile_select omp "$2" "$3" "" "${4:-proj}"' _ "$ROOT" "$config" "$@" 2>&1
@@ -536,7 +536,7 @@ test_profile_choice_by_usage_exhaustion_rules_and_pin() {
   out=$(select_profile "")
   [ "$out" = "spare"$'\t'"usage" ] || fail "the least-used login (cswap 2, 30%) must win, first profile by name: $out"
   out=$(PATH="$fakebin:$PATH" FM_OMP_ROOT="$root" bash -c '. "$1/bin/fm-omp-profile-lib.sh"; fm_omp_profile_logins "$(cswap list --json)"' _ "$ROOT")
-  case "$out" in *example.test*) fail "a login must never be printed: $out" ;; esac
+  case "$out" in *login-*) fail "a login must never be printed: $out" ;; esac
   printf '%s\n' "$out" | grep -qx "spare2"$'\t'"cswap:2" || fail "profiles sharing a login must map to one cswap account: $out"
   printf '%s\n' "$out" | grep -q "^stranger"$'\t'"login:[0-9a-f]\{12\}$" || fail "an unlisted login maps to a digest key: $out"
   printf '%s\n' "$out" | grep -q "^nologin" && fail "a profile without an anthropic login is never a candidate: $out"
@@ -577,8 +577,8 @@ test_spawn_records_and_reports_a_usage_choice() {
   rec=$(make_spawn_case usage-spawn omp "$id")
   read_case_record "$rec"
   root="$CASE_DIR/omp-root"
-  make_omp_profile "$root" spare two@example.test org-2 || fail "fixture db"
-  make_cswap_list "$FAKEBIN_DIR" '{"schemaVersion":1,"accounts":[{"number":2,"email":"two@example.test","organizationUuid":"org-2","usageStatus":"ok","usage":{"fiveHour":{"pct":10}}}]}'
+  make_omp_profile "$root" spare login-two org-2 || fail "fixture db"
+  make_cswap_list "$FAKEBIN_DIR" '{"schemaVersion":1,"accounts":[{"number":2,"email":"login-two","organizationUuid":"org-2","usageStatus":"ok","usage":{"fiveHour":{"pct":10}}}]}'
   out=$(FM_OMP_ROOT="$root" run_scout_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --harness omp)
   expect_code 0 $? "an omp spawn with profiles should succeed: $out"
   assert_contains "$(cat "$LAUNCH_LOG")" "/omp' --profile 'spare' --config" "the usage pick must ride --profile right after the executable"
