@@ -112,8 +112,14 @@ EOF
   display-message)
     case "$*" in
       *'#{cursor_y}'*) printf '0\n' ;;
+      *'#{pane_id}'*) printf '%%901\n' ;;
       *) printf 'firstmate\n' ;;
     esac
+    exit 0
+    ;;
+  set-option|select-pane)
+    # fm-spawn titles the lane pane after resolving its id.
+    printf '%s\n' "$*" >> "$FM_FAKE_TMUX_LOG"
     exit 0
     ;;
   capture-pane)
