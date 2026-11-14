@@ -58,38 +58,35 @@
 # delivery proof on this plane, and a failed ring never fails the send.
 #
 # TYPED - the LOCAL text submitted directly instead of through the inbox. On a
-# pane backend, a harness-native invocation (a leading "/", or a leading "$" to
-# a codex target) must reach the harness's own parser. An explicit backend
-# target names an endpoint, not a task, so it stays on this plane even when
-# local metadata happens to match it (the same boundary that keeps it unmarked
-# and outside --resolve-key). Pane backends type the literal text ONCE, then
+# pane backend, an unmarked harness-native invocation (a leading "/", or a
+# leading "$" to a codex target) must reach the harness's own parser. An
+# explicit backend target names an endpoint, not a task, so it stays on this
+# plane even when local metadata happens to match it (the same boundary that
+# keeps it unmarked and outside --resolve-key). Pane backends type the literal text ONCE, then
 # retry Enter without retyping; T3 Code starts one native turn. Typed-plane exit
 # contract: 0 = submit confirmed; 3 = the text reached the live endpoint and
 # submission was attempted, but the read-back stayed unconfirmed, or an API
 # backend's outcome is unproven: a lost reply or an error that can follow a
 # commit (verify the endpoint
 # before any resend, and never submit blindly; docs/t3code-backend.md owns
-# T3 Code's request-id retention and retry policy; a marked request's
-# pending-reply expectation stays armed because this outcome is not a proven
-# failure); any other nonzero = the send failed and nothing may be assumed
+# T3 Code's request-id retention and retry policy); any other nonzero = the send failed and nothing may be assumed
 # delivered. Submission dispatches through the target's recorded backend; the
 # tmux adapter shares its composer/submit core with the away-mode daemon via
 # bin/fm-tmux-lib.sh. Tune with FM_SEND_RETRIES (default 3; agy typed targets
 # default to 20 for agy's late busy render) / FM_SEND_SLEEP (0.4). Slash
 # commands, and codex `$...` skill invocations resolved through harness meta,
 # get a longer pre-Enter settle so completion popups do not swallow Enter.
-# A remote secondmate target has no typed text plane at all:
-# every remote text steer rides the inbox (a marked secondmate request already
-# reaches the harness as marker-prefixed chat rather than a parser command, so
-# routing a remote "/..." or "$..." through the record changes nothing the
-# parser would have seen); only --key still crosses to the remote endpoint.
+# A secondmate task selector, local or remote, has no typed text plane at all:
+# every marked text steer rides the inbox whatever its first character (a
+# marked request reaches the harness as marker-prefixed chat rather than a
+# parser command, so routing a "/..." or "$..." through the record changes
+# nothing the parser would have seen, and typing it would only lose the
+# durable record); only --key still crosses to the endpoint.
 #
-# Stage-1 compatibility boundary: classification uses the original pre-marker
-# text, but secondmate marking still precedes every typed submission. Therefore
-# a marked parser-native secondmate invocation intentionally reaches the harness
-# as marker-prefixed chat rather than executing as a parser command. This is a
-# pre-existing interaction retained for byte compatibility in this local-inbox
-# stage; do not move the marker behind the invocation or omit it here. Follow-up
+# Stage-1 compatibility boundary: the marker still precedes a marked
+# parser-native secondmate invocation, so it reaches the harness as
+# marker-prefixed chat in its record rather than executing as a parser command.
+# Do not move the marker behind the invocation or omit it here. Follow-up
 # fm-send-secondmate-harness-invocation-r1 owns that behavior.
 #
 # From-firstmate marker: when the resolved target is a task selector whose meta
@@ -113,8 +110,8 @@
 # the commit and marker are BOTH lost the send still remains successful with a
 # reply-tracking-degraded warning naming the expectation an operator must
 # inspect (it can no longer reconcile or escalate on its own). Only a
-# failed enqueue discards the expectation. On the typed plane an unconfirmed submit (exit 3) keeps
-# it armed rather than dropping it, and only a proven send failure discards it.
+# failed enqueue discards the expectation. A marked text request never takes
+# the typed plane, so no typed submission carries an expectation.
 # Set FM_PENDING_REPLY_EXISTING_CORR=<id> when re-sending a recovery request
 # for an already-open expectation so a second record is not created. Direct
 # unmarked captain input never creates one. A marked secondmate instruction
@@ -905,21 +902,17 @@ else
   fi
   # Data-plane selection (see the header): text addressed to a task selector
   # resolved through this home's metadata rides the inbox plane, unless it is
-  # a LOCAL harness-native invocation that must reach the harness's own parser
-  # - a leading "/" (slash command), or a leading "$" to a codex target (skill
-  # invocation). A remote secondmate selector always rides the inbox: its
-  # requests are marked, and a marked request reaches the harness as
-  # marker-prefixed chat rather than a parser command anyway, so no remote
-  # text has a typed plane to lose. An explicit backend target stays typed
+  # an UNMARKED harness-native invocation that must reach the harness's own
+  # parser - a leading "/" (slash command), or a leading "$" to a codex target
+  # (skill invocation). A marked secondmate request, local or remote, always
+  # rides the inbox: it reaches the harness as marker-prefixed chat rather
+  # than a parser command anyway, so the typed plane would only lose its
+  # durable record. An explicit backend target stays typed
   # even when it happens to match local metadata: it names an endpoint, not a
   # task, the same boundary that keeps it unmarked and outside --resolve-key.
-  # Classification reads the pre-marker text so a marked secondmate request
-  # and a plain crewmate steer classify identically. It deliberately does NOT
-  # promise that a marked parser-native secondmate request executes as a parser
-  # command: the pre-existing marker-first wire bytes are retained in stage 1.
   INBOX_PLANE=0
   if [ -n "$TARGET_SELECTOR" ]; then
-    if [ -n "$FIRE_AND_FORGET_ID" ] || [ "$TARGET_BACKEND" = remote ]; then
+    if [ "$MARK_FROM_FIRSTMATE" = 1 ] || [ "$TARGET_BACKEND" = remote ]; then
       INBOX_PLANE=1
     else
       case "$RESOLVE_ANSWER_TEXT" in
@@ -1207,55 +1200,23 @@ else
     # steer and keeps rendering it). That is not a proven failure, so never
     # re-type the message: verify the pane instead. Exit 3 is the documented
     # delivered-unconfirmed status.
-    # The pending-reply expectation is deliberately NOT discarded here:
-    # dropping it would silently stop tracking a marked request that very
-    # likely landed. It stays armed on its unconfirmed-delivery marker, so a
-    # correlated report still resolves it and an unanswered one still
-    # surfaces through the library's own reconciliation
-    # (bin/fm-pending-reply-lib.sh).
     echo "fm-send: text delivered to $T but submission is unconfirmed (verdict=pending; tried $RESOLUTION_TRIED); do not retype or blindly resend - verify with fm-peek.sh, then re-send '--key Enter' only if the composer still holds the text" >&2
     exit 3
     ;;
   unconfirmed)
     # An API backend's outcome is unproven: a lost reply or an error that can
     # follow a commit (T3 Code commits a send before it answers). Like
-    # pending, delivery is unproven
-    # rather than refused, so the pending-reply expectation stays armed; the
-    # adapter retains the logical delivery's request id under the retry policy
-    # in docs/t3code-backend.md. A marked secondmate request is the exception:
-    # a plain rerun mints a new
-    # correlation, so its text and request id differ, and the armed attempt
-    # refuses a resend of this one.
-    if [ -n "$PENDING_REPLY_CORR" ]; then
-      echo "fm-send: delivery to $T is unconfirmed (verdict=unconfirmed: the $TARGET_BACKEND outcome is unproven, a lost reply or an error that can follow a commit; tried $RESOLUTION_TRIED); do not resend - a rerun mints a new pending-reply correlation and would deliver twice; correlation $PENDING_REPLY_CORR stays armed, so verify with fm-peek.sh and let its reply or the watcher's reconciliation settle it" >&2
-    else
-      echo "fm-send: delivery to $T is unconfirmed (verdict=unconfirmed: the $TARGET_BACKEND outcome is unproven, a lost reply or an error that can follow a commit; tried $RESOLUTION_TRIED); verify with fm-peek.sh, and resend only the identical text, which reuses its request id" >&2
-    fi
+    # pending, delivery is unproven rather than refused; the adapter retains
+    # the logical delivery's request id under the retry policy in
+    # docs/t3code-backend.md.
+    echo "fm-send: delivery to $T is unconfirmed (verdict=unconfirmed: the $TARGET_BACKEND outcome is unproven, a lost reply or an error that can follow a commit; tried $RESOLUTION_TRIED); verify with fm-peek.sh, and resend only the identical text, which reuses its request id" >&2
     exit 3
     ;;
   *)
-    if [ "$PENDING_REPLY_CREATED" = 1 ] && [ -n "$PENDING_REPLY_CORR" ]; then
-      fm_pending_reply_discard_undelivered "$STATE" "$PENDING_REPLY_CORR" || true
-    fi
     echo "error: text not submitted to $T (delivery unconfirmed; verdict=${verdict:-unknown}; tried $RESOLUTION_TRIED)" >&2
     exit 1
     ;;
   esac
-  # Delivery confirmed. Mark the pending expectation delivered without resolving
-  # it: only a correlated parent report acknowledges the request.
-  if [ -n "$PENDING_REPLY_CORR" ]; then
-    if fm_pending_reply_confirm_delivery "$STATE" "$PENDING_REPLY_CORR"; then
-      :
-    else
-      delivery_commit_status=$?
-      if [ "$delivery_commit_status" = 2 ]; then
-        echo "error: text was delivered to $T, but its pending-reply delivery commit failed; a durable recovery marker was stored and the watcher will reconcile it. Do not resend." >&2
-      else
-        echo "error: text was delivered to $T, but its pending-reply delivery commit and recovery marker both failed. Do not resend; inspect $STATE manually." >&2
-      fi
-      exit 1
-    fi
-  fi
   # Delivery is fully confirmed: close each answered decision in this home's
   # ledger (answerer-closes; see the header contract).
   if [ -n "$RESOLVE_KEYS" ]; then
