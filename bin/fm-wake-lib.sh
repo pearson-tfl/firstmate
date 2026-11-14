@@ -10,6 +10,21 @@ STATE="${FM_STATE_OVERRIDE:-${STATE:-$FM_HOME/state}}"
 FM_WAKE_QUEUE="${FM_WAKE_QUEUE:-$STATE/.wake-queue}"
 FM_WAKE_QUEUE_LOCK="${FM_WAKE_QUEUE_LOCK:-$STATE/.wake-queue.lock}"
 FM_LOCK_STALE_AFTER="${FM_LOCK_STALE_AFTER:-2}"
+
+# The wake drain command every seat-facing wake, hand-back, and WAKE_ACK_REQUIRED
+# text names: an absolute path into this home, so a seat unsure of its working
+# directory never needs a top-level cd to reach it. A home with no bin/ of its
+# own names the code root's drain with this home bound.
+fm_wake_drain_cmd() {
+  local home root
+  home=$(cd "$FM_HOME" 2>/dev/null && pwd) || home=$FM_HOME
+  if [ -f "$home/bin/fm-wake-drain.sh" ]; then
+    printf '%q' "$home/bin/fm-wake-drain.sh"
+    return 0
+  fi
+  root=$(cd "$FM_ROOT" 2>/dev/null && pwd) || root=$FM_ROOT
+  printf 'FM_HOME=%q %q' "$home" "$root/bin/fm-wake-drain.sh"
+}
 # shellcheck source=bin/fm-path-lib.sh
 . "$FM_WAKE_LIB_DIR/fm-path-lib.sh"
 # Resolved once at source time: fm_pid_identity and fm_path_mtime run inside 0.2s

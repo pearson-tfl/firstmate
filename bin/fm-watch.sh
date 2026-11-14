@@ -6,7 +6,9 @@
 # is absorbed only when the crew shows it is still working through an actively
 # running no-mistakes step or a backend busy signal. A home that opts in with
 # config/turnend-churn-absorb lets a bare turn-end also use bounded pane churn
-# since the previous poll. Every other no-verb wake surfaces, so a crew
+# since the previous poll. A bare turn-end that only repeats one already
+# surfaced, with the task's status and pane unchanged, is absorbed on a bounded
+# re-surface cadence (signal_turnend_repeat_absorbed). Every other no-verb wake surfaces, so a crew
 # that finishes (or stops and waits) is never silently swallowed. A declared wait,
 # either a paused: external wait or a verified captain-held transfer, is the
 # separate idle absorb case and re-surfaces only on its long bounded cadence,
@@ -352,6 +354,9 @@ esac
 TURNEND_CHURN_ABSORB_SECS=${FM_TURNEND_CHURN_ABSORB_SECS:-900}  # longest a task's
                                       # bare turn-ends may be deferred on pane-churn
                                       # evidence alone (signal_turnend_panes_churned)
+TURNEND_REPEAT_RESURFACE_SECS=${FM_TURNEND_REPEAT_RESURFACE_SECS:-1800}  # how often
+                                      # a repeating bare turn-end from an unchanged task
+                                      # still surfaces (signal_turnend_repeat_absorbed)
 # Busy state is decided by the semantic contract in bin/fm-busy-lib.sh, which
 # is the single owner of per-harness sources, source attribution, and the one
 # remaining rendered-text fallback (Grok only).
@@ -881,6 +886,81 @@ signal_turnend_panes_churned() {  # <file> ...
     fi
   done
   return 0
+}
+
+# The repeat evidence for <task>: "<status signature>\t<pane hash>", where the
+# pane hash is the .hash- marker the staleness backbone records for the task's
+# endpoint. 1 when there is no recorded endpoint or no valid hash: an unreadable
+# pane never counts as unchanged.
+turnend_repeat_evidence() {  # <task>
+  local task=$1 meta w h sig
+  meta="$STATE/$task.meta"
+  [ -f "$meta" ] || return 1
+  w=$(fm_backend_target_of_meta "$meta")
+  [ -n "$w" ] || return 1
+  h=$(cat "$STATE/.hash-$(window_key "$w")" 2>/dev/null) || return 1
+  [[ $h =~ ^[0-9a-f]{32}$ ]] || return 1
+  sig=$(status_observed_signature "$STATE/$task.status") || return 1
+  printf '%s\t%s' "$sig" "$h"
+}
+
+# 0 (absorb) when every file in a no-verb signal batch is a bare turn-end whose
+# task last surfaced as a bare turn-end (.turnend-surfaced-<task>, written by
+# turnend_repeat_record) with its status signature and pane hash unchanged since,
+# and that surfaced wake is younger than TURNEND_REPEAT_RESURFACE_SECS. A stopped
+# worker whose harness keeps re-touching its turn-end marker would otherwise wake
+# the seat on every touch with nothing new to read. The bound re-surfaces it once
+# per cadence, so a stopped worker is never muted. Any status file in the batch,
+# a task with no record, a changed status or pane, or an unreadable pane returns 1.
+# Pure read; the caller's absorb branch advances the .seen-* markers.
+signal_turnend_repeat_absorbed() {  # <file> ...
+  local f base task rec since now evidence
+  [[ $TURNEND_REPEAT_RESURFACE_SECS =~ ^[0-9]{1,9}$ ]] || return 1
+  [ "$#" -gt 0 ] || return 1
+  now=$(date +%s)
+  for f in "$@"; do
+    base=${f##*/}
+    case "$base" in *.turn-ended) task=${base%.turn-ended} ;; *) return 1 ;; esac
+    [ -n "$task" ] || return 1
+    rec=$(cat "$STATE/.turnend-surfaced-$task" 2>/dev/null) || return 1
+    since=${rec%%$'\t'*}
+    [[ $since =~ ^[0-9]{1,12}$ ]] || return 1
+    [ $(( now - 10#$since )) -lt $(( 10#$TURNEND_REPEAT_RESURFACE_SECS )) ] || return 1
+    evidence=$(turnend_repeat_evidence "$task") || return 1
+    [ "${rec#*$'\t'}" = "$evidence" ] || return 1
+  done
+  triage_log "absorbed repeated bare turn-end (status and pane unchanged since it surfaced):$(printf ' %s' "$@")"
+  return 0
+}
+
+# After a signal wake surfaces, remember which tasks it showed as a bare
+# turn-end, for signal_turnend_repeat_absorbed. A task with a status file in the
+# batch, or with no readable pane evidence, has its record cleared instead.
+turnend_repeat_record() {  # <file> ...
+  local f base task status_tasks=' ' now evidence
+  for f in "$@"; do
+    base=${f##*/}
+    case "$base" in *.status) status_tasks="$status_tasks${base%.status} " ;; esac
+  done
+  now=$(date +%s)
+  for f in "$@"; do
+    base=${f##*/}
+    case "$base" in
+      *.status) task=${base%.status} ;;
+      *.turn-ended) task=${base%.turn-ended} ;;
+      *) continue ;;
+    esac
+    [ -n "$task" ] || continue
+    case "$status_tasks" in
+      *" $task "*) evidence= ;;
+      *) evidence=$(turnend_repeat_evidence "$task") || evidence= ;;
+    esac
+    if [ -n "$evidence" ]; then
+      printf '%s\t%s' "$now" "$evidence" > "$STATE/.turnend-surfaced-$task" || true
+    else
+      rm -f "$STATE/.turnend-surfaced-$task"
+    fi
+  done
 }
 
 recorded_windows() {
@@ -3937,6 +4017,9 @@ EOF
     # busy state has no verified semantic source, bounded so it cannot defer that
     # task's turn-ends forever. Absorb stays evidence-driven: with neither proof the
     # wake surfaces exactly as before.
+    # Separately, and checked first because it is the cheapest, a bare turn-end that
+    # only repeats one already surfaced with no status or pane change since is
+    # absorbed on a bounded re-surface cadence (signal_turnend_repeat_absorbed).
     # Actionable -> enqueue, advance .seen-* markers, exit. Benign (a no-verb wake
     # whose crew is still executing) in always-on mode -> advance the markers so it
     # will not re-fire, log, and keep blocking without enqueuing. Both evidence
@@ -3960,7 +4043,8 @@ EOF
     # bin/fm-supervise-daemon.sh).
     # shellcheck disable=SC2086  # same space-separated status-path list
     if afk_present || [ "$signal_actionable" -eq 0 ] \
-      || { ! signal_crew_provably_working $files && ! signal_turnend_panes_churned $files; }; then
+      || { ! signal_turnend_repeat_absorbed $files && ! signal_crew_provably_working $files \
+        && ! signal_turnend_panes_churned $files; }; then
       while IFS=$(printf '\t') read -r sf sig f; do
         [ -n "$sf" ] || continue
         file_reason="$reason"
@@ -3993,6 +4077,8 @@ EOF
       done <<EOF
 $FM_SIGNAL_SURFACE_ENDPOINTS
 EOF
+      # shellcheck disable=SC2086  # same space-separated status-path list
+      turnend_repeat_record $files
       wake "$reason"
     else
       while IFS=$(printf '\t') read -r sf sig f; do

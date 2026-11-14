@@ -810,6 +810,8 @@ if [ "$REEMIT" -eq 1 ]; then
 else
   section "SESSION START - $FM_HOME"
 fi
+# shellcheck disable=SC2016 # Backticks are literal prompt markup.
+printf 'This shell'"'"'s working directory persists; never run a top-level `cd`/`pushd`/`popd` here - use absolute paths, `git -C`, or `( cd ... && ... )`.\n'
 # --- 1. lock -----------------------------------------------------------
 stage lock
 subsection "LOCK"

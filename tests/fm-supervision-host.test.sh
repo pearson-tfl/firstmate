@@ -140,7 +140,7 @@ test_attended_captain_outcome_reaches_main_through_branch_outcomes() {
   append_status "$home" 'ready for review'
   wait_until_deadline 60 host_exited "$home" || fail "captain: the captain outcome did not wake main: $(cat "$home/state/.supervision-host.log")"
   expect_code 0 "$(cat "$home/host.rc")" "a captain-outcome exit must exit 0 for the owner to deliver"
-  assert_re '^supervision-host: branch-outcome: .*\(store rows 1\); run bin/fm-wake-drain.sh' "$home/host.out" \
+  assert_re '^supervision-host: branch-outcome: .*\(store rows 1\); run (FM_HOME=[^ ]* )?/[^ ]*/bin/fm-wake-drain.sh' "$home/host.out" \
     "the exit must name the captain outcome's store row and send main to its drain"
   assert_no_re '^signal:' "$home/host.out" "the close the engine handled must not reach main as a wake"
   assert_grep 'MAIN processes it from its next drain' "$home/engine-report.log" "an attended captain report must say main processes it"
@@ -201,7 +201,7 @@ test_quiet_record_without_its_daemon_is_a_present_captain() {
   assert_no_re '^POSTURE: AWAY' "$home/engine-call.1" "a turn beside a quiet record must carry no away tail"
   assert_re 'MAIN DIALOG MIRROR' "$home/engine-call.1" "a turn beside a quiet record must carry the captain's dialog"
   assert_grep 'MAIN processes it from its next drain' "$home/engine-report.log" "a captain report beside a quiet record must say main processes it"
-  assert_re '^supervision-host: branch-outcome: .*\(store rows 1\); run bin/fm-wake-drain.sh' "$home/host.out" \
+  assert_re '^supervision-host: branch-outcome: .*\(store rows 1\); run (FM_HOME=[^ ]* )?/[^ ]*/bin/fm-wake-drain.sh' "$home/host.out" \
     "the exit must name the captain outcome's store row for the present captain"
   drained=$(FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" 2>&1' "$ROOT/bin/fm-wake-drain.sh")
   assert_contains "$drained" "BRANCH OUTCOMES (captain outcomes the supervision session recorded for you" "main's drain must present the captain outcome beside a quiet record"

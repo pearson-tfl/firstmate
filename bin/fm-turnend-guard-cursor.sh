@@ -285,7 +285,7 @@ claim_park || exit 0
 if [ "$LOOP_COUNT" -ge "$LOOP_CEILING" ]; then
   [ "$LOOP_COUNT" -eq "$LOOP_CEILING" ] || exit 0
   fm_supervision_needed "$STATE" "$GRACE" || exit 0
-  emit_followup turn-end-guard "FIRSTMATE SUPERVISION FOLLOW-UP CEILING REACHED - this session has taken $LOOP_COUNT consecutive hook-driven turns without a captain message, so automatic wake delivery stops here to bound the loop. Queued wakes stay durable: run bin/fm-wake-drain.sh, handle them, and run its exact WAKE_ACK_REQUIRED command. Supervision resumes automatically at the next turn end after the captain's next message."
+  emit_followup turn-end-guard "FIRSTMATE SUPERVISION FOLLOW-UP CEILING REACHED - this session has taken $LOOP_COUNT consecutive hook-driven turns without a captain message, so automatic wake delivery stops here to bound the loop. Queued wakes stay durable: run $(fm_wake_drain_cmd), handle them, and run its exact WAKE_ACK_REQUIRED command. Supervision resumes automatically at the next turn end after the captain's next message."
 fi
 
 # Away mode owns the watcher and its own triage; never park and never wake.
@@ -411,7 +411,7 @@ This wake comes from automatic supervision under the away-posture record, not fr
   emit_followup watcher "firstmate watcher wake - one supervision event needs a handling turn now.
 $WAKE
 
-Run bin/fm-wake-drain.sh first, handle the wake, then run its exact WAKE_ACK_REQUIRED --ack-through command. Until that post-handling acknowledgement, interruption leaves the wake durable for idempotent re-handling. This stop hook owns watcher continuity: when the handling turn ends, the next needed cycle parks automatically - do NOT run bin/fm-watch-arm.sh after an ordinary wake." reset-budget
+Run $(fm_wake_drain_cmd) first, handle the wake, then run its exact WAKE_ACK_REQUIRED --ack-through command. Until that post-handling acknowledgement, interruption leaves the wake durable for idempotent re-handling. This stop hook owns watcher continuity: when the handling turn ends, the next needed cycle parks automatically - do NOT run bin/fm-watch-arm.sh after an ordinary wake." reset-budget
 fi
 
 # A verified live cycle with a fresh beacon is positive recovery even though this
