@@ -49,6 +49,8 @@ SUB_HOME_PARENT_MARKER=".fm-secondmate-parent"
 . "$SCRIPT_DIR/fm-secondmate-charter-lib.sh"
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
+# shellcheck source=bin/fm-githooks-lib.sh
+. "$SCRIPT_DIR/fm-githooks-lib.sh"
 
 usage() {
   echo "usage: fm-home-seed.sh <id> <home|-> {<project>...|--no-projects}" >&2
@@ -495,7 +497,8 @@ EOF
     return 0
   fi
   url=$(source_origin_url "$project" "$mode" "$src") || return 1
-  git clone --quiet "$url" "$dst"
+  git clone --quiet "$url" "$dst" || return 1
+  fm_githooks_apply "$dst"
 }
 
 validate_seed_project() {
