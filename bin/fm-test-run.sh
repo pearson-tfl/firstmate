@@ -813,6 +813,8 @@ tests/fm-devin-signals-live-e2e.test.sh 50
 tests/fm-dispatch-resolve.test.sh 25633
 tests/fm-documentation-audiences.test.sh 2343
 tests/fm-dod-lib.test.sh 3721
+tests/fm-exhaust-switch-omp-live-e2e.test.sh 120
+tests/fm-exhaust-switch.test.sh 4100
 tests/fm-extension-binding.test.sh 29156
 tests/fm-fleet-ledger.test.sh 26638
 tests/fm-fleet-snapshot-contribution-input.test.sh 248
