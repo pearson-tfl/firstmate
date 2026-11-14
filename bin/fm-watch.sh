@@ -890,16 +890,22 @@ signal_turnend_panes_churned() {  # <file> ...
 
 # The repeat evidence for <task>: "<status signature>\t<pane hash>", where the
 # pane hash is the .hash- marker the staleness backbone records for the task's
-# endpoint. 1 when there is no recorded endpoint or no valid hash: an unreadable
-# pane never counts as unchanged.
+# endpoint, counted only when a fresh capture still hashes to it. 1 for a
+# secondmate (that backbone does not refresh an active mate's marker, as in
+# signal_turnend_panes_churned), no recorded endpoint, no valid hash, a failed
+# capture, or a marker the live pane has moved past: never absorb on stale or
+# missing evidence.
 turnend_repeat_evidence() {  # <task>
   local task=$1 meta w h sig
   meta="$STATE/$task.meta"
   [ -f "$meta" ] || return 1
+  [ "$(fm_meta_get "$meta" kind)" != secondmate ] || return 1
   w=$(fm_backend_target_of_meta "$meta")
   [ -n "$w" ] || return 1
   h=$(cat "$STATE/.hash-$(window_key "$w")" 2>/dev/null) || return 1
   [[ $h =~ ^[0-9a-f]{32}$ ]] || return 1
+  watcher_capture "$(fm_backend_of_meta "$meta")" "$w" 40 "fm-$task" || return 1
+  [ "$(printf '%s' "$WATCHER_CAPTURE" | hash_pane)" = "$h" ] || return 1
   sig=$(status_observed_signature "$STATE/$task.status") || return 1
   printf '%s\t%s' "$sig" "$h"
 }

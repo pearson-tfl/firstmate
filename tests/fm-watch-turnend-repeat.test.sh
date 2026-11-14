@@ -125,3 +125,19 @@ rm -f "$STATE/.hash-$KEY"
 touch_turnend
 round wake "unreadable pane"
 pass "a repeat whose pane cannot be read surfaces"
+
+set_pane 'stopped: the model was refused'
+touch_turnend
+round wake "turn-end with the pane readable again"
+printf '%s' 'the worker answered a steer' > "$CAPTURE"
+touch_turnend
+round wake "live pane moved past its hash marker"
+pass "a repeat whose live pane no longer matches the recorded hash marker surfaces"
+
+set_pane 'stopped: the model was refused'
+touch_turnend
+round wake "turn-end before the secondmate case"
+printf 'window=%s\nkind=secondmate\nharness=claude\n' "$WINDOW" > "$STATE/t1.meta"
+touch_turnend
+round wake "secondmate repeat"
+pass "a secondmate's repeated bare turn-end surfaces"
