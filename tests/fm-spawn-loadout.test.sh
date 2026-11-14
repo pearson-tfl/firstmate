@@ -64,6 +64,7 @@ install_claude_probe() {
   cat > "$FAKEBIN_DIR/claude" <<'SH'
 #!/bin/sh
 printf 'ENV_DISABLE_WORKFLOWS=%s\n' "${CLAUDE_CODE_DISABLE_WORKFLOWS-unset}"
+printf 'ENV_NO_COLOR=%s ENV_FORCE_COLOR=%s\n' "${NO_COLOR-unset}" "${FORCE_COLOR-unset}"
 for a in "$@"; do printf 'ARG=%s\n' "$a"; done
 SH
   chmod +x "$FAKEBIN_DIR/claude"
@@ -77,12 +78,12 @@ run_spawn() {
 }
 
 # What the agent process received: run the emitted launch in a synthetic pane
-# whose environment carries the contrary workflows value, so a launch that
-# merely inherited the pane would be caught.
+# whose environment carries the contrary workflows value and a colour-off
+# setting, so a launch that merely inherited the pane would be caught.
 probe_output() {
   install_claude_probe
   env -i HOME="$TMP_ROOT/pane-home" PATH="$FAKEBIN_DIR:$PATH" TERM=xterm \
-    TMUX=synthetic-pane CLAUDE_CODE_DISABLE_WORKFLOWS="$1" \
+    TMUX=synthetic-pane CLAUDE_CODE_DISABLE_WORKFLOWS="$1" NO_COLOR=1 FORCE_COLOR=0 \
     /bin/sh -c "$(cat "$LAUNCH_LOG")"
 }
 
@@ -185,6 +186,7 @@ test_workflows_lever() {
   expect_code 0 "$status" "a plain claude spawn should succeed: $out"
   seen=$(probe_output 0) || fail "the emitted launch failed to run"
   assert_contains "$seen" "ENV_DISABLE_WORKFLOWS=1" "workflows should be off by default, whatever the pane holds"
+  assert_contains "$seen" "ENV_NO_COLOR=unset ENV_FORCE_COLOR=unset" "a claude launch should clear an inherited colour-off setting"
   assert_equals "true" "$(settings_key "$seen" .disableWorkflows)" "the default launch settings should turn workflows off"
   assert_equals "off" "$(meta_value "$HOME_DIR" workflows wf-a1)" "the task record should name the lever"
 
@@ -194,6 +196,7 @@ test_workflows_lever() {
   expect_code 0 "$status" "a claude spawn with workflows on should succeed: $out"
   seen=$(probe_output 1) || fail "the emitted launch failed to run"
   assert_contains "$seen" "ENV_DISABLE_WORKFLOWS=unset" "workflows on should clear an inherited off switch"
+  assert_contains "$seen" "ENV_NO_COLOR=unset ENV_FORCE_COLOR=unset" "workflows on should still clear an inherited colour-off setting"
   assert_equals "false" "$(settings_key "$seen" .disableWorkflows)" "workflows on should turn them on in the launch settings"
 
   make_case wf-config wf-c1
@@ -214,6 +217,7 @@ test_workflows_lever() {
   seen=$(probe_output 0) || fail "the emitted launch failed to run"
   assert_equals "true" "$(settings_key "$seen" .disableWorkflows)" "the lever should win over a role's own workflows setting"
   assert_contains "$seen" "ENV_DISABLE_WORKFLOWS=1" "the lever's off switch should ride a loadout launch too"
+  assert_contains "$seen" "ENV_NO_COLOR=unset ENV_FORCE_COLOR=unset" "a loadout launch should clear an inherited colour-off setting"
   assert_equals "Bash,Read,Edit" "$(arg_after "$seen" --tools)" "workflows off should leave the role's tool list alone"
 
   make_case wf-loadout-on wf-d2
@@ -235,7 +239,7 @@ test_workflows_lever() {
   status=$?
   expect_code 1 "$status" "an unknown lever value should be refused: $out"
   [ -s "$LAUNCH_LOG" ] && fail "a refused lever value must launch nothing"
-  pass "the workflows lever is off by default, on by flag or home default, and wins over a role's setting"
+  pass "the workflows lever is off by default, on by flag or home default, and wins over a role's setting; every claude launch clears NO_COLOR and FORCE_COLOR"
 }
 
 # Approval failover writes config/claude-permission-mode=auto; a role that

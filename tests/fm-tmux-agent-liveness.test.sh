@@ -529,5 +529,59 @@ fi
   || fail "the reclassification and its ceiling must be gated on Command Code's own process identity"
 pass "commandcode composer: an identical screen stays unknown when the pane is not Command Code"
 
+# --- monochrome prompt suggestion ---------------------------------------------
+# Under NO_COLOR, Claude draws its prompt suggestion with no dim run, so only
+# the cursor separates it from typing: a suggestion leaves the cursor at the
+# text's start, typing leaves it at the text's end. The same screen is drawn
+# each time and only the cursor column (or the row's colour) changes.
+claude_suggestion_screen() {  # <text> <start|end> <plain|bright>
+  local text=$1 at=$2 colour=$3 e col
+  e=$(printf '\033')
+  printf '%s[2J%s[H● Done.\n────────────────────────────────────────\n' "$e" "$e"
+  if [ "$colour" = bright ]; then
+    printf '%s[39m❯ %s[38;2;255;255;255m%s%s[39m\n' "$e" "$e" "$text" "$e"
+  else
+    # Claude Code 2.1.323 draws a no-break space after the glyph.
+    printf '❯\302\240%s\n' "$text"
+  fi
+  printf '────────────────────────────────────────\n  ⏵⏵ bypass permissions on\n'
+  col=3
+  [ "$at" = end ] && col=$((3 + ${#text}))
+  printf '%s[3;%sH' "$e" "$col"
+}
+open_suggestion_pane() {  # <window> <text> <start|end> <plain|bright>
+  local window=$1 text=$2 at=$3 colour=$4 i=0
+  new_window "$window" bash -c "$(declare -f claude_suggestion_screen); claude_suggestion_screen '$text' '$at' '$colour'; exec '$LAB/bin/claude-link' 900"
+  while [ "$i" -lt 100 ]; do
+    case "$("$REAL_TMUX" -L "$SOCKET" capture-pane -p -t "$SESSION:$window" 2>/dev/null)" in
+      *"$text"*) return 0 ;;
+    esac
+    sleep 0.1
+    i=$((i + 1))
+  done
+  fail "pane $window never rendered its composer"
+}
+
+open_suggestion_pane sugg-start 'Start with item 1' start plain
+[ "$("$REAL_TMUX" -L "$SOCKET" display-message -p -t "$SESSION:sugg-start" '#{cursor_x}')" = 2 ] \
+  || fail "the suggestion pane must park the cursor at the text's first column, or this case proves nothing"
+# The rule-pair shape asks for an identity; a non-pi pane answers probe-absent.
+[ "$(fm_composer_classify_screen "$(fm_tmux_composer_caps)" "$(fm_tmux_composer_capture "$SESSION:sugg-start")" \
+      "$(fm_tmux_composer_cursor_row "$SESSION:sugg-start")" probe-absent)" = pending ] \
+  || fail "the shared classifier alone must read the unstyled suggestion as pending, or the cursor rule is untested"
+[ "$(fm_tmux_composer_state "$SESSION:sugg-start")" = empty ] \
+  || fail "an unstyled suggestion with the cursor at its start must read empty, or no steer reaches a NO_COLOR seat"
+pass "claude composer: an unstyled suggestion with the cursor at its start reads empty"
+
+open_suggestion_pane sugg-end 'Start with item 1' end plain
+[ "$(fm_tmux_composer_state "$SESSION:sugg-end")" = pending ] \
+  || fail "unstyled text with the cursor at its end is typing and must read pending"
+pass "claude composer: unstyled text with the cursor at its end stays pending"
+
+open_suggestion_pane sugg-bright 'Start with item 1' start bright
+[ "$(fm_tmux_composer_state "$SESSION:sugg-bright")" = pending ] \
+  || fail "where colour exists the dim-style check must stay the judge, whatever the cursor column"
+pass "claude composer: styled bright text stays pending even with the cursor at its start"
+
 cleanup_all
 trap - EXIT
