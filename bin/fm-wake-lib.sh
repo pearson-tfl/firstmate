@@ -1836,7 +1836,7 @@ fm_treehouse_pool_slot() {  # <project-dir> <worktree>
 # nothing when the copy had no leftovers; returns 1, leaving what has not yet
 # moved in place, when the copy cannot be listed or a path cannot be moved.
 fm_worktree_archive_leftovers() {  # <worktree> <archive-root> <task-id> <stage>
-  local wt=$1 root=$2 id=$3 stage=$4 list rel dest archive=
+  local wt=$1 root=$2 id=$3 stage=$4 list rel dest archive='' rc=0
   list=$(mktemp "${TMPDIR:-/tmp}/fm-leftovers.XXXXXX") || return 1
   # Without --exclude-standard, ls-files lists ignored paths too; --directory
   # collapses each wholly untracked directory, nested repositories included.
@@ -1848,13 +1848,21 @@ fm_worktree_archive_leftovers() {  # <worktree> <archive-root> <task-id> <stage>
     rel=${rel%/}
     [ -n "$rel" ] || continue
     if [ -z "$archive" ]; then
-      mkdir -p "$root" && archive=$(mktemp -d "$root/$(date -u +%Y%m%dT%H%M%SZ)-$id-$stage.XXXXXX") || { rm -f "$list"; return 1; }
-      printf 'worktree=%s\ntask=%s\nstage=%s\nat=%s\n' "$wt" "$id" "$stage" "$(date +%s)" > "$archive/origin" || { rm -f "$list"; return 1; }
+      if ! mkdir -p "$root" \
+        || ! archive=$(mktemp -d "$root/$(date -u +%Y%m%dT%H%M%SZ)-$id-$stage.XXXXXX") \
+        || ! printf 'worktree=%s\ntask=%s\nstage=%s\nat=%s\n' "$wt" "$id" "$stage" "$(date +%s)" > "$archive/origin"; then
+        rc=1
+        break
+      fi
     fi
     dest="$archive/files/$rel"
-    mkdir -p "$(dirname "$dest")" && mv "$wt/$rel" "$dest" || { rm -f "$list"; return 1; }
+    if ! mkdir -p "$(dirname "$dest")" || ! mv "$wt/$rel" "$dest"; then
+      rc=1
+      break
+    fi
   done < "$list"
   rm -f "$list"
+  [ "$rc" -eq 0 ] || return 1
   [ -z "$archive" ] || printf '%s\n' "$archive"
 }
 
