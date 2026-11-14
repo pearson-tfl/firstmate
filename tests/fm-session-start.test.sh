@@ -129,8 +129,13 @@ require_file() {
 }
 task_header() {
   printf 'count: %s\n' "$1"
-  printf 'tasks[%s]{id,state,kind,repo,title,blocked_by,hold_kind,hold_reason}:\n' "$1"
+  printf 'tasks[%s]{id,state,kind,repo,title,blocked_by,hold_kind,%s}:\n' "$1" "$hold_field"
 }
+hold_field=hold_reason
+hold_value='captain choice pending'
+case "$*" in
+  *'--fields blocked_by,hold_kind,hold_until'*) hold_field=hold_until; hold_value=2026-11-10 ;;
+esac
 list_help() {
   printf 'help[1]:\n'
   printf '%s\n' '  - Run `tasks-axi show <id> --full` for full notes on a task'
@@ -181,11 +186,17 @@ case "${1:-}" in
         ;;
       *'--state in_flight'*)
         task_header 1
-        printf '%s\n' '  compact-startup,in_flight,ship,firstmate,Compact startup digest,none,captain,captain choice pending'
+        printf '  compact-startup,in_flight,ship,firstmate,Compact startup digest,none,captain,%s\n' "$hold_value"
         ;;
       *'--state held'*)
-        task_header 1
-        printf '%s\n' '  held-queued,queued,ship,firstmate,Held queued work,none,captain,captain choice pending'
+        if [ "${FM_FAKE_TASKS_AXI_OVERLAP:-0}" = 1 ]; then
+          task_header 2
+          printf '  compact-startup,in_flight,ship,firstmate,Compact startup digest,none,captain,%s\n' "$hold_value"
+        else
+          task_header 1
+        fi
+        printf '  held-queued,queued,ship,firstmate,Held queued work,none,captain,%s\n' "$hold_value"
+        [ -z "${FM_FAKE_TASKS_AXI_EXTRA_HELD:-}" ] || printf '%s\n' "$FM_FAKE_TASKS_AXI_EXTRA_HELD"
         ;;
       *'--state queued'*'--blocked'*)
         task_header 1
@@ -2296,6 +2307,193 @@ EOF
 
 # --- context re-emit (--reemit) ----------------------------------------------
 
+# Public output captured on 2e771922813bcc2bc25e5f82e1f1dd0f3d647ace,
+# before re-emit trimming. Only fixture locations are normalized; every other
+# byte of this ordinary (lock-refused) startup digest is compared unchanged.
+startup_byte_fixture() {
+  local rec root home fakebin out
+  rec=$(new_world startup-byte-fixture)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_tasks_axi_compact "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf 'holder:other-main\n' > "$home/state/.lock"
+  printf '# Backlog\n' > "$home/data/backlog.md"
+  printf 'Memory kept verbatim.\n' > "$home/data/captain.md"
+  printf 'kind=ship\nwindow=\nworktree=/isolated/sample\ncustom=keep-full-at-startup\n' > "$home/state/lane.meta"
+  printf 'working: older event\npaused: declared wait\n' > "$home/state/lane.status"
+  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
+  out=${out//"$home"/@HOME@}
+  out=${out//"$root"/@ROOT@}
+  printf '%s\n' "$out"
+}
+
+test_ordinary_startup_bytes_unchanged() {
+  startup_byte_fixture > "$TMP_ROOT/startup-digest.txt"
+  cmp -s "$ROOT/tests/fixtures/session-start-ordinary.digest" "$TMP_ROOT/startup-digest.txt" \
+    || fail "ordinary startup output changed from the pre-compaction public-output fixture: $(diff -u "$ROOT/tests/fixtures/session-start-ordinary.digest" "$TMP_ROOT/startup-digest.txt")"
+  pass "ordinary startup digest remains byte-identical to the pre-compaction fixture"
+}
+
+test_reemit_compacts_only_waiting_lane_history() {
+  local rec root home fakebin out full active reemit_active id
+  rec=$(new_world reemit-compaction)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf 'holder:other-main\n' > "$home/state/.lock"
+  printf 'Memory must stay full\nsecond memory line\n' > "$home/data/captain.md"
+  for id in active paused held resumed; do
+    printf 'kind=scout\nwindow=\nworktree=/isolated/%s space\ncustom=omitted-%s\n' "$id" "$id" > "$home/state/$id.meta"
+    printf 'working: old-%s\nworking: recent-%s\n' "$id" "$id" > "$home/state/$id.status"
+  done
+  printf 'paused [at=123]: waiting-paused\n' >> "$home/state/paused.status"
+  printf 'captain-held [at=123]: waiting-held\n' >> "$home/state/held.status"
+  printf 'paused: old wait\nresolved: wait cleared\nworking: resumed now\n' >> "$home/state/resumed.status"
+  printf 'kind=ship\nmalformed record\n' > "$home/state/missing.meta"
+  printf 'kind=ship\nbackend=orca\nterminal=terminal-recovery-id\nworktree=/isolated/orca\n' > "$home/state/orca.meta"
+  printf 'kind=ship\nbackend=t3code\nt3_thread_id=thread-recovery-id\nworktree=/isolated/t3code\n' > "$home/state/t3code.meta"
+  printf 'working: orphan earlier\npaused: orphan wait\n' > "$home/state/orphan.status"
+  full=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
+  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" --reemit)
+  for id in active paused held resumed; do
+    assert_contains "$out" "--- $id ---" "re-emit lost a lane identity"
+    assert_contains "$out" "meta summary: kind=scout window='' worktree=/isolated/$id\\ space" "re-emit lost lane kind/endpoint/location"
+    assert_contains "$out" "$home/state/$id.status" "re-emit lost full history pointer"
+  done
+  assert_contains "$out" "backend=orca terminal=terminal-recovery-id" "re-emit lost Orca endpoint recovery"
+  assert_contains "$out" "backend=t3code t3_thread_id=thread-recovery-id" "re-emit lost t3code endpoint recovery"
+  assert_contains "$out" "--- missing ---" "re-emit lost incomplete lane"
+  assert_contains "$out" "endpoint: unknown (no window recorded)" "re-emit hid missing endpoint"
+  assert_contains "$out" "no status file yet" "re-emit hid missing history"
+  assert_contains "$out" "$home/state/<id>.meta" "re-emit omitted full metadata recovery path"
+  assert_contains "$out" "bin/fm-crew-state.sh <id>" "re-emit omitted targeted current-state recovery"
+  assert_not_contains "$out" "omitted-paused" "re-emit retained non-recovery metadata"
+  assert_not_contains "$out" "old-paused" "re-emit retained paused history"
+  assert_not_contains "$out" "old-held" "re-emit retained held history"
+  assert_contains "$out" "waiting-paused" "re-emit lost declared wait reason"
+  assert_contains "$out" "waiting-held" "re-emit lost held latest event"
+  assert_contains "$out" "old-resumed" "re-emit compacted a resumed lane"
+  assert_contains "$out" "orphan earlier" "re-emit compacted orphan history without meta"
+  assert_contains "$out" $'Memory must stay full\nsecond memory line' "re-emit compacted memory"
+  active=$(printf '%s\n' "$full" | awk '/^--- active ---$/ {p=1;next} /^--- / {p=0} p && /^status tail / {s=1} p && s {print}')
+  reemit_active=$(printf '%s\n' "$out" | awk '/^--- active ---$/ {p=1;next} /^--- / {p=0} p && /^status tail / {s=1} p && s {print}')
+  [ "$active" = "$reemit_active" ] || fail "active lane recent status changed during re-emit"
+  assert_not_contains "$out" "Everything below is printed in full" "re-emit still promises full metas"
+  pass "re-emit summarizes metadata and declared waits, retaining active/orphan history and recovery pointers"
+}
+
+test_reemit_backlog_projection_and_overlap() {
+  local rec root home fakebin out log
+  rec=$(new_world reemit-backlog)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_tasks_axi_compact "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf 'holder:other-main\n' > "$home/state/.lock"
+  printf '# Backlog\n' > "$home/data/backlog.md"
+  log="$home/tasks.log"
+  out=$(FM_FAKE_TASKS_AXI_OVERLAP=1 FM_FAKE_TASKS_AXI_LOG="$log" FM_LOCK_HOLDER=test-main \
+    run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" --reemit)
+  [ "$(printf '%s\n' "$out" | grep -c 'Compact startup digest')" -eq 1 ] || fail "re-emit duplicated an overlapping held in-flight row"
+  assert_contains "$out" "Held queued work" "re-emit dropped a non-overlapping held item"
+  assert_contains "$out" "2026-11-10" "re-emit dropped hold-until"
+  assert_contains "$out" "blocked-followup" "re-emit dropped dependency"
+  assert_not_contains "$out" "captain choice pending" "re-emit still prints long hold reasons"
+  assert_contains "$out" "hold reasons omitted" "re-emit failed to disclose backlog omissions"
+  assert_contains "$(cat "$log")" "--fields blocked_by,hold_kind,hold_until" "re-emit requested the wrong projection"
+  assert_not_contains "$(cat "$log")" "hold_reason" "re-emit requested hold reasons"
+  # Manual/unavailable fallback stays conservative: title-line metadata intact.
+  printf 'manual\n' > "$home/config/backlog-backend"
+  printf '## In flight\n- [ship] manual-row (hold: preserve title reason)\n  private body\n' > "$home/data/backlog.md"
+  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" --reemit)
+  assert_contains "$out" "preserve title reason" "manual re-emit dropped title-line hold metadata"
+  assert_not_contains "$out" "private body" "manual re-emit printed task bodies"
+  pass "re-emit omits hold reasons and duplicate rows only through tasks-axi, preserving recovery fields/fallback"
+}
+
+# make_fake_ntn <fakebin>: an ntn whose board data source reads unless
+# FM_FAKE_NTN_DOWN=1, and whose pages are $FM_FAKE_NTN_PAGES/<id>.json.
+make_fake_ntn() {
+  cat > "$1/ntn" <<'SH'
+#!/usr/bin/env bash
+[ "${FM_FAKE_NTN_SLEEP:-0}" = 0 ] || sleep "$FM_FAKE_NTN_SLEEP"
+[ "${FM_FAKE_NTN_DOWN:-0}" = 0 ] || { echo 'fake ntn: network unreachable' >&2; exit 1; }
+case "$2" in
+  v1/data_sources/*) printf '{}\n' ;;
+  v1/pages/*) cat "$FM_FAKE_NTN_PAGES/${2#v1/pages/}.json" 2>/dev/null || { echo 'not found' >&2; exit 1; } ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "$1/ntn"
+}
+
+fake_card() {  # <dir> <page-id> <data-source-id> <state> [in_trash]
+  printf '{"object":"page","id":"%s","in_trash":%s,"archived":false,"parent":{"type":"data_source_id","data_source_id":"%s"},"properties":{"State":{"type":"select","select":{"name":"%s"}}}}\n' \
+    "$2" "${5:-false}" "$3" "$4" > "$1/$2.json"
+}
+
+test_captain_board_leaves_out_only_proven_items() {
+  local rec root home fakebin out pages ds=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+  local open=11111111111111111111111111111111 done=22222222222222222222222222222222
+  local trashed=33333333333333333333333333333333 elsewhere=44444444444444444444444444444444
+  local encoded rows
+  rec=$(new_world captain-board)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_tasks_axi_compact "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  make_fake_ntn "$fakebin"
+  printf 'holder:other-main\n' > "$home/state/.lock"
+  printf '# Backlog\n' > "$home/data/backlog.md"
+  pages="$home/pages"; mkdir -p "$pages"
+  fake_card "$pages" "$open" "$ds" 'Waiting for you'
+  fake_card "$pages" "$done" "$ds" Done
+  fake_card "$pages" "$trashed" "$ds" 'Waiting for you' true
+  fake_card "$pages" "$elsewhere" ffffffffffffffffffffffffffffffff 'Waiting for you'
+  printf 'notion-cards=%s\n' "$ds" > "$home/config/captain-board"
+  # The proven reason is stored encoded, as bin/fm-captain-hold.sh writes it.
+  encoded=fm-hold-v1:$(printf 'Your call, card https://app.notion.com/p/Card-%s (rec: yes)' "$open" | perl -MMIME::Base64 -0777 -ne 'print encode_base64($_, "")')
+  rows=$(printf '  %s\n' \
+    "on-board,queued,ship,firstmate,On the board,none,captain,$encoded" \
+    "card-done,queued,ship,firstmate,Card done,none,captain,https://app.notion.com/p/X-$done" \
+    "card-trashed,queued,ship,firstmate,Card trashed,none,captain,https://www.notion.so/$trashed" \
+    "other-list,queued,ship,firstmate,Other list,none,captain,https://app.notion.com/p/$elsewhere" \
+    "no-link,queued,ship,firstmate,No link,none,captain,https://github.com/o/r/pull/1" \
+    "parked-card,queued,ship,firstmate,Parked with card,none,parked,https://app.notion.com/p/$open")
+  run_board() {
+    FM_FAKE_TASKS_AXI_EXTRA_HELD=$rows FM_FAKE_NTN_PAGES=$pages FM_LOCK_HOLDER=test-main \
+      run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" "$@"
+  }
+  for mode in ordinary --reemit; do
+    if [ "$mode" = ordinary ]; then out=$(run_board); else out=$(run_board --reemit); fi
+    assert_not_contains "$out" "On the board" "$mode: a held item proven open on the board was still printed"
+    assert_contains "$out" "1 captain-held item(s) left out" "$mode: the left-out count is missing"
+    for kept in "Card done" "Card trashed" "Other list" "No link" "Parked with card" "Held queued work"; do
+      assert_contains "$out" "$kept" "$mode: an item not proven on the board was left out ($kept)"
+    done
+    assert_contains "$out" "Compact startup digest" "$mode: an in-flight row was left out"
+  done
+  out=$(FM_FAKE_NTN_DOWN=1 run_board)
+  for kept in "On the board" "Card done" "No link"; do
+    assert_contains "$out" "$kept" "an unreachable board still left out a held item ($kept)"
+  done
+  assert_contains "$out" "every held item is printed" "an unreachable board was not disclosed"
+  assert_contains "$out" "cannot read Notion data source" "the board failure diagnostic is missing"
+  out=$(FM_FAKE_NTN_SLEEP=5 FM_CAPTAIN_BOARD_TIMEOUT=1 run_board)
+  assert_contains "$out" "On the board" "a board check past its bound still left out a held item"
+  assert_contains "$out" "passed its 1s bound" "a timed-out board check was not disclosed"
+  pass "captain's board: only items proven open on the board leave the held listing; an unreachable or slow board keeps all"
+}
+
 test_reemit_cue_survives_the_hook_output_preview() {
   local rec root home fakebin reemit normal head2k
   rec=$(new_world reemit-cue)
@@ -2984,6 +3182,10 @@ EOF
   pass "session start rejects Pi loaded markers from previous sessions"
 }
 
+test_ordinary_startup_bytes_unchanged
+test_captain_board_leaves_out_only_proven_items
+test_reemit_compacts_only_waiting_lane_history
+test_reemit_backlog_projection_and_overlap
 test_context_digest_absent_empty_present
 test_lock_refusal_read_only_path
 test_lock_write_failure_read_only_path
