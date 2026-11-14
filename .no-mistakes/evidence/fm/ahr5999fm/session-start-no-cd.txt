@@ -1,0 +1,30 @@
+### fm-session-start.sh 
+
+================================================================================
+SESSION START - /tmp/fm-lab.NZghNo
+================================================================================
+This shell's working directory persists; never run a top-level `cd`/`pushd`/`popd` here - use absolute paths, `git -C`, or `( cd ... && ... )`.
+
+LOCK
+--------------------------------------------------------------------------------
+error: acquiring the session lock needs FM_LOCK_HOLDER set to this session's holder name; nothing changed; operate read-only until resolved
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  READ-ONLY SESSION - FLEET LOCK OWNERSHIP WAS NOT VERIFIED
+●  error: acquiring the session lock needs FM_LOCK_HOLDER set to this session's holder name; nothing changed; operate read-only until resolved
+rc=141
+### fm-session-start.sh --reemit
+RE-EMIT CUE: if this output ends with "Output too large ... Full output saved to <path>",
+read that whole file now, before acting. Otherwise read data/captain.md, data/captain-shared.md,
+and data/learnings.md under /tmp/fm-lab.NZghNo/data now if any of them is missing below.
+
+================================================================================
+SESSION START (CONTEXT RE-EMIT) - /tmp/fm-lab.NZghNo
+================================================================================
+This session already took the helm at its own startup and has only lost its
+context. Lock ownership is re-verified and the durable records below are
+reprinted, but the sweeps startup already reconciled - project clone refresh,
+secondmate convergence and liveness, pending remote handoff
+retry, X-mode artifact writes, and stale Herdr child cleanup - are NOT repeated.
+rc=141
+mode=startup rc=0 no-cd lines: 1
+mode=--reemit rc=0 no-cd lines: 1

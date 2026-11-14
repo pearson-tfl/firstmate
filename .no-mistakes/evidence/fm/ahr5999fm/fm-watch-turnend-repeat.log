@@ -1,0 +1,9 @@
+ok - a first bare turn-end from a stopped worker surfaces
+ok - a repeated bare turn-end with status and pane unchanged is absorbed and its seen marker advanced
+ok - a status append surfaces
+ok - a repeat whose pane hash changed surfaces
+ok - repeats past the re-surface bound surface exactly once, then absorb again
+ok - a repeat whose pane cannot be read surfaces
+ok - a repeat whose live pane no longer matches the recorded hash marker surfaces
+ok - a secondmate's repeated bare turn-end surfaces
+rc=0 secs=59

@@ -1,0 +1,14 @@
+### home=/tmp/fm-lab.6MkQg0 (bin/: absent)
+queue rows before: 1
+WAKE_ACK_REQUIRED: after handling completes run FM_HOME=/tmp/fm-lab.6MkQg0 {run-worktree}/bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 875323.1794691600.Wm6Abr
+cd'd to /tmp/fm-elsewhere.aRKn (no bin/ here); running printed command with FM_HOME unset
+ack rc=0
+queue rows after: 0
+relative form from here would be: bin/fm-wake-drain.sh: not found
+### home=/tmp/fm-lab.NZghNo (bin/: present)
+queue rows before: 1
+WAKE_ACK_REQUIRED: after handling completes run /tmp/fm-lab.NZghNo/bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 876230.1794691601.9YSSUD
+cd'd to /tmp/fm-elsewhere.iwjm (no bin/ here); running printed command with FM_HOME unset
+ack rc=0
+queue rows after: 0
+relative form from here would be: bin/fm-wake-drain.sh: not found

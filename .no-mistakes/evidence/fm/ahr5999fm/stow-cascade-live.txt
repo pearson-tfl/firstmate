@@ -1,0 +1,24 @@
+live pane command: claude
+now=1794691670
+### default freshness (3600s)
+secondmate=recent-receipt
+transport=agent
+last_receipt_at=1794691070
+receipt_fresh=yes
+secondmate=old-receipt
+transport=agent
+last_receipt_at=1794684470
+secondmate=no-receipt
+transport=agent
+secondmates=3
+exceptions=0
+rc=0
+### FM_STOW_CASCADE_FRESH_SECS=300
+secondmate=recent-receipt
+last_receipt_at=1794691070
+secondmate=old-receipt
+last_receipt_at=1794684470
+secondmate=no-receipt
+### FM_STOW_CASCADE_FRESH_SECS=abc
+error: FM_STOW_CASCADE_FRESH_SECS must be a non-negative integer: abc
+rc=2
