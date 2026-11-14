@@ -234,12 +234,12 @@
 #
 # CAPTAIN'S BOARD. With config/captain-board present (both modes, tasks-axi
 # backlogs only), a captain-held item whose title or hold reason cites a card
-# that bin/fm-captain-board.sh confirms open on the captain's board, read live
-# now, is left out of the held group; one line counts what was left out. That
-# check is the digest's one synchronous network read: opt-in, and bounded by
-# FM_CAPTAIN_BOARD_TIMEOUT (default 15s). A check that fails, times out or
-# proves nothing leaves every held item printed in full, and in-flight rows are
-# never left out. Without the file the output is unchanged.
+# that bin/fm-captain-board.sh confirms open on the captain's board or the
+# Master board, read live now, is left out of the held group; one line counts
+# what was left out. That check is the digest's one synchronous network read:
+# opt-in, and run to completion with no bound of its own. A check that fails
+# or proves nothing leaves every held item printed in full, and in-flight rows
+# are never left out. Without the file the output is unchanged.
 #
 #   --source  The native session-open source, supplied only by
 #             fm-sessionstart-run.sh. A genuine `startup` that owns the active
@@ -424,8 +424,6 @@ case "$ENDPOINT_TIMEOUT" in ''|*[!0-9]*) ENDPOINT_TIMEOUT=10 ;; esac
 [ "$ENDPOINT_TIMEOUT" -gt 0 ] 2>/dev/null || ENDPOINT_TIMEOUT=10
 BACKLOG_FIELDS=blocked_by,hold_kind,hold_reason
 [ "$REEMIT" -eq 0 ] || BACKLOG_FIELDS=blocked_by,hold_kind,hold_until
-BOARD_TIMEOUT=${FM_CAPTAIN_BOARD_TIMEOUT:-15}
-case "$BOARD_TIMEOUT" in ''|*[!0-9]*|0) BOARD_TIMEOUT=15 ;; esac
 
 RULE='================================================================================'
 SUBRULE='--------------------------------------------------------------------------------'
@@ -575,20 +573,18 @@ check_captain_board() {
   local path=$1 listing dir msg
   BOARD_PROVEN='' BOARD_NOTE=''
   [ -f "$CONFIG/captain-board" ] || return 0
-  # The pairs go through a file: a timed child's stdin is not guaranteed.
   dir=$(mktemp -d "${TMPDIR:-/tmp}/fm-captain-board.XXXXXX") || dir=
   if [ -n "$dir" ] \
     && listing=$(tasks-axi list --file "$path" --state held --fields hold_kind,hold_reason 2>"$dir/err") \
     && printf '%s\n' "$listing" | captain_held_urls > "$dir/pairs" \
-    && BOARD_PROVEN=$(fm_run_timed "$BOARD_TIMEOUT" "$SCRIPT_DIR/fm-captain-board.sh" \
-      "$CONFIG/captain-board" "$dir/pairs" 2>>"$dir/err"); then
+    && BOARD_PROVEN=$("$SCRIPT_DIR/fm-captain-board.sh" "$CONFIG/captain-board" "$dir/pairs" 2>>"$dir/err"); then
     # A proven result is counted by omit_board_proven, which sees what it drops.
     [ -n "$BOARD_PROVEN" ] \
       || BOARD_NOTE="(captain's board checked live now: no captain-held item cites an open card, so every held item is printed)"
   else
     BOARD_PROVEN=
     msg=$(head -n 1 "$dir/err" 2>/dev/null)
-    BOARD_NOTE="(captain's board check failed or passed its ${BOARD_TIMEOUT}s bound: ${msg:-no diagnostic}; every held item is printed)"
+    BOARD_NOTE="(captain's board check failed: ${msg:-no diagnostic}; every held item is printed)"
   fi
   [ -z "$dir" ] || rm -rf "$dir"
 }

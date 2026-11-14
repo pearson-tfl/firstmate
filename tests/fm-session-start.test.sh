@@ -2419,14 +2419,15 @@ EOF
 }
 
 # make_fake_ntn <fakebin>: an ntn whose board data source reads unless
-# FM_FAKE_NTN_DOWN=1, and whose pages are $FM_FAKE_NTN_PAGES/<id>.json.
+# FM_FAKE_NTN_DOWN=1 (or it is $FM_FAKE_NTN_DOWN_DS), and whose pages are
+# $FM_FAKE_NTN_PAGES/<id>.json.
 make_fake_ntn() {
   cat > "$1/ntn" <<'SH'
 #!/usr/bin/env bash
 [ "${FM_FAKE_NTN_SLEEP:-0}" = 0 ] || sleep "$FM_FAKE_NTN_SLEEP"
 [ "${FM_FAKE_NTN_DOWN:-0}" = 0 ] || { echo 'fake ntn: network unreachable' >&2; exit 1; }
 case "$2" in
-  v1/data_sources/*) printf '{}\n' ;;
+  v1/data_sources/*) [ "${2#v1/data_sources/}" != "${FM_FAKE_NTN_DOWN_DS:-}" ] || { echo 'fake ntn: forbidden' >&2; exit 1; }; printf '{}\n' ;;
   v1/pages/*) cat "$FM_FAKE_NTN_PAGES/${2#v1/pages/}.json" 2>/dev/null || { echo 'not found' >&2; exit 1; } ;;
   *) exit 1 ;;
 esac
@@ -2434,15 +2435,18 @@ SH
   chmod +x "$1/ntn"
 }
 
-fake_card() {  # <dir> <page-id> <data-source-id> <state> [in_trash]
-  printf '{"object":"page","id":"%s","in_trash":%s,"archived":false,"parent":{"type":"data_source_id","data_source_id":"%s"},"properties":{"State":{"type":"select","select":{"name":"%s"}}}}\n' \
-    "$2" "${5:-false}" "$3" "$4" > "$1/$2.json"
+fake_card() {  # <dir> <page-id> <data-source-id> <state> [in_trash] [property kind]
+  local prop=${6:-State} kind=${7:-select}
+  printf '{"object":"page","id":"%s","in_trash":%s,"archived":false,"parent":{"type":"data_source_id","data_source_id":"%s"},"properties":{"%s":{"type":"%s","%s":{"name":"%s"}}}}\n' \
+    "$2" "${5:-false}" "$3" "$prop" "$kind" "$kind" "$4" > "$1/$2.json"
 }
 
 test_captain_board_leaves_out_only_proven_items() {
   local rec root home fakebin out pages ds=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
   local open=11111111111111111111111111111111 done=22222222222222222222222222222222
   local trashed=33333333333333333333333333333333 elsewhere=44444444444444444444444444444444
+  local master=77777777777777777777777777777777 m_open=55555555555555555555555555555555
+  local m_done=66666666666666666666666666666666 missing=88888888888888888888888888888888
   local encoded rows
   rec=$(new_world captain-board)
   IFS='|' read -r root home fakebin <<EOF
@@ -2459,7 +2463,9 @@ EOF
   fake_card "$pages" "$done" "$ds" Done
   fake_card "$pages" "$trashed" "$ds" 'Waiting for you' true
   fake_card "$pages" "$elsewhere" ffffffffffffffffffffffffffffffff 'Waiting for you'
-  printf 'notion-cards=%s\n' "$ds" > "$home/config/captain-board"
+  fake_card "$pages" "$m_open" "$master" 'Needs John' false Status status
+  fake_card "$pages" "$m_done" "$master" Done false Status status
+  printf 'notion-cards=%s\nmaster-board=%s\n' "$ds" "$master" > "$home/config/captain-board"
   # The proven reason is stored encoded, as bin/fm-captain-hold.sh writes it.
   encoded=fm-hold-v1:$(printf 'Your call, card https://app.notion.com/p/Card-%s (rec: yes)' "$open" | perl -MMIME::Base64 -0777 -ne 'print encode_base64($_, "")')
   rows=$(printf '  %s\n' \
@@ -2468,6 +2474,9 @@ EOF
     "card-trashed,queued,ship,firstmate,Card trashed,none,captain,https://www.notion.so/$trashed" \
     "other-list,queued,ship,firstmate,Other list,none,captain,https://app.notion.com/p/$elsewhere" \
     "no-link,queued,ship,firstmate,No link,none,captain,https://github.com/o/r/pull/1" \
+    "master-open,queued,ship,firstmate,Master open,none,captain,https://www.notion.so/M-$m_open" \
+    "master-done,queued,ship,firstmate,Master done,none,captain,https://www.notion.so/M-$m_done" \
+    "read-fails,queued,ship,firstmate,Read fails,none,captain,https://app.notion.com/p/$missing" \
     "parked-card,queued,ship,firstmate,Parked with card,none,parked,https://app.notion.com/p/$open")
   run_board() {
     FM_FAKE_TASKS_AXI_EXTRA_HELD=$rows FM_FAKE_NTN_PAGES=$pages FM_LOCK_HOLDER=test-main \
@@ -2476,8 +2485,10 @@ EOF
   for mode in ordinary --reemit; do
     if [ "$mode" = ordinary ]; then out=$(run_board); else out=$(run_board --reemit); fi
     assert_not_contains "$out" "On the board" "$mode: a held item proven open on the board was still printed"
-    assert_contains "$out" "1 captain-held item(s) left out" "$mode: the left-out count is missing"
-    for kept in "Card done" "Card trashed" "Other list" "No link" "Parked with card" "Held queued work"; do
+    assert_not_contains "$out" "Master open" "$mode: a held item proven open on the Master board was still printed"
+    assert_contains "$out" "2 captain-held item(s) left out" "$mode: the left-out count is missing"
+    for kept in "Card done" "Card trashed" "Other list" "No link" "Parked with card" "Held queued work" \
+      "Master done" "Read fails"; do
       assert_contains "$out" "$kept" "$mode: an item not proven on the board was left out ($kept)"
     done
     assert_contains "$out" "Compact startup digest" "$mode: an in-flight row was left out"
@@ -2488,10 +2499,16 @@ EOF
   done
   assert_contains "$out" "every held item is printed" "an unreachable board was not disclosed"
   assert_contains "$out" "cannot read Notion data source" "the board failure diagnostic is missing"
-  out=$(FM_FAKE_NTN_SLEEP=5 FM_CAPTAIN_BOARD_TIMEOUT=1 run_board)
-  assert_contains "$out" "On the board" "a board check past its bound still left out a held item"
-  assert_contains "$out" "passed its 1s bound" "a timed-out board check was not disclosed"
-  pass "captain's board: only items proven open on the board leave the held listing; an unreachable or slow board keeps all"
+  out=$(FM_FAKE_NTN_DOWN_DS=$master run_board)
+  for kept in "On the board" "Master open"; do
+    assert_contains "$out" "$kept" "an unreadable Master board still left out a held item ($kept)"
+  done
+  assert_contains "$out" "cannot read Notion data source $master" "the Master board failure diagnostic is missing"
+  # No bound of its own: ten 2s reads outlast the old 15s default and still finish.
+  out=$(FM_FAKE_NTN_SLEEP=2 run_board)
+  assert_not_contains "$out" "On the board" "a slow board check did not run to completion"
+  assert_contains "$out" "2 captain-held item(s) left out" "a slow board check lost its left-out count"
+  pass "captain's board: only items proven open on the board or Master board leave the held listing; a failed page read keeps its item, an unreadable board keeps all, a slow one still finishes"
 }
 
 test_reemit_cue_survives_the_hook_output_preview() {

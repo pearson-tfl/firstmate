@@ -7,16 +7,20 @@
 # Input (pairs-file, else stdin): one "<task-id><TAB><url>" line per URL
 #   cited by a captain-held task.
 # stdout: each task id with at least one cited Notion page that is, read live
-#   now, an open card on the board: a page whose parent is the configured
-#   Notion data source, not archived or in trash, and whose State is not Done.
+#   now, an open card on a configured board: a page, not archived or in trash,
+#   whose parent is the notion-cards data source and whose State select is set
+#   and not Done, or the master-board data source and whose Status is set and
+#   not Done.
 #   Ids print once each, sorted. Any URL that is not a Notion page, any failed
 #   page read, and any other page proves nothing for its task.
 # Exit 0 after a completed check (zero proven ids is a valid result). Exit 1,
 #   printing nothing on stdout, when the config is unusable or the board's data
-#   source itself cannot be read; the caller then keeps every held item.
+#   source or a configured Master board data source cannot be read; the caller
+#   then keeps every held item.
 #
 # Config file (config/captain-board, local and gitignored), key=value lines:
 #   notion-cards=<data source id>   required; the board's card list
+#   master-board=<data source id>   optional; the Master board's card list
 #   ntn=<executable>                optional; an `ntn`-compatible command,
 #                                   default `ntn` on PATH
 # Reads only; never writes to Notion.
@@ -33,10 +37,16 @@ ntn=$(get ntn); ntn=${ntn:-ntn}
 case "$ds" in
   *[!0-9a-f]*|'') echo "fm-captain-board: $conf needs notion-cards=<data source id>" >&2; exit 1 ;;
 esac
-if ! "$ntn" api "v1/data_sources/$ds" -X GET </dev/null >/dev/null 2>&1; then
-  echo "fm-captain-board: cannot read Notion data source $ds through $ntn" >&2
-  exit 1
-fi
+master=$(get master-board | tr -d '-' | tr 'A-F' 'a-f')
+case "$master" in
+  *[!0-9a-f]*) echo "fm-captain-board: $conf has an unusable master-board=$master" >&2; exit 1 ;;
+esac
+for src in $ds $master; do
+  if ! "$ntn" api "v1/data_sources/$src" -X GET </dev/null >/dev/null 2>&1; then
+    echo "fm-captain-board: cannot read Notion data source $src through $ntn" >&2
+    exit 1
+  fi
+done
 
 while IFS=$'\t' read -r id url; do
   [ -n "$id" ] || continue
@@ -51,8 +61,10 @@ while IFS=$'\t' read -r id url; do
   printf '%s' "$json" | perl -MJSON::PP -e '
     my $p = eval { JSON::PP->new->decode(do { local $/; <STDIN> }) } or exit 1;
     my $parent = lc($p->{parent}{data_source_id} // ""); $parent =~ s/-//g;
-    my $state = (($p->{properties}{State} // {})->{select} // {})->{name} // "";
-    exit !(($p->{object} // "") eq "page" && $parent eq $ARGV[0]
-      && !$p->{archived} && !$p->{in_trash} && $state ne "Done");
-  ' "$ds" && printf '%s\n' "$id"
+    my ($prop, $kind) = $parent eq $ARGV[0] ? ("State", "select")
+      : $ARGV[1] ne "" && $parent eq $ARGV[1] ? ("Status", "status") : exit 1;
+    my $state = (($p->{properties}{$prop} // {})->{$kind} // {})->{name} // "";
+    exit !(($p->{object} // "") eq "page"
+      && !$p->{archived} && !$p->{in_trash} && $state ne "" && $state ne "Done");
+  ' "$ds" "$master" && printf '%s\n' "$id"
 done | sort -u
