@@ -76,6 +76,11 @@ fm_omp_root() {
 # printed for a profile without one. Never prints a login itself.
 fm_omp_profile_logins() {
   local list=$1 only=${2:-} dir name db row email org num
+  if ! command -v sqlite3 >/dev/null 2>&1; then
+    [ -z "$(find "$(fm_omp_root)/profiles" -mindepth 3 -maxdepth 3 -name agent.db 2>/dev/null | head -n 1)" ] \
+      || echo "warning: sqlite3 not found; omp profile logins cannot be read, so omp profiles are not chosen by usage" >&2
+    return 0
+  fi
   for dir in "$(fm_omp_root)"/profiles/*/; do
     name=${dir%/}
     name=${name##*/}
@@ -197,9 +202,26 @@ fm_omp_profile_select() {
 # fm_omp_session_file <state-dir> <task-id>
 # Prints the omp session file the task's live agent last reported through its
 # spawn-written extension (state/<id>.omp-session), when that file exists.
+# A seat spawned before that record existed falls back to the newest session in
+# omp's own folder for its profile and working directory: omp keeps sessions
+# under <profile>/agent/sessions/<cwd relative to HOME, with / as ->, a layout
+# tests/fm-exhaust-switch-omp-live-e2e.test.sh checks on the installed omp.
 fm_omp_session_file() {
-  local f
-  [ -f "$1/$2.omp-session" ] || return 1
-  f=$(head -n 1 "$1/$2.omp-session")
-  case "$f" in /*.jsonl) [ -f "$f" ] && printf '%s\n' "$f" ;; *) return 1 ;; esac
+  local f x meta="$1/$2.meta" wt profile dir
+  if [ -f "$1/$2.omp-session" ]; then
+    f=$(head -n 1 "$1/$2.omp-session")
+    case "$f" in /*.jsonl) [ -f "$f" ] && printf '%s\n' "$f" ;; *) return 1 ;; esac
+    return
+  fi
+  [ -f "$meta" ] || return 1
+  wt=$(sed -n 's/^worktree=//p' "$meta" | tail -n 1)
+  [ -n "$wt" ] || return 1
+  profile=$(sed -n 's/^omp_profile=//p' "$meta" | tail -n 1)
+  dir="$(fm_omp_root)${profile:+/profiles/$profile}/agent/sessions/$(printf '%s' "${wt#"${HOME%/}"}" | tr '/' '-')"
+  f=
+  for x in "$dir"/*.jsonl; do
+    [ -f "$x" ] || continue
+    [ -n "$f" ] && [ ! "$x" -nt "$f" ] || f=$x
+  done
+  [ -n "$f" ] && printf '%s\n' "$f"
 }

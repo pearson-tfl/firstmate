@@ -62,7 +62,7 @@ T3 Code has no composer and its `/mcp` tools offer no session stop, so `exit` re
 `exit` stops an agent and preserves everything else.
 Removing a worktree, closing an endpoint, or discarding work stays with [`bin/fm-teardown.sh`](../bin/fm-teardown.sh), which owns the landed-work test.
 
-**`resume` acts only on a session the spawn fixed.**
+**`resume` acts only on a session the launch recorded.**
 Every Claude Code, Pi, and pi-signed launch, fresh or relaunched, passes an exact session id it minted and records it as `agent_session_id=` in the task record ([`fm_control_agent_session_flag`](../bin/fm-control-lib.sh) owns the per-adapter flags).
 `resume` is the relaunch transaction below onto that recorded session: Claude Code reopens it with `--resume <id>` and Pi with `--session-id <id>`, in the same endpoint and worktree, keeping the recorded harness, model, and effort.
 omp has no flag that fixes a session id at launch, so its spawn-written extension records the live session file in `state/<id>.omp-session` instead, and `resume` reopens that file with `--resume <file>`; a session file resumes under any omp profile, which is how the [exhausted-login switch](configuration.md#exhausted-login-switch) moves a seat to another login.

@@ -64,6 +64,15 @@ for _ in $(seq 1 50); do [ -s "$LAB/stub.port" ] && break; sleep 0.1; done
 printf 'providers:\n  anthropic:\n    baseUrl: http://127.0.0.1:%s\n    apiKey: lab-not-a-real-key\n' "$(cat "$LAB/stub.port")" \
   > "$LAB/omp-root/profiles/labx/agent/models.yml"
 
+# A second profile with a login gives the move somewhere to go; the control
+# plane is stood in below, so omp never launches on it.
+mkdir -p "$LAB/omp-root/profiles/spare/agent"
+sqlite3 "$LAB/omp-root/profiles/spare/agent/agent.db" "create table auth_credentials (id integer primary key,
+  provider text, credential_type text, data text, disabled_cause text, identity_key text);
+  insert into auth_credentials (provider, credential_type, data)
+  values ('anthropic', 'oauth', json_object('email', 'login-spare', 'orgId', 'org-spare'));" \
+  || fail 'cannot create the spare profile'
+
 cat > "$LAB/shim/tmux" <<EOF
 #!/bin/sh
 exec "$REAL_TMUX" -L "$SOCKET" "\$@"
@@ -104,7 +113,9 @@ case "$out" in
   *) fail "the switch never read the seat's real 429 as exhausted: ${out:-no output}" ;;
 esac
 session=$(sed -n 1p "$FM_HOME/state/labx-mate.omp-session" 2>/dev/null)
-case "$session" in "$LAB/omp-root/profiles/labx/agent/sessions/"*.jsonl) ;; *) fail "the extension did not record the session file: ${session:-none}" ;; esac
+expected_dir="$LAB/omp-root/profiles/labx/agent/sessions/$(printf '%s' "${mate#"${HOME%/}"}" | tr '/' '-')"
+[ "${session%/*}" = "$expected_dir" ] \
+  || fail "omp no longer keeps sessions where the pre-record fallback looks: ${session:-none}"
 awk '$1 == "omp:labx" && $2 > 1700000000 { found = 1 } END { exit !found }' "$FM_EXHAUSTED_LOGINS" \
   || fail "the login was not recorded exhausted: $(cat "$FM_EXHAUSTED_LOGINS" 2>/dev/null)"
 for _ in $(seq 1 50); do [ -s "$LAB/control.log" ] && break; sleep 0.1; done
