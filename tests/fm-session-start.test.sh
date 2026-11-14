@@ -870,7 +870,7 @@ EOF
   assert_contains "$out" "TANGLE: primary checkout on feature branch 'fm/read-only-tangle'" "read-only bootstrap did not surface the tangle diagnostic"
   assert_contains "$out" "read-only session must leave restore work" "read-only tangle diagnostic did not explain restore ownership"
   assert_contains "$out" "Stay read-only: do not arm" "read-only next step did not block direct watcher repair"
-  assert_not_contains "$out" "drain them with bin/fm-wake-drain.sh" "read-only guard printed a mutating drain instruction"
+  assert_not_contains "$out" "drain them with" "read-only guard printed a mutating drain instruction"
   assert_not_contains "$out" "After draining queued wakes" "read-only guard printed a drain-then-rearm instruction"
   assert_not_contains "$out" "run bin/fm-watch-arm.sh" "read-only guard printed a mutating watcher-arm instruction"
   assert_not_contains "$out" "git -C $root checkout main" "read-only bootstrap printed a state-changing checkout remediation"
@@ -2512,7 +2512,7 @@ EOF
 }
 
 test_reemit_cue_survives_the_hook_output_preview() {
-  local rec root home fakebin reemit normal head2k
+  local rec root home fakebin reemit normal head2k cd_rule
   rec=$(new_world reemit-cue)
   IFS='|' read -r root home fakebin <<FIXTURE
 $rec
@@ -2532,8 +2532,12 @@ FIXTURE
   head2k=$(printf '%s' "$reemit" | head -c 2000)
   assert_contains "$head2k" "RE-EMIT CUE" "the re-emit cue is not inside the first 2000 characters"
   assert_contains "$head2k" "Full output saved to" "the re-emit cue does not point at the saved output"
+  # shellcheck disable=SC2016  # backticks are literal text
+  cd_rule='never run a top-level `cd`/`pushd`/`popd` here'
+  assert_contains "$normal" "$cd_rule" "a normal start does not state the no-top-level-cd rule"
+  assert_contains "$reemit" "$cd_rule" "a re-emit does not state the no-top-level-cd rule"
 
-  pass "--reemit puts its read cue in the first 2000 characters and a normal start omits it"
+  pass "--reemit puts its read cue in the first 2000 characters and a normal start omits it; both state the no-top-level-cd rule"
 }
 
 test_reemit_skips_startup_sweeps_but_keeps_the_wake_drain() {

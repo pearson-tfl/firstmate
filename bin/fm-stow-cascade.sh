@@ -19,6 +19,15 @@
 #   budget_report=ok|error|timeout    (report lines follow on ok)
 #   transport=agent|direct|deferred|unavailable
 #   reason=<one line>                 (whenever a step did not complete)
+#   last_receipt_at=<epoch>           (agent only, when the home has replied
+#                                      to a stow request before)
+#   receipt_fresh=yes                 (agent only, when that receipt is younger
+#                                      than FM_STOW_CASCADE_FRESH_SECS, default
+#                                      3600; the cascade skips that home)
+#
+# A stow receipt is the newest line on this home's status channel for the
+# secondmate (state/<id>.status, where local and mirrored remote replies both
+# land) whose note begins `stow:`, read by its [at=<epoch>] stamp.
 #
 # transport says how the sweep reaches that home:
 #   agent     - a live secondmate agent owns the home; steer it with
@@ -48,7 +57,7 @@
 set -u
 
 usage() {
-  sed -n '2,47{s/^# \{0,1\}//;p;}' "$0"
+  sed -n '2,56{s/^# \{0,1\}//;p;}' "$0"
 }
 
 case "${1:-}" in
@@ -81,6 +90,11 @@ esac
 [ "$BOUND" -gt 0 ] \
   || { printf 'error: FM_STOW_CASCADE_TIMEOUT must be a positive integer: %s\n' "$BOUND" >&2; exit 2; }
 
+FRESH=${FM_STOW_CASCADE_FRESH_SECS:-3600}
+case "$FRESH" in
+  ''|*[!0-9]*) printf 'error: FM_STOW_CASCADE_FRESH_SECS must be a non-negative integer: %s\n' "$FRESH" >&2; exit 2 ;;
+esac
+
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 emit() { printf '%s\n' "$1"; }
 
@@ -104,6 +118,15 @@ meta_for() { # <id>
   [ -f "$meta" ] && [ ! -L "$meta" ] || return 1
   grep -q '^kind=secondmate$' "$meta" 2>/dev/null || return 1
   printf '%s\n' "$meta"
+}
+
+# The [at=<epoch>] stamp of <id>'s newest stow receipt on this home's channel.
+last_receipt_at() { # <id>
+  local f="$STATE/$1.status" at
+  [ -f "$f" ] && [ ! -L "$f" ] || return 1
+  at=$(sed -n -E 's/^[a-z-]+ [^:]*\[at=([0-9]{1,12})\][^:]*:[[:space:]]*stow:.*/\1/p' "$f" | tail -1)
+  [ -n "$at" ] || return 1
+  printf '%s\n' "$at"
 }
 
 TRANSPORT=
@@ -241,6 +264,10 @@ while IFS= read -r line || [ -n "$line" ]; do
   fi
   emit "transport=$TRANSPORT"
   [ -z "$TRANSPORT_REASON" ] || emit "reason=$TRANSPORT_REASON"
+  if [ "$TRANSPORT" = agent ] && receipt_at=$(last_receipt_at "$id"); then
+    emit "last_receipt_at=$receipt_at"
+    [ $(( $(date +%s) - 10#$receipt_at )) -ge "$FRESH" ] || emit 'receipt_fresh=yes'
+  fi
   case "$TRANSPORT" in agent|direct) ;; *) exceptions=$((exceptions + 1)) ;; esac
 done < "$TMP/records"
 

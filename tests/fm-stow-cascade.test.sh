@@ -251,6 +251,51 @@ test_transport_routes_by_placement_and_liveness() {
   pass "transport follows placement and live-agent state, and a remote home without an agent defers"
 }
 
+test_agent_stanza_carries_its_last_stow_receipt() {
+  local primary fresh none old out s now
+  primary=$(new_primary last-receipt)
+  fresh=$(new_home recent-receipt)
+  none=$(new_home no-receipt)
+  old=$(new_home old-receipt)
+  {
+    local_record recent-receipt "$fresh"
+    local_record no-receipt "$none"
+    local_record old-receipt "$old"
+  } > "$primary/data/secondmates.md"
+  fm_write_secondmate_meta "$primary/state/recent-receipt.meta" "$fresh" 'firstmate:fm-live' alpha claude
+  fm_write_secondmate_meta "$primary/state/no-receipt.meta" "$none" 'firstmate:fm-live' alpha claude
+  fm_write_secondmate_meta "$primary/state/old-receipt.meta" "$old" 'firstmate:fm-live' alpha claude
+  now=$(date +%s)
+  {
+    printf 'done [corr=0123456789abcdef] [at=%s]: stow: unchanged since 1111111111111111 (via-helper)\n' "$((now - 7200))"
+    printf 'done [corr=1123456789abcdef] [at=%s]: stow: captain.md unchanged, learnings.md pruned (via-helper)\n' "$((now - 600))"
+    printf 'working [at=%s]: an unrelated note after the receipt\n' "$((now - 60))"
+  } > "$primary/state/recent-receipt.status"
+  printf 'done [at=%s]: audit clean, nothing about stow: here\n' "$((now - 60))" > "$primary/state/no-receipt.status"
+  printf 'done [corr=2123456789abcdef] [at=%s]: stow: unchanged since 0123456789abcdef (via-helper)\n' \
+    "$((now - 7200))" > "$primary/state/old-receipt.status"
+
+  set +e
+  out=$(run_cascade "$primary" FM_FAKE_TMUX_WINDOW='fm-live')
+  set -e
+  s=$(stanza "$out" recent-receipt)
+  [ "$(value_in "$s" transport)" = agent ] || fail "the receipt fixture home was not routed to its agent"
+  [ "$(value_in "$s" last_receipt_at)" = "$((now - 600))" ] \
+    || fail "a home with a 10-minute-old receipt did not report it: $(value_in "$s" last_receipt_at)"
+  [ "$(value_in "$s" receipt_fresh)" = yes ] || fail "a 10-minute-old receipt was not reported fresh"
+  s=$(stanza "$out" no-receipt)
+  [ "$(value_in "$s" transport)" = agent ] || fail "the no-receipt home was not routed to its agent"
+  case "$s" in *last_receipt_at=*|*receipt_fresh=*) fail "a home with no stow receipt reported one: $s" ;; esac
+  s=$(stanza "$out" old-receipt)
+  [ "$(value_in "$s" last_receipt_at)" = "$((now - 7200))" ] || fail "a two-hour-old receipt was not reported"
+  case "$s" in *receipt_fresh=*) fail "a two-hour-old receipt was reported fresh" ;; esac
+  set +e
+  out=$(run_cascade "$primary" FM_FAKE_TMUX_WINDOW='fm-live' FM_STOW_CASCADE_FRESH_SECS=300)
+  set -e
+  case "$(stanza "$out" recent-receipt)" in *receipt_fresh=*) fail "the freshness bound was not configurable" ;; esac
+  pass "an agent stanza carries its newest stow receipt time and whether it is fresh enough to skip"
+}
+
 test_receipt_facts_are_complete_and_show_before_and_after() {
   local primary home before after s
   primary=$(new_primary receipt)
@@ -365,6 +410,7 @@ test_no_cascade_without_secondmates_or_from_a_secondmate_home() {
 test_budget_is_enforced_per_home_and_never_summed
 test_every_registered_home_is_enumerated_exactly_once
 test_transport_routes_by_placement_and_liveness
+test_agent_stanza_carries_its_last_stow_receipt
 test_receipt_facts_are_complete_and_show_before_and_after
 test_a_slow_remote_is_bounded_and_the_rest_still_report
 test_no_cascade_without_secondmates_or_from_a_secondmate_home
