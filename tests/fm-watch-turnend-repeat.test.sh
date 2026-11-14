@@ -77,6 +77,13 @@ round() {  # <expect> <label> [env...]
     sleep 0.1
     i=$((i + 1))
   done
+  # The absorb is logged before its seen-marker write; let that write land first.
+  i=0
+  while [ "$(cat "$STATE/.seen-t1_turn-ended" 2>/dev/null)" != "$(seen_sig "$STATE/t1.turn-ended")" ] \
+    && [ "$i" -lt 50 ]; do
+    sleep 0.1
+    i=$((i + 1))
+  done
   reap "$WATCH_PID"
   [ ! -s "$out" ] || fail "$label: an absorbed repeat printed a wake: $(cat "$out")"
   if FM_STATE_OVERRIDE="$STATE" "$DRAIN" 2>/dev/null | grep -F "$(printf '\tsignal\t')" >/dev/null; then
