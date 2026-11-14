@@ -1828,6 +1828,36 @@ fm_treehouse_pool_slot() {  # <project-dir> <worktree>
   [ "$project_common" = "$slot_common" ]
 }
 
+# Move every untracked and ignored path out of a task copy into a fresh
+# directory under <archive-root>, keeping relative paths, so scratch that a
+# .gitignore hides from `git status` is neither handed to the copy's next holder
+# nor deleted. Each archive holds files/ plus an origin record naming the copy,
+# task, stage, and time. Prints the archive directory when anything moved and
+# nothing when the copy had no leftovers; returns 1, leaving what has not yet
+# moved in place, when the copy cannot be listed or a path cannot be moved.
+fm_worktree_archive_leftovers() {  # <worktree> <archive-root> <task-id> <stage>
+  local wt=$1 root=$2 id=$3 stage=$4 list rel dest archive=
+  list=$(mktemp "${TMPDIR:-/tmp}/fm-leftovers.XXXXXX") || return 1
+  # Without --exclude-standard, ls-files lists ignored paths too; --directory
+  # collapses each wholly untracked directory, nested repositories included.
+  if ! git -C "$wt" ls-files -z --others --directory > "$list" 2>/dev/null; then
+    rm -f "$list"
+    return 1
+  fi
+  while IFS= read -r -d '' rel; do
+    rel=${rel%/}
+    [ -n "$rel" ] || continue
+    if [ -z "$archive" ]; then
+      mkdir -p "$root" && archive=$(mktemp -d "$root/$(date -u +%Y%m%dT%H%M%SZ)-$id-$stage.XXXXXX") || { rm -f "$list"; return 1; }
+      printf 'worktree=%s\ntask=%s\nstage=%s\nat=%s\n' "$wt" "$id" "$stage" "$(date +%s)" > "$archive/origin" || { rm -f "$list"; return 1; }
+    fi
+    dest="$archive/files/$rel"
+    mkdir -p "$(dirname "$dest")" && mv "$wt/$rel" "$dest" || { rm -f "$list"; return 1; }
+  done < "$list"
+  rm -f "$list"
+  [ -z "$archive" ] || printf '%s\n' "$archive"
+}
+
 # Slot-owner claim: which task a Treehouse pool slot currently belongs to.
 #
 # Treehouse can record ownership durably: `treehouse get --lease --lease-holder`

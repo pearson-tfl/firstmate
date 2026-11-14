@@ -4832,7 +4832,7 @@ spawn_base_from_primary_checkout() { # <worktree> <project> <default> <origin-re
 }
 
 freshen_spawn_worktree_base() { # <worktree> <base-branch> <project> <mode>; 2 when the worktree is not clean
-  local worktree=$1 base=${2:-} project=${3:-} mode=${4:-} default target expected reset_ref actual status
+  local worktree=$1 base=${2:-} project=${3:-} mode=${4:-} default target expected reset_ref actual status archive
   status=$(git -C "$worktree" -c core.quotePath=false status --porcelain) || {
     echo "error: could not inspect pooled worktree '$worktree' before refreshing its base" >&2
     return 1
@@ -4845,6 +4845,13 @@ freshen_spawn_worktree_base() { # <worktree> <base-branch> <project> <mode>; 2 w
     fi
     return 2
   fi
+  # `git status` hides ignored paths, so a slot can read clean while holding
+  # the previous holder's scratch; move it out rather than hand it on.
+  archive=$(fm_worktree_archive_leftovers "$worktree" "$DATA/slot-archive" "$ID" handout) || {
+    echo "error: could not move ignored or untracked leftovers out of pooled worktree '$worktree'; refusing to launch" >&2
+    return 1
+  }
+  [ -z "$archive" ] || echo "note: pooled worktree '$worktree' held ignored or untracked leftovers; moved them to $archive" >&2
   if ! spawn_worktree_has_origin_config "$worktree"; then
     [ -z "$base" ] || {
       echo "error: pooled worktree '$worktree' has no origin, so it cannot start from base branch '$base'" >&2

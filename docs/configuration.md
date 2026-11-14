@@ -115,6 +115,7 @@ Each effective `FM_HOME` contains private operational directories.
 - Captain preferences and optional shared captain preferences.
 - Learnings, backlog, briefs, scout reports, optional task status archives, and the optional per-task no-mistakes pipeline-spend ledger.
 - Explicitly installed content-addressed extension packages under `data/extensions/packages/`.
+- Ignored and untracked leftovers moved out of task copies at hand-out and cleanup, under `data/slot-archive/` (`bin/fm-wake-lib.sh`'s `fm_worktree_archive_leftovers`); nothing prunes them.
 
 `state/` holds runtime records:
 

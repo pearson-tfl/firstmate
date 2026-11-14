@@ -62,7 +62,7 @@
 #   (z3c) forced secondmate + child scout nested clone       -> child copy returns clean
 #   (z3d) forced secondmate + child return leaves residue    -> warning, retirement completes, exit 4
 #   (z3e) return removes the copy                            -> cannot-verify warning, exit 4
-#   (z4) scout + ignored file                                -> ignored file survives
+#   (z4) scout + ignored file                                -> ignored file archived, not deleted
 set -u
 
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -1734,7 +1734,64 @@ test_scout_nested_clone_returns_with_no_untracked_entries() {
     || fail "scout-nested-clean: untracked entries remain: $(git -C "$wt" status --porcelain --untracked-files=all)"
   assert_absent "$wt/scratch-clone" "scout-nested-clean: nested clone survived return"
   assert_absent "$wt/scratch.txt" "scout-nested-clean: scratch file survived return"
+  [ -n "$(find "$case_dir/data/slot-archive" -path '*/files/scratch-clone/payload.txt' 2>/dev/null)" ] \
+    || fail "scout-nested-clean: nested clone was deleted rather than archived"
   pass "scout copy with a nested clone and a scratch file returns with no untracked entries"
+}
+
+# The leftover the pool must not hand on: a run folder whose own .gitignore
+# holds `*`, so `git status` reads clean while it holds a run log.
+test_ship_pool_return_archives_ignored_scratch() {
+  local case_dir wt rc archive
+  case_dir=$(make_case ship-ignored-archive)
+  wt=$(move_case_to_pool_slot "$case_dir" 7)
+  write_meta "$case_dir" local-only ship "$wt"
+  mkdir -p "$wt/.orun10/cache" "$wt/.claude"
+  printf '*\n' > "$wt/.orun10/.gitignore"
+  printf 'mail tool call\n' > "$wt/.orun10/calls.log"
+  printf 'cached\n' > "$wt/.orun10/cache/entry"
+  printf 'allowance\n' > "$wt/.claude/notes.md"
+  case "$(git -C "$wt" status --porcelain)" in *orun10*) fail "ship-ignored-archive: fixture run folder is not hidden from git status" ;; esac
+  add_treehouse_clean_fd "$case_dir"
+
+  rc=0
+  FM_HOME="$case_dir" run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "ship-ignored-archive: teardown should return the slot ($(cat "$case_dir/stderr"))"
+  [ -z "$(git -C "$wt" status --porcelain --untracked-files=all --ignored)" ] \
+    || fail "ship-ignored-archive: leftovers remain: $(git -C "$wt" status --porcelain --untracked-files=all --ignored)"
+  archive=$(find "$case_dir/data/slot-archive" -mindepth 1 -maxdepth 1 -type d | head -1)
+  [ -n "$archive" ] || fail "ship-ignored-archive: no archive was written"
+  assert_contains "$(cat "$archive/files/.orun10/calls.log")" "mail tool call" "ship-ignored-archive: run log not archived intact"
+  assert_present "$archive/files/.orun10/cache/entry" "ship-ignored-archive: cache not archived"
+  assert_present "$archive/files/.claude/notes.md" "ship-ignored-archive: allowance file not archived"
+  assert_grep "stage=return" "$archive/origin" "ship-ignored-archive: origin record missing its stage"
+  assert_grep "task=task-x1" "$archive/origin" "ship-ignored-archive: origin record missing its task"
+  assert_no_grep "lost this slot" "$case_dir/stderr" "ship-ignored-archive: a clean return was reported as a lost slot"
+  pass "a ship pool return archives ignored scratch hidden from git status and leaves the slot empty of it"
+}
+
+# An ignored leftover that survives the return is still a lost slot.
+test_dirty_return_names_ignored_residue() {
+  local case_dir wt rc
+  case_dir=$(make_case dirty-return-ignored)
+  wt=$(move_case_to_pool_slot "$case_dir" 8)
+  write_meta "$case_dir" no-mistakes scout "$wt"
+  prepare_scout_teardown "$case_dir"
+  cat > "$case_dir/fakebin/treehouse" <<'SH'
+#!/usr/bin/env bash
+wt=${3:-}
+[ "${1:-}" != return ] || [ -z "$wt" ] || { mkdir -p "$wt/.orun11" && printf '*\n' > "$wt/.orun11/.gitignore"; }
+exit 0
+SH
+  chmod +x "$case_dir/fakebin/treehouse"
+
+  rc=0
+  FM_HOME="$case_dir" run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 4 "$rc" "dirty-return-ignored: an ignored residue should lose the slot"
+  assert_grep ".orun11" "$case_dir/stderr" "dirty-return-ignored: warning did not name the ignored path"
+  pass "a return that leaves only ignored residue still names the lost slot"
 }
 
 test_ship_nested_clone_is_refused_and_bytes_stay() {
@@ -1935,7 +1992,7 @@ test_return_that_removes_copy_warns_cannot_verify() {
   pass "a return that leaves no readable copy reports the slot as unverified, not clean"
 }
 
-test_scout_ignored_files_survive_scratch_clean() {
+test_scout_ignored_files_are_archived() {
   local case_dir wt rc
   case_dir=$(make_case scout-ignored-survives)
   wt="$case_dir/wt"
@@ -1955,12 +2012,13 @@ test_scout_ignored_files_survive_scratch_clean() {
   set -e
 
   expect_code 0 "$rc" "scout-ignored: teardown should succeed"
-  [ "$(cat "$wt/ignored-cache/blob")" = "keep-me" ] \
-    || fail "scout-ignored: ignored file was removed or changed"
+  assert_absent "$wt/ignored-cache" "scout-ignored: ignored file stayed for the next holder"
   assert_absent "$wt/scratch.txt" "scout-ignored: scratch file survived"
-  [ -z "$(git -C "$wt" status --porcelain --untracked-files=all)" ] \
-    || fail "scout-ignored: untracked entries remain: $(git -C "$wt" status --porcelain --untracked-files=all)"
-  pass "ignored files survive the scratch clean and plain scratch does not"
+  [ -z "$(git -C "$wt" status --porcelain --untracked-files=all --ignored)" ] \
+    || fail "scout-ignored: leftovers remain: $(git -C "$wt" status --porcelain --untracked-files=all --ignored)"
+  [ "$(cat "$(find "$case_dir/data/slot-archive" -path '*/files/ignored-cache/blob' | head -1)")" = "keep-me" ] \
+    || fail "scout-ignored: ignored file was deleted or changed instead of archived"
+  pass "ignored files and plain scratch are both archived out of the copy, not deleted"
 }
 
 test_gh_error_and_content_absent_refuses() {
@@ -3016,7 +3074,7 @@ test_teardown_missing_busy_sidecar_completes() {
 }
 
 test_teardown_preserves_opencode_busy_plugin_on_pool_return() {
-  local case_dir rc plugin
+  local case_dir rc plugin archived
   case_dir=$(make_case opencode-busy-wiring)
   write_meta "$case_dir" local-only ship
   printf 'harness=opencode\n' >> "$case_dir/state/task-x1.meta"
@@ -3028,10 +3086,12 @@ test_teardown_preserves_opencode_busy_plugin_on_pool_return() {
   rc=0
   run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
   expect_code 0 "$rc" "opencode-busy-wiring: teardown should succeed ($(cat "$case_dir/stderr"))"
-  [ -f "$plugin" ] || fail "opencode-busy-wiring: pool return must retain the busy plugin as on main"
-  assert_contains "$(cat "$plugin")" "prior busy plugin" \
-    "opencode-busy-wiring: pool return must leave the plugin unchanged"
-  pass "teardown leaves opencode's busy plugin in the returned pool worktree as on main"
+  assert_absent "$plugin" "opencode-busy-wiring: pool return must not hand the busy plugin to the next holder"
+  archived=$(find "$case_dir/data/slot-archive" -path '*/files/.opencode/plugins/fm-busy-state.js' 2>/dev/null | head -1)
+  [ -n "$archived" ] || fail "opencode-busy-wiring: the ignored busy plugin must be archived, not deleted"
+  assert_contains "$(cat "$archived")" "prior busy plugin" \
+    "opencode-busy-wiring: the archived plugin must be unchanged"
+  pass "teardown archives opencode's ignored busy plugin out of the returned pool worktree"
 }
 
 seed_polytoken_wiring() {
@@ -3081,8 +3141,8 @@ test_teardown_preserves_tracked_polytoken_layer() {
 test_teardown_preserves_ignored_project_polytoken_layer() {
   local case_dir rc
   case_dir=$(make_case polytoken-project-own)
-  # Scratch/--force cleanup deliberately discards non-ignored untracked
-  # files. An ignored project layer isolates the adapter ownership check.
+  # The pre-return archive moves the layer out of the copy, so the archived
+  # bytes are what prove wiring removal left the project's own layer intact.
   printf '.polytoken/\n' >> "$(git -C "$case_dir/wt" rev-parse --git-path info/exclude)"
   write_meta "$case_dir" local-only ship
   printf 'harness=polytoken\n' >> "$case_dir/state/task-x1.meta"
@@ -3092,7 +3152,7 @@ test_teardown_preserves_ignored_project_polytoken_layer() {
   rc=0
   run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
   expect_code 0 "$rc" "polytoken-project-own: teardown should succeed ($(cat "$case_dir/stderr"))"
-  assert_contains "$(cat "$case_dir/wt/.polytoken/hooks.json" 2>/dev/null)" "project-own" \
+  assert_contains "$(cat "$(find "$case_dir/data/slot-archive" -path '*/files/.polytoken/hooks.json' | head -1)" 2>/dev/null)" "project-own" \
     "polytoken-project-own: teardown deleted a hook layer firstmate did not generate"
   pass "teardown never deletes a .polytoken hook layer firstmate did not generate"
 }
@@ -3100,8 +3160,8 @@ test_teardown_preserves_ignored_project_polytoken_layer() {
 test_teardown_leaves_polytoken_layer_for_other_harnesses() {
   local case_dir rc
   case_dir=$(make_case polytoken-other-harness)
-  # Scratch/--force cleanup deliberately discards non-ignored untracked
-  # files. An ignored project layer isolates the adapter ownership check.
+  # The pre-return archive moves the layer out of the copy; its archived
+  # files prove a non-polytoken teardown left the wiring alone.
   printf '.polytoken/\n' >> "$(git -C "$case_dir/wt" rev-parse --git-path info/exclude)"
   write_meta "$case_dir" local-only ship
   printf 'harness=claude\n' >> "$case_dir/state/task-x1.meta"
@@ -3109,9 +3169,9 @@ test_teardown_leaves_polytoken_layer_for_other_harnesses() {
   rc=0
   run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
   expect_code 0 "$rc" "polytoken-other-harness: teardown should succeed ($(cat "$case_dir/stderr"))"
-  [ -f "$case_dir/wt/.polytoken/hooks.json" ] \
+  [ -n "$(find "$case_dir/data/slot-archive" -path '*/files/.polytoken/hooks.json')" ] \
     || fail "polytoken-other-harness: a non-polytoken teardown removed .polytoken/hooks.json"
-  [ -f "$case_dir/wt/.polytoken/facets/firstmate-worker.md" ] \
+  [ -n "$(find "$case_dir/data/slot-archive" -path '*/files/.polytoken/facets/firstmate-worker.md')" ] \
     || fail "polytoken-other-harness: a non-polytoken teardown removed the facet file"
   pass "teardown scopes .polytoken wiring removal to polytoken tasks"
 }
@@ -6024,13 +6084,15 @@ test_untracked_only_refusal_diagnostic
 test_tracked_edit_refusal_diagnostic
 test_mixed_refusal_diagnostic
 test_scout_nested_clone_returns_with_no_untracked_entries
+test_ship_pool_return_archives_ignored_scratch
+test_dirty_return_names_ignored_residue
 test_ship_nested_clone_is_refused_and_bytes_stay
 test_dirty_return_warns_which_slot_was_lost
 test_dirty_return_warns_even_when_a_later_step_refuses
 test_forced_secondmate_child_scout_nested_clone_returns_clean
 test_forced_secondmate_dirty_child_return_warns_and_completes
 test_return_that_removes_copy_warns_cannot_verify
-test_scout_ignored_files_survive_scratch_clean
+test_scout_ignored_files_are_archived
 test_gh_error_and_content_absent_refuses
 test_legacy_record_without_the_flag_refuses
 test_windowless_legacy_record_with_gone_worktree_tears_down
