@@ -141,6 +141,7 @@ Pi and pi-signed 0.82.0 were reverified on 2026-07-27 through real isolated `fm-
 
 Verified on macOS on 2026-11-06 with tmux 3.7b, Claude Code 2.1.319, and Pi 1.2.0.
 `bin/fm-spawn.sh` owns the common tmux launch policy: resolve the lane's stable window id to its pane id, disable application title updates on that pane only, and set its title to the lane id before starting any harness.
+tmux before 3.5 (such as Ubuntu 24.04's 3.4) has no `allow-set-title` option; there the spawn still sets the lane title and launches, but the harness may retitle the pane.
 Claude also receives its lane id through `--name` on fresh and exact-session resume launches, including secondmates.
 The README's primary Claude launch names the main seat explicitly.
 Other backends do not receive tmux title mutations.

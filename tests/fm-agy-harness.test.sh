@@ -480,6 +480,7 @@ fake_path_trusted() {
 case "$*" in
   *"#{pane_current_path}"*) printf '%s\n' "$FM_FAKE_PANE_PATH"; exit 0 ;;
   *"#{cursor_y}"*) printf '1\n'; exit 0 ;;
+  *'#{pane_id}'*) printf '%%901\n'; exit 0 ;;
 esac
 case "${1:-}" in
   display-message) printf 'firstmate\n'; exit 0 ;;

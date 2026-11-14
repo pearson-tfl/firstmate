@@ -112,6 +112,7 @@ case "${1:-}" in
     for a in "$@"; do
       if [ "$prev" = -t ]; then target=$a; fi
       case "$a" in
+        *pane_id*) printf '%%901\n'; exit 0 ;;
         *cursor_y*) printf '1\n'; exit 0 ;;
         *pane_current_command*)
           if [ -f "$D/command.$target" ]; then cat "$D/command.$target"; else cat "$D/command"; fi
