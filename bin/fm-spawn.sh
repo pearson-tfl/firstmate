@@ -345,7 +345,10 @@
 #   set (its header owns the refusal). A secondmate runs in its own home and is
 #   not marked.
 #   Only after this isolation check, every fresh ship or scout requires a clean
-#   task worktree. When an origin configuration is detected, spawn fetches it,
+#   task worktree. Once it passes, spawn moves any leftovers `git status`
+#   hid, such as ignored files, into data/slot-archive/ (bin/fm-wake-lib.sh's
+#   fm_worktree_archive_leftovers) instead of handing them to the new task.
+#   When an origin configuration is detected, spawn fetches it,
 #   resolves the current remote default branch (or uses --base-branch, described
 #   above), and resets to its tip. A home that creates the default-off
 #   config/spawn-base-primary-checkout flag (docs/configuration.md) instead
