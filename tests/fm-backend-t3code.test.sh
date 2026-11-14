@@ -1400,8 +1400,8 @@ test_spawn_claude_refuses_tracked_claude_local_md() {
   pass "fm-spawn.sh --backend t3code claude: refuses to overwrite a project's tracked CLAUDE.local.md before any mutation"
 }
 
-test_spawn_claude_refuses_worktree_symlink() {
-  local proj wt data state id out rc fb target exclude
+test_spawn_claude_archives_leftover_channel_symlink() {
+  local proj wt data state id out rc fb target exclude archived
   id=$(t3_uid t3claudelink)
   t3_task_id "$id"
   t3_case spawn-claude-symlink
@@ -1421,11 +1421,12 @@ test_spawn_claude_refuses_worktree_symlink() {
     FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$CASE_DIR/home" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$CONFIG" \
     FM_PROJECTS_OVERRIDE="$CASE_DIR/unused-projects" FM_SPAWN_NO_GUARD=1 \
     "$ROOT/bin/fm-spawn.sh" "$id" "$proj" claude --scout --model claude-sonnet-5 --backend t3code 2>&1 ); rc=$?
-  expect_code 1 "$rc" "a symlinked worktree channel must refuse"
-  assert_contains "$out" "CLAUDE.local.md already exists" "refusal must name the channel"
+  expect_code 0 "$rc" "a slot's leftover symlinked channel is archived at hand-out, so the spawn proceeds"$'\n'"$out"
+  archived=$(find "$data/slot-archive" -path '*/files/CLAUDE.local.md')
+  [ -L "$archived" ] && [ "$(readlink "$archived")" = "$target" ] || fail "the leftover symlink must be archived intact, got '$archived'"
   [ "$(cat "$target")" = 'keep these instructions' ] || fail "symlink target was changed"
-  [ -L "$wt/CLAUDE.local.md" ] || fail "symlink must remain after refused spawn"
-  pass "Claude channel refuses a symlink in the leased worktree without following it"
+  [ -f "$wt/CLAUDE.local.md" ] && [ ! -L "$wt/CLAUDE.local.md" ] || fail "the channel must be a fresh file, not the leftover symlink"
+  pass "Claude channel: a leftover symlink in the leased slot is archived intact, its target never followed"
 }
 
 test_untracked_codex_config_is_preserved() {
@@ -1892,10 +1893,14 @@ test_spawn_abort_returns_lease_only_after_archive() {  # <ok|fail>
   t3_case "spawn-abort-$archive"
   [ "$archive" = ok ] || t3_world_set 'w.failTools = { t3_thread_organize: { code: "boom", message: "archive failed" } }'
   # A regular file where the Claude hooks go aborts the spawn after the
-  # thread exists and before its record is published.
+  # thread exists and before its record is published. It is committed: the
+  # hand-out archive would move an ignored one out of the slot, and the base
+  # refresh starts the slot from origin's tip.
   t3_worker_setup "$id"
-  printf 'blocker\n' > "$WORKER_WT/.claude"
-  printf '.claude\n' >> "$(git -C "$WORKER_WT" rev-parse --git-path info/exclude)"
+  printf 'blocker\n' > "$WORKER_PROJ/.claude"
+  git -C "$WORKER_PROJ" add .claude
+  git -C "$WORKER_PROJ" -c user.name=t -c user.email=t@example.invalid commit -qm "block the hooks directory"
+  git -C "$WORKER_PROJ" push -q origin main
   out=$(t3_worker_spawn "$id" claude --model claude-sonnet-5); rc=$?
   [ "$rc" -ne 0 ] || fail "the blocked spawn should abort"$'\n'"$out"
   return_line=$(t3_log_line_of 'r.tool === "treehouse" && r.args.indexOf("return --force") === 0')
@@ -2814,7 +2819,7 @@ test_spawn_codex_preserves_tracked_codex_config
 test_tracked_codex_overlay_recovery
 test_spawn_codex_refuses_tracked_codex_config
 test_spawn_claude_refuses_tracked_claude_local_md
-test_spawn_claude_refuses_worktree_symlink
+test_spawn_claude_archives_leftover_channel_symlink
 test_untracked_codex_config_is_preserved
 test_codex_cleanup_without_journal_needs_no_python
 test_codex_worker_ignores_untracked_config_in_main_checkout
