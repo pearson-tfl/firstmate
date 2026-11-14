@@ -1587,7 +1587,8 @@ scripts_for_changed_functions() {
   while :; do
     more=$(
       for f in tests/*.sh; do
-        case "$f" in *.test.sh) continue ;; esac
+        # stock Bash 3.2 cannot parse a case arm inside $( ); test instead
+        [[ $f == *.test.sh ]] && continue
         [ -f "$f" ] && function_owner_lines <"$f"
       done | owners_naming "$(printf '%s\n' "$names" | tr '\n' ' ')"
     )
