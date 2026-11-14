@@ -582,11 +582,9 @@ check_captain_board() {
     && printf '%s\n' "$listing" | captain_held_urls > "$dir/pairs" \
     && BOARD_PROVEN=$(fm_run_timed "$BOARD_TIMEOUT" "$SCRIPT_DIR/fm-captain-board.sh" \
       "$CONFIG/captain-board" "$dir/pairs" 2>>"$dir/err"); then
-    if [ -n "$BOARD_PROVEN" ]; then
-      BOARD_NOTE="($(printf '%s\n' "$BOARD_PROVEN" | wc -l | tr -d ' ') captain-held item(s) left out: each cites a card open on the captain's board, checked live now; bin/fm-tasks-axi.sh list --state held lists every held item)"
-    else
-      BOARD_NOTE="(captain's board checked live now: no captain-held item cites an open card, so every held item is printed)"
-    fi
+    # A proven result is counted by omit_board_proven, which sees what it drops.
+    [ -n "$BOARD_PROVEN" ] \
+      || BOARD_NOTE="(captain's board checked live now: no captain-held item cites an open card, so every held item is printed)"
   else
     BOARD_PROVEN=
     msg=$(head -n 1 "$dir/err" 2>/dev/null)
@@ -595,13 +593,14 @@ check_captain_board() {
   [ -z "$dir" ] || rm -rf "$dir"
 }
 
-# Drop listing rows whose id (first field) is in BOARD_PROVEN.
+# Drop listing rows whose id (first field) is in BOARD_PROVEN, then count them.
 omit_board_proven() {
   [ -n "$BOARD_PROVEN" ] || { cat; return; }
   awk -v ids="$BOARD_PROVEN" '
     BEGIN { n = split(ids, a, "\n"); for (i = 1; i <= n; i++) drop[a[i]] = 1 }
-    /^  / { id = $0; sub(/^  /, "", id); sub(/,.*/, "", id); if (id in drop) next }
+    /^  / { id = $0; sub(/^  /, "", id); sub(/,.*/, "", id); if (id in drop) { left++; next } }
     { print }
+    END { printf "(%d captain-held item(s) left out: each cites a card open on the captain'"'"'s board, checked live now; bin/fm-tasks-axi.sh list --state held lists every held item)\n", left }
   '
 }
 
