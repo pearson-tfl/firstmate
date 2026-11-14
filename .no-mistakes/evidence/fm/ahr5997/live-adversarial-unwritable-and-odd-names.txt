@@ -1,0 +1,12 @@
+## Adversarial: archive destination unwritable, and awkward file names
+unwritable archive root: exit=1 output='mkdir: cannot create directory ‘/tmp/fm-th-lab.GAyqPJ/ro/slot-archive’: Permission denied'
+$ git -C slot status --porcelain --ignored   # leftovers still in place, nothing deleted
+?? "name\nwithnewline"
+!! "run dir/"
+writable archive root: exit=0
+$ git -C slot status --porcelain --untracked-files=all --ignored
+(empty)
+./name
+./run dir/.gitignore
+./run dir/log with space.txt
+withnewline

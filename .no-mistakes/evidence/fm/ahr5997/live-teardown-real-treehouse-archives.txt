@@ -1,0 +1,41 @@
+## Live: real bin/fm-teardown.sh (ship, local-only, no --force) on a real treehouse v2.0.1 pool slot
+$ git -C slot status --porcelain   # before
+$ git -C slot status --porcelain --ignored   # before
+!! .orun10/
+!! node_modules/
+teardown exit=0
+--- stderr
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-th-lab.GAyqPJ/home
+teardown: moved ignored or untracked leftovers from /tmp/fm-th-lab.GAyqPJ/poolroot/.treehouse/repo-f39797/1/repo to /tmp/fm-th-lab.GAyqPJ/home/data/slot-archive/20261114T182125Z-lab-t1-return.6qhBUA
+--- stdout
+A new version of treehouse is available: v2.0.1 → v3.1.8
+Run "treehouse update" to update
+
+🌳 Worktree returned to pool.
+teardown lab-t1 complete (window firstmate:fm-lab-t1, worktree /tmp/fm-th-lab.GAyqPJ/poolroot/.treehouse/repo-f39797/1/repo)
+Backlog: lab-t1 just finished (this home keeps no markdown backlog at /tmp/fm-th-lab.GAyqPJ/home/data/backlog.md). Update /tmp/fm-th-lab.GAyqPJ/home/data/backlog.md - move lab-t1 to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+$ git -C slot status --porcelain --untracked-files=all --ignored   # after return
+(empty = nothing left)
+$ find home/data/slot-archive
+$FM_HOME/data/slot-archive
+$FM_HOME/data/slot-archive/20261114T182125Z-lab-t1-return.6qhBUA
+$FM_HOME/data/slot-archive/20261114T182125Z-lab-t1-return.6qhBUA/files
+$FM_HOME/data/slot-archive/20261114T182125Z-lab-t1-return.6qhBUA/origin
+$FM_HOME/data/slot-archive/20261114T182125Z-lab-t1-return.6qhBUA/files/node_modules
+$FM_HOME/data/slot-archive/20261114T182125Z-lab-t1-return.6qhBUA/files/.orun10
+$FM_HOME/data/slot-archive/20261114T182125Z-lab-t1-return.6qhBUA/files/node_modules/pkg
+$FM_HOME/data/slot-archive/20261114T182125Z-lab-t1-return.6qhBUA/files/.orun10/calls.log
+$FM_HOME/data/slot-archive/20261114T182125Z-lab-t1-return.6qhBUA/files/.orun10/.gitignore
+$FM_HOME/data/slot-archive/20261114T182125Z-lab-t1-return.6qhBUA/files/node_modules/pkg/index.js
+$ cat /tmp/fm-th-lab.GAyqPJ/home/data/slot-archive/20261114T182125Z-lab-t1-return.6qhBUA/origin
+worktree=/tmp/fm-th-lab.GAyqPJ/poolroot/.treehouse/repo-f39797/1/repo
+task=lab-t1
+stage=return
+at=1794680485
+$ cat archive/files/.orun10/calls.log
+holder1 gmail run log
+next holder (holder3) got: /tmp/fm-th-lab.GAyqPJ/poolroot/.treehouse/repo-f39797/1/repo
+$ git -C next status --porcelain --ignored
+a.txt
+.git
+treehouse.toml

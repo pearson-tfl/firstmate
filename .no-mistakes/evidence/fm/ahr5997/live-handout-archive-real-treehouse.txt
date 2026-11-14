@@ -1,0 +1,26 @@
+## Live: hand-out archive (bin/fm-wake-lib.sh fm_worktree_archive_leftovers, stage=handout - the call fm-spawn.sh freshen_spawn_worktree_base makes) on a real treehouse slot
+(first attempt also planted an untracked nested repo in slot 1; real treehouse then skipped slot 1 as dirty and handed out slot 2 - the pre-existing behaviour for untracked dirt)
+$ git -C slot2 status --porcelain (holder4)
+(empty = reads clean)
+holder5 got: /tmp/fm-th-lab.GAyqPJ/poolroot/.treehouse/repo-f39797/2/repo
+$ git -C slot status --porcelain --ignored   # at hand-out, before archive
+!! .orun12/
+helper exit=0 printed: data/slot-archive/20261114T182208Z-lab-t5-handout.pXGZlW
+$ git -C slot status --porcelain --untracked-files=all --ignored   # after
+(empty)
+$ cat origin
+worktree=/tmp/fm-th-lab.GAyqPJ/poolroot/.treehouse/repo-f39797/2/repo
+task=lab-t5
+stage=handout
+at=1794680528
+$ find files
+.
+./.orun12
+./.orun12/calls.log
+./.orun12/.gitignore
+$ cat files/.orun12/calls.log
+holder4 run log
+--- second call on the now-clean slot (expect no output, no new archive)
+exit=0 printed=''
+20261114T182125Z-lab-t1-return.6qhBUA
+20261114T182208Z-lab-t5-handout.pXGZlW

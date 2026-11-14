@@ -1,0 +1,8 @@
+## Baseline: real treehouse v2.0.1 return/get cycle with no archive step
+$ git status --porcelain (slot 1, holder1)
+(empty = reads clean)
+
+🌳 Worktree returned to pool.
+next holder got: /tmp/fm-th-lab.GAyqPJ/poolroot/.treehouse/repo-f39797/1/repo
+$ cat $next/.orun10/calls.log
+holder1 gmail run log

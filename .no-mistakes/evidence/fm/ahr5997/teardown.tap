@@ -1,0 +1,27 @@
+ok - teardown archives opencode's ignored busy plugin out of the returned pool worktree
+ok - hidden untracked work is refused before return while a clean control returns
+ok - content fallback distinguishes unavailable Git proof, containment, conflicts, and unlanded content
+ok - status archival is opt-in and preserves the complete log
+ok - config-absent teardown does not read or invoke record export
+ok - unopted teardown ignores symlinked config when record export is absent
+ok - teardown commits the record archive before deleting sources and fails closed when export cannot commit
+ok - forced secondmate teardown exports task records from the child sub-state
+ok - record export waits for endpoint quiescence and retry captures records changed after refusal
+ok - forced secondmate retirement preserves two descendant levels and refuses linked child directories
+ok - local missing-status retirement stays lock-free without creating an archive
+ok - reused task IDs never overwrite archives and retention removes only old owned logs
+ok - archive sources and directories reject symlinks; pruning never follows children links
+ok - failed archive publication preserves presentation and watcher bookkeeping
+ok - cursor retirement failure removes its archive so retry publishes one history
+ok - archive publication and cold logs never re-wake or re-present
+ok - retention failures warn without aborting unrelated teardown
+ok - a missing teardown startup source refuses before cleanup
+ok - an unreadable teardown startup source refuses before cleanup
+ok - a missing adapter sibling refuses before cleanup
+ok - a forced descendant with a missing adapter sibling refuses before cleanup
+ok - a forced secondmate with a missing own adapter sibling refuses before child cleanup
+ok - present required sources still reach the ordinary teardown refusal
+ok - local-only worktree with HEAD on a fork remote is torn down and the home summary is refreshed
+ok - teardown closes its own backlog item before reporting success
+ok - teardown closes a landed Gerrit task with its change URL as a note and a GitHub task with --pr
+ok - teardown closes a landed GitLab task with its merge request URL as a note and GitHub and Forgejo tasks with --pr
