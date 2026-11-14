@@ -1,0 +1,13 @@
+## S3 guard: slot holds untracked work stray-work.txt plus ignored .orun12/; real fm-spawn.sh lab-scout-2 --scout
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.rn7ynq
+spawned lab-scout-2 harness=claude kind=scout window=primary:fm-lab-scout-2 worktree=/tmp/fm-lab.rn7ynq/pool/.treehouse/project-8f5471/2/project
+SPAWN_RC=0
+### archives before=2 after=2
+20261114T212254Z-lab-scout-1-handout.z3OEXf
+20261114T212355Z-lab-scout-1-return.3eKWgG
+### slot after refused spawn: git status --porcelain --ignored
+?? stray-work.txt
+!! .orun12/
+uncommitted work from a previous holder
+### note: real treehouse v2.0.1 skipped dirty slot 1 (untracked stray-work.txt) and created slot 2; slot 1 kept its untracked work and its ignored .orun12/ (no hand-out archive ran on a slot that was not handed out). Slot 2 state:
+!! .claude/

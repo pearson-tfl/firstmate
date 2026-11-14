@@ -1,0 +1,26 @@
+## S1 hand-out: real fm-spawn.sh --scout via lab tmux + real treehouse v2.0.1
+### before spawn (after treehouse return): git status --porcelain was empty; --ignored showed '!! .orun10/'
+### spawn output
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.rn7ynq
+note: pooled worktree '/tmp/fm-lab.rn7ynq/pool/.treehouse/project-8f5471/1/project' held ignored or untracked leftovers; moved them to /tmp/fm-lab.rn7ynq/data/slot-archive/20261114T212254Z-lab-scout-1-handout.z3OEXf
+spawned lab-scout-1 harness=claude kind=scout window=primary:fm-lab-scout-1 worktree=/tmp/fm-lab.rn7ynq/pool/.treehouse/project-8f5471/1/project
+SPAWN_RC=0
+### slot after spawn: git status --porcelain --ignored
+!! .claude/
+[end]
+.
+..
+.claude
+.git
+README.md
+### archive /tmp/fm-lab.rn7ynq/data/slot-archive/20261114T212254Z-lab-scout-1-handout.z3OEXf
+$LAB/data/slot-archive/20261114T212254Z-lab-scout-1-handout.z3OEXf/origin
+$LAB/data/slot-archive/20261114T212254Z-lab-scout-1-handout.z3OEXf/files/.orun10/calls.log
+$LAB/data/slot-archive/20261114T212254Z-lab-scout-1-handout.z3OEXf/files/.orun10/.gitignore
+--- origin
+worktree=/tmp/fm-lab.rn7ynq/pool/.treehouse/project-8f5471/1/project
+task=lab-scout-1
+stage=handout
+at=1794691374
+--- files/.orun10/calls.log
+previous holder Gmail run log

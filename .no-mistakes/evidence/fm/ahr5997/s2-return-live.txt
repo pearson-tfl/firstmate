@@ -1,0 +1,45 @@
+## S2 return: real fm-teardown.sh lab-scout-1 (scout) via lab tmux + real treehouse return
+### slot before teardown: git status --porcelain --ignored
+?? nested-scratch/
+!! .claude/
+!! .orun11/
+### teardown output (watcher banner trimmed)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.rn7ynq
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+teardown: reaping leaked worktree process(es) for lab-scout-1: 348112 363354
+teardown: force-killing leaked worktree process(es) for lab-scout-1: 348112
+teardown: moved ignored or untracked leftovers from /tmp/fm-lab.rn7ynq/pool/.treehouse/project-8f5471/1/project to /tmp/fm-lab.rn7ynq/data/slot-archive/20261114T212355Z-lab-scout-1-return.3eKWgG
+A new version of treehouse is available: v2.0.1 → v3.1.8
+Run "treehouse update" to update
+
+🌳 Worktree returned to pool.
+teardown lab-scout-1 complete (window primary:fm-lab-scout-1, worktree /tmp/fm-lab.rn7ynq/pool/.treehouse/project-8f5471/1/project)
+Backlog: lab-scout-1 just finished (this home keeps no markdown backlog at /tmp/fm-lab.rn7ynq/data/backlog.md). Update /tmp/fm-lab.rn7ynq/data/backlog.md - move lab-scout-1 to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+TEARDOWN_RC=0
+### slot after return: git status --porcelain --ignored
+[end]
+.
+..
+.git
+README.md
+### archive
+$LAB/data/slot-archive/20261114T212355Z-lab-scout-1-return.3eKWgG
+$LAB/data/slot-archive/20261114T212355Z-lab-scout-1-return.3eKWgG/files
+$LAB/data/slot-archive/20261114T212355Z-lab-scout-1-return.3eKWgG/origin
+$LAB/data/slot-archive/20261114T212355Z-lab-scout-1-return.3eKWgG/files/nested-scratch
+$LAB/data/slot-archive/20261114T212355Z-lab-scout-1-return.3eKWgG/files/.orun11
+$LAB/data/slot-archive/20261114T212355Z-lab-scout-1-return.3eKWgG/files/.claude
+$LAB/data/slot-archive/20261114T212355Z-lab-scout-1-return.3eKWgG/files/nested-scratch/notes.txt
+$LAB/data/slot-archive/20261114T212355Z-lab-scout-1-return.3eKWgG/files/nested-scratch/.git
+$LAB/data/slot-archive/20261114T212355Z-lab-scout-1-return.3eKWgG/files/.orun11/calls.log
+$LAB/data/slot-archive/20261114T212355Z-lab-scout-1-return.3eKWgG/files/.orun11/.gitignore
+--- origin
+worktree=/tmp/fm-lab.rn7ynq/pool/.treehouse/project-8f5471/1/project
+task=lab-scout-1
+stage=return
+at=1794691435
+--- .orun11/calls.log
+worker Gmail run log 2
+--- nested repo intact? git log:
+2c64c0c n
+nested
