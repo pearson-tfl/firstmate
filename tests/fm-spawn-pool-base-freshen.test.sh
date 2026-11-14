@@ -438,6 +438,30 @@ test_dirty_pool_refuses_without_discarding_work() {
   pass "a dirty pooled worktree is refused without discarding its local work"
 }
 
+# A slot reads clean to `git status` while a folder whose own .gitignore holds
+# `*` keeps the last holder's run log; hand-out moves it out, never deletes it.
+test_ignored_leftovers_are_archived_at_handout() {
+  local rec id out status archive
+  id='pool-ignored-handout-r5'
+  rec=$(make_case ignored-handout "$id")
+  read_case_record "$rec"
+  mkdir -p "$POOL_DIR/.orun10"
+  printf '*\n' > "$POOL_DIR/.orun10/.gitignore"
+  printf 'previous holder mail log\n' > "$POOL_DIR/.orun10/calls.log"
+  [ -z "$(git -C "$POOL_DIR" status --porcelain)" ] || fail "fixture leftover is not hidden from git status"
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "spawn should launch once the ignored leftover is moved out"
+  assert_contains "$out" "moved them to $HOME_DIR/data/slot-archive/" "spawn did not name the archive"
+  [ ! -e "$POOL_DIR/.orun10" ] || fail "the next holder inherited the ignored leftover"
+  archive=$(find "$HOME_DIR/data/slot-archive" -mindepth 1 -maxdepth 1 -type d | head -1)
+  assert_grep 'previous holder mail log' "$archive/files/.orun10/calls.log" "the leftover was not archived intact"
+  assert_grep "task=$id" "$archive/origin" "the archive does not name the receiving task"
+  assert_grep 'stage=handout' "$archive/origin" "the archive does not name its stage"
+  pass "ignored leftovers hidden from git status are archived out of a pooled worktree at hand-out"
+}
+
 test_unresolved_remote_default_refuses_pool() {
   local rec id out status before
   id='pool-unresolved-default-r5'
@@ -1417,6 +1441,7 @@ test_scout_base_branch_refused_on_gerrit_forge
 test_non_main_default_branch_refreshes_before_branching
 test_direct_pr_and_scout_refresh_before_launch
 test_dirty_pool_refuses_without_discarding_work
+test_ignored_leftovers_are_archived_at_handout
 test_unresolved_remote_default_refuses_pool
 test_unreachable_origin_refuses_stale_pool_base
 test_originless_pool_launches_without_a_freshness_fetch
