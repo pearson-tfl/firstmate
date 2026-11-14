@@ -888,8 +888,9 @@ signal_turnend_panes_churned() {  # <file> ...
   return 0
 }
 
-# The repeat evidence for <task>: "<status signature>\t<pane hash>", where the
-# pane hash is the .hash- marker the staleness backbone records for the task's
+# The repeat evidence for <task>, set in TURNEND_REPEAT_EVIDENCE (called
+# directly, never in $(...), as watcher_waited requires of a live capture):
+# "<status signature>\t<pane hash>", where the pane hash is the .hash- marker the staleness backbone records for the task's
 # endpoint, counted only when a fresh capture still hashes to it. 1 for a
 # secondmate (that backbone does not refresh an active mate's marker, as in
 # signal_turnend_panes_churned), no recorded endpoint, no valid hash, a failed
@@ -897,6 +898,7 @@ signal_turnend_panes_churned() {  # <file> ...
 # missing evidence.
 turnend_repeat_evidence() {  # <task>
   local task=$1 meta w h sig
+  TURNEND_REPEAT_EVIDENCE=
   meta="$STATE/$task.meta"
   [ -f "$meta" ] || return 1
   [ "$(fm_meta_get "$meta" kind)" != secondmate ] || return 1
@@ -907,7 +909,7 @@ turnend_repeat_evidence() {  # <task>
   watcher_capture "$(fm_backend_of_meta "$meta")" "$w" 40 "fm-$task" || return 1
   [ "$(printf '%s' "$WATCHER_CAPTURE" | hash_pane)" = "$h" ] || return 1
   sig=$(status_observed_signature "$STATE/$task.status") || return 1
-  printf '%s\t%s' "$sig" "$h"
+  TURNEND_REPEAT_EVIDENCE="$sig"$'\t'"$h"
 }
 
 # 0 (absorb) when every file in a no-verb signal batch is a bare turn-end whose
@@ -920,7 +922,7 @@ turnend_repeat_evidence() {  # <task>
 # a task with no record, a changed status or pane, or an unreadable pane returns 1.
 # Pure read; the caller's absorb branch advances the .seen-* markers.
 signal_turnend_repeat_absorbed() {  # <file> ...
-  local f base task rec since now evidence
+  local f base task rec since now
   [[ $TURNEND_REPEAT_RESURFACE_SECS =~ ^[0-9]{1,9}$ ]] || return 1
   [ "$#" -gt 0 ] || return 1
   now=$(date +%s)
@@ -932,8 +934,8 @@ signal_turnend_repeat_absorbed() {  # <file> ...
     since=${rec%%$'\t'*}
     [[ $since =~ ^[0-9]{1,12}$ ]] || return 1
     [ $(( now - 10#$since )) -lt $(( 10#$TURNEND_REPEAT_RESURFACE_SECS )) ] || return 1
-    evidence=$(turnend_repeat_evidence "$task") || return 1
-    [ "${rec#*$'\t'}" = "$evidence" ] || return 1
+    turnend_repeat_evidence "$task" || return 1
+    [ "${rec#*$'\t'}" = "$TURNEND_REPEAT_EVIDENCE" ] || return 1
   done
   triage_log "absorbed repeated bare turn-end (status and pane unchanged since it surfaced):$(printf ' %s' "$@")"
   return 0
@@ -959,7 +961,7 @@ turnend_repeat_record() {  # <file> ...
     [ -n "$task" ] || continue
     case "$status_tasks" in
       *" $task "*) evidence= ;;
-      *) evidence=$(turnend_repeat_evidence "$task") || evidence= ;;
+      *) turnend_repeat_evidence "$task" || true; evidence=$TURNEND_REPEAT_EVIDENCE ;;
     esac
     if [ -n "$evidence" ]; then
       printf '%s\t%s' "$now" "$evidence" > "$STATE/.turnend-surfaced-$task" || true
