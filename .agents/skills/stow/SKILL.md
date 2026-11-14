@@ -291,6 +291,9 @@ In a primary home the receipt is written after the cascade below, not instead of
 
 In a primary home, every `/stow` cascades to every registered secondmate after this home's own required pass and knowledge sweep are complete.
 In a secondmate home, `/stow` curates that home only and never cascades further.
+A secondmate answers a cascaded request with `bin/fm-secondmate-report.sh`, and that status line's note starts with `stow:` so the parent's next cascade can find it.
+When the pass changed no file (every action `unchanged`, no exception), that line is the whole answer: `stow: unchanged since <corr of the previous stow request>`, with no chat reply and no other write.
+A pass that changed something sends the full receipt.
 The cascade changes nothing until `/stow` is invoked: it adds no notification, no digest section, and no background work.
 
 Run `bin/fm-stow-cascade.sh` once the primary's own pass is done.
@@ -301,6 +304,7 @@ Act on each home by its reported `transport`:
 
 - `agent` - send the marked request with `bin/fm-send.sh fm-<id> "<request>"` so the live secondmate performs its own `/stow`, including the uncaptured knowledge that exists only in its session.
   Ask it for the same completion receipt this skill defines, and read its reply from its status file or the document it points to, never from its chat.
+  Skip a home whose stanza carries `receipt_fresh=yes`: it already stowed within the freshness bound, so send nothing and report it in this receipt as `skipped: receipt <age> old`, the age taken from its `last_receipt_at`.
 - `direct` - curate that local home's editable memory files yourself under the same retention plan, then re-run the cascade to confirm the after totals.
   `data/captain-shared.md` stays a read-only counted input there, exactly as it is in any secondmate home.
 - `deferred` - a remote home with no live agent. Its memory is accounted read-only and cannot be curated from here, because there is no generic remote write path for a home's own memory files.

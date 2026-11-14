@@ -935,7 +935,7 @@ if [ -n "$ACK_THROUGH" ]; then
       0) ;;
       3) RECOVERY_ACK_MOVED=true ;;
       *)
-        echo "wake drain: recovery episode could not be retired safely; re-run bin/fm-wake-drain.sh and use the new WAKE_ACK_REQUIRED command" >&2
+        echo "wake drain: recovery episode could not be retired safely; re-run $(fm_wake_drain_cmd) and use the new WAKE_ACK_REQUIRED command" >&2
         exit 1
         ;;
     esac
@@ -971,17 +971,17 @@ if [ -n "$ACK_THROUGH" ]; then
     # be named because the next drain opens a fresh generation for it.
     case "$RECOVERY_MARKER_TOKEN" in
       pending:*|announced:*)
-        printf 'wake drain: nothing was acknowledged through %s (none of your presented wake rows is at or below it); the current wake is row %s: run bin/fm-wake-drain.sh --ack-through %s --recovery-generation %s after handling it\n' \
-          "$ACK_THROUGH" "$PRESENTED_MAX" "$PRESENTED_MAX" "${RECOVERY_MARKER_TOKEN##*:}" >&2
+        printf 'wake drain: nothing was acknowledged through %s (none of your presented wake rows is at or below it); the current wake is row %s: run %s --ack-through %s --recovery-generation %s after handling it\n' \
+          "$ACK_THROUGH" "$PRESENTED_MAX" "$(fm_wake_drain_cmd)" "$PRESENTED_MAX" "${RECOVERY_MARKER_TOKEN##*:}" >&2
         ;;
       *)
-        printf 'wake drain: nothing was acknowledged through %s (none of your presented wake rows is at or below it); the current wake is row %s: re-run bin/fm-wake-drain.sh and use the WAKE_ACK_REQUIRED command it prints\n' \
-          "$ACK_THROUGH" "$PRESENTED_MAX" >&2
+        printf 'wake drain: nothing was acknowledged through %s (none of your presented wake rows is at or below it); the current wake is row %s: re-run %s and use the WAKE_ACK_REQUIRED command it prints\n' \
+          "$ACK_THROUGH" "$PRESENTED_MAX" "$(fm_wake_drain_cmd)" >&2
         ;;
     esac
   elif [ "$RECOVERY_ACK_MOVED" = true ]; then
-    printf 'wake drain: acknowledged wakes through %s (%s row(s) consumed), but a newer recovery episode is pending; re-run bin/fm-wake-drain.sh and use the new WAKE_ACK_REQUIRED command\n' \
-      "$ACK_THROUGH" "$ACK_REMOVED" >&2
+    printf 'wake drain: acknowledged wakes through %s (%s row(s) consumed), but a newer recovery episode is pending; re-run %s and use the new WAKE_ACK_REQUIRED command\n' \
+      "$ACK_THROUGH" "$ACK_REMOVED" "$(fm_wake_drain_cmd)" >&2
   fi
   exit 0
 fi
@@ -1006,7 +1006,7 @@ if [ ! -s "$FM_WAKE_QUEUE" ]; then
   (print_status_presentation) || true
   print_branch_outcomes_section || BRANCH_OUTCOMES_RC=1
   if [ "$RECOVERY_ACK_REQUIRED" = true ]; then
-    printf 'WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 0 --recovery-generation %s\n' "${RECOVERY_MARKER_TOKEN##*:}" >&2
+    printf 'WAKE_ACK_REQUIRED: after handling completes run %s --ack-through 0 --recovery-generation %s\n' "$(fm_wake_drain_cmd)" "${RECOVERY_MARKER_TOKEN##*:}" >&2
   fi
   assert_watcher_liveness
   exit "$BRANCH_OUTCOMES_RC"
@@ -1085,8 +1085,8 @@ case "$RECOVERY_MARKER_TOKEN" in
 esac
 fm_lock_release "$FM_WAKE_QUEUE_LOCK"
 DRAIN_LOCK_HELD=false
-printf 'WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through %s --recovery-generation %s\n' \
-  "$ACK_THROUGH" "${RECOVERY_MARKER_TOKEN##*:}" >&2
+printf 'WAKE_ACK_REQUIRED: after handling completes run %s --ack-through %s --recovery-generation %s\n' \
+  "$(fm_wake_drain_cmd)" "$ACK_THROUGH" "${RECOVERY_MARKER_TOKEN##*:}" >&2
 
 (print_status_presentation "$RAW_ROWS") || true
 print_branch_outcomes_section || BRANCH_OUTCOMES_RC=1

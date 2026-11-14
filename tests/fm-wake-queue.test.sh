@@ -138,6 +138,34 @@ test_concurrent_append_and_drain() {
   pass "concurrent append plus drain preserves durable records through acknowledgement"
 }
 
+# The WAKE_ACK_REQUIRED line names the drain by an absolute path, so the seat can
+# run it verbatim from any working directory and still acknowledge this home.
+test_wake_ack_required_names_an_absolute_drain() {
+  local dir home bare err cmd label h
+  dir=$(make_case absolute-ack)
+  home="$dir/own-bin-home"
+  bare="$dir/bare-home"
+  mkdir -p "$home/state" "$bare/state"
+  ln -s "$ROOT/bin" "$home/bin"
+  for label in own-bin bare; do
+    case "$label" in own-bin) h=$home ;; *) h=$bare ;; esac
+    append_wake "$h/state" signal "abs-$label" "signal: $h/state/abs-$label.status"
+    err="$dir/$label.err"
+    env -u FM_ROOT_OVERRIDE -u FM_STATE_OVERRIDE FM_HOME="$h" "$DRAIN" > /dev/null 2> "$err" \
+      || fail "$label: drain failed"
+    cmd=$(sed -n 's/^WAKE_ACK_REQUIRED: after handling completes run //p' "$err")
+    case "$cmd" in
+      /*|FM_HOME=/*) ;;
+      *) fail "$label: WAKE_ACK_REQUIRED does not name an absolute drain: $cmd" ;;
+    esac
+    [ -s "$h/state/.wake-queue" ] || fail "$label: the drain consumed the wake before acknowledgement"
+    ( cd / && env -u FM_HOME -u FM_ROOT_OVERRIDE -u FM_STATE_OVERRIDE bash -c "$cmd" ) > /dev/null 2>&1 \
+      || fail "$label: the printed acknowledgement failed when run from another directory: $cmd"
+    [ ! -s "$h/state/.wake-queue" ] || fail "$label: the printed acknowledgement did not clear this home's queue"
+  done
+  pass "WAKE_ACK_REQUIRED names an absolute drain that acknowledges this home from any directory"
+}
+
 test_signal_catchup_without_running_watcher() {
   local dir state fakebin out drain_out drain_err status_file sequence generation watcher
   dir=$(make_case signal)
@@ -3761,6 +3789,7 @@ test_folded_worker_resolved_is_not_owned_lag
 test_owned_growth_still_annotates_turn_ended
 test_historical_annotation_skips_announced_status
 test_concurrent_append_and_drain
+test_wake_ack_required_names_an_absolute_drain
 test_signal_catchup_without_running_watcher
 test_stale_enqueue_before_suppressor
 test_not_working_stale_enqueue_before_suppressor
