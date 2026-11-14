@@ -38,6 +38,9 @@
 #      the decision; a retry while that decision is still open appends nothing
 #  19. A request summary keeps accented letters, drops control characters, and
 #      caps at 120 characters without splitting one under any caller locale
+#  20. The helper carries the open request's corr= by itself, refuses a
+#      corr-less reply it cannot correlate, names overlapping requests rather
+#      than guessing, and refuses a stale reply to an already-answered request
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -1889,6 +1892,92 @@ test_mechanical_helper_writes_parent_channel() {
   pass "mechanical helper writes the parent channel from verb, corr, and note"
 }
 
+# Deliver a marked request into <state>/<task>.inbox the way fm-send does, so
+# the mate-side helper reads a production-format record. [handled] moves it to
+# handled/ as a worker acknowledgement would.
+deliver_marked() {  # <inbox-state> <task> <corr> <text> [handled]
+  bash -c '. "$1"; . "$2"; fm_pending_reply_embed_corr "$5" "$4" msg
+    rec=$(fm_task_inbox_write "$3" "$6" "$msg") || exit 1
+    [ -z "$7" ] || mv "$rec" "${rec%/*}/handled/"' _ \
+    "$ROOT/bin/fm-task-inbox-lib.sh" "$ROOT/bin/fm-pending-reply-lib.sh" \
+    "$1" "$3" "$4" "$2" "${5:-}" || fail "could not deliver a marked request"
+}
+
+test_helper_carries_corr_and_refuses_uncorrelated_replies() {
+  local home state sm_home r1 r2 rc err lines remote rstate rc_corr
+  home=$(setup_parent helper-auto-corr)
+  state="$home/state"
+  sm_home=$(bind_local_mate "$home" mate)
+  export FM_PENDING_REPLY_NOW=11300
+
+  rc=0
+  err=$(FM_HOME="$sm_home" "$REPORT" "done" "nothing was asked" 2>&1 >/dev/null) || rc=$?
+  [ "$rc" -ne 0 ] || fail "a corr-less reply with no open request must be refused"
+  printf '%s' "$err" | grep -Fq 'pass the corr=<id>' || fail "refusal must name the fix: $err"
+  [ ! -s "$state/mate.status" ] || fail "a refused reply must write nothing"
+
+  # The normal path: one open request, no corr argument, the line carries it.
+  r1=$(fm_pending_reply_create "$home" "$state" mate "first question")
+  fm_pending_reply_mark_delivered "$state" "$r1"
+  deliver_marked "$state" mate "$r1" "first question" handled
+  # An unmarked record quoting a token is captain text, not a request.
+  bash -c '. "$1"; fm_task_inbox_write "$2" mate "captain says corr=0123456789abcdef" >/dev/null' _ \
+    "$ROOT/bin/fm-task-inbox-lib.sh" "$state"
+  r2=$(fm_pending_reply_create "$home" "$state" mate "second question")
+  fm_pending_reply_mark_delivered "$state" "$r2"
+  deliver_marked "$state" mate "$r2" "second question"
+
+  # Overlapping requests: refuse and name both rather than guess.
+  rc=0
+  err=$(FM_HOME="$sm_home" "$REPORT" "done" "which one?" 2>&1 >/dev/null) || rc=$?
+  [ "$rc" -ne 0 ] || fail "a corr-less reply with two open requests must be refused"
+  case "$err" in
+    *"$r1"*"$r2"*) ;;
+    *) fail "overlap refusal must name both open requests: $err" ;;
+  esac
+  case "$err" in
+    *0123456789abcdef*) fail "an unmarked record must not count as a request" ;;
+  esac
+  [ ! -s "$state/mate.status" ] || fail "a refused overlapping reply must write nothing"
+
+  FM_HOME="$sm_home" "$REPORT" "done" "$r2" "second answered" || fail "explicit corr must be accepted"
+  fm_pending_reply_try_resolve "$state" "$r2" || fail "the explicit reply must resolve its own request"
+  if fm_pending_reply_try_resolve "$state" "$r1"; then
+    fail "answering the second request must not resolve the first"
+  fi
+
+  # Stale reply: the already-answered corr is refused and names the open one.
+  rc=0
+  err=$(FM_HOME="$sm_home" "$REPORT" "done" "corr=$r2" "late follow-up" 2>&1 >/dev/null) || rc=$?
+  [ "$rc" -ne 0 ] || fail "a stale reply to an answered request must be refused"
+  case "$err" in
+    *"stale reply"*"$r1"*) ;;
+    *) fail "stale refusal must name the open request: $err" ;;
+  esac
+  lines=$(grep -c "corr=$r2" "$state/mate.status")
+  [ "$lines" = 1 ] || fail "a refused stale reply must write nothing, got $lines lines"
+
+  # One open again: the corr-less reply carries it automatically.
+  FM_HOME="$sm_home" "$REPORT" --doc "done" data/x/report.md "first answered" \
+    || fail "a corr-less reply with one open request must be written"
+  tail -1 "$state/mate.status" | grep -Fq "corr=$r1" || fail "the auto reply must carry the open corr"
+  fm_pending_reply_try_resolve "$state" "$r1" || fail "the auto reply must resolve the first request"
+
+  # A remote mate reads its host-local inbox and writes its own reply channel.
+  remote="$TMP_ROOT/remote-auto-home-$RANDOM"
+  rstate="$remote/state"
+  mkdir -p "$rstate"
+  printf '%s\n' rmate > "$remote/.fm-secondmate-home"
+  printf 'schema=fm-secondmate-parent.v1\nroute=remote\n' > "$remote/.fm-secondmate-parent"
+  rc_corr=$(fm_pending_reply_new_id)
+  deliver_marked "$rstate/parent-route" rmate "$rc_corr" "remote question"
+  FM_HOME="$remote" "$REPORT" "done" "remote answered" || fail "remote auto reply must be written"
+  grep -Fq "corr=$rc_corr" "$rstate/parent-replies.status" \
+    || fail "remote auto reply must carry the corr on parent-replies.status"
+  unset FM_PENDING_REPLY_NOW
+  pass "the helper carries corr by itself and refuses uncorrelated, overlapping, and stale replies"
+}
+
 test_remote_parent_replies_is_not_wrong_home() {
   local home state sm_home corr rec hits
   home=$(setup_parent remote-parent-replies)
@@ -2169,6 +2258,7 @@ test_same_basename_self_home_corr_resolves_on_tick
 test_same_basename_reply_resolves_after_recovery_failure
 test_child_status_wrong_home_is_not_copied
 test_mechanical_helper_writes_parent_channel
+test_helper_carries_corr_and_refuses_uncorrelated_replies
 test_remote_parent_replies_is_not_wrong_home
 test_local_parent_replies_is_wrong_home_evidence
 test_escalated_undelivered_correlation_stays_retryable

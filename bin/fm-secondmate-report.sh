@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# fm-secondmate-report.sh - optional helper to append a correlated parent report.
+# fm-secondmate-report.sh - append a correlated parent report: the normal path
+# for a secondmate's answer to a marked from-firstmate request.
 #
-# A secondmate answering a marked from-firstmate request must report on the
-# parent status channel with the request's corr=<id> token. This helper makes
-# that easy, but correctness must not depend on using it: a plain echo of a
-# status line that includes the same corr token is equally valid
-# (bin/fm-pending-reply-lib.sh).
+# The parent resolves its pending-reply record only from a line carrying the
+# request's corr=<id> token, and re-rings REPOST REQUIRED when the reply lacks
+# it (bin/fm-pending-reply-lib.sh). So this helper fills the corr in itself:
+# with no corr argument it answers the single open marked request in this
+# mate's steering inbox, and it refuses at write time a reply it cannot
+# correlate - no open request, several open requests (pass the one you are
+# answering), or an explicit corr already answered on the parent channel (a
+# stale reply). Correlation is by token, never by task or time. A hand-written
+# status line still resolves the parent record when it carries the token.
 #
 # The write destination is mechanical: this helper never takes a status path.
 # It resolves the parent channel through fm_parent_channel_destination
@@ -15,12 +20,13 @@
 # set to that home.
 #
 # Usage:
-#   fm-secondmate-report.sh <verb> <corr_id> <note...>
-#   fm-secondmate-report.sh --doc <verb> <corr_id> <doc-path> <note...>
+#   fm-secondmate-report.sh <verb> [corr_id] <note...>
+#   fm-secondmate-report.sh --doc <verb> [corr_id] <doc-path> <note...>
 #
 # Examples:
+#   fm-secondmate-report.sh done "audit clean"
 #   fm-secondmate-report.sh done abcdef0123456789 "audit clean"
-#   fm-secondmate-report.sh --doc done abcdef0123456789 data/x/report.md "see report"
+#   fm-secondmate-report.sh --doc done data/x/report.md "see report"
 set -eu
 
 CALLER_FM_HOME=${FM_HOME:-}
@@ -29,12 +35,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/fm-pending-reply-lib.sh"
 # shellcheck source=bin/fm-parent-channel-lib.sh
 . "$SCRIPT_DIR/fm-parent-channel-lib.sh"
+# shellcheck source=bin/fm-task-inbox-lib.sh
+. "$SCRIPT_DIR/fm-task-inbox-lib.sh"
 
 usage() {
   cat <<'EOF' >&2
 Usage:
-  fm-secondmate-report.sh <verb> <corr_id> <note...>
-  fm-secondmate-report.sh --doc <verb> <corr_id> <doc-path> <note...>
+  fm-secondmate-report.sh <verb> [corr_id] <note...>
+  fm-secondmate-report.sh --doc <verb> [corr_id] <doc-path> <note...>
 EOF
   exit 2
 }
@@ -47,24 +55,30 @@ fi
 
 [ $# -ge 2 ] || usage
 VERB=$1
-CORR=$2
-shift 2
+shift
+# An optional explicit corr is the second argument; a note never starts with one.
+CORR=
+case "$1" in
+  corr=*) CORR=${1#corr=}; shift ;;
+  [a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9])
+    CORR=$1; shift ;;
+esac
 if [ "$DOC_MODE" = 1 ]; then
   [ $# -ge 1 ] && [ -n "$1" ] || usage
 else
   [ $# -ge 1 ] && [ -n "$*" ] || usage
 fi
 
-case "$CORR" in
-  corr=*) CORR=${CORR#corr=} ;;
-esac
-case "$CORR" in
-  [a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9]) ;;
-  *)
-    echo "error: corr_id must be 16 hex characters (got '$CORR')" >&2
-    exit 1
-    ;;
-esac
+if [ -n "$CORR" ]; then
+  case "$CORR" in
+    [a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9]) ;;
+    *)
+      echo "error: corr_id must be 16 hex characters (got '$CORR')" >&2
+      exit 1
+      ;;
+  esac
+  CORR=$(printf '%s' "$CORR" | tr 'A-F' 'a-f')
+fi
 
 HOME_DIR=$CALLER_FM_HOME
 case "$HOME_DIR" in
@@ -88,6 +102,7 @@ if [ ! -d "$(dirname "$DESTINATION")" ]; then
   exit 1
 fi
 
+CORR=$(fm_pending_reply_mate_reply_corr "$HOME_DIR" "$STATE_DIR" "$DESTINATION" "$CORR") || exit 1
 token=$(fm_pending_reply_corr_token "$CORR")
 if [ "$DOC_MODE" = 1 ]; then
   DOC_PATH=$1

@@ -107,7 +107,8 @@
 # watcher escalated between the lost transport and the next resume.
 #
 # Sourced by bin/fm-send.sh, bin/fm-watch.sh, bin/fm-secondmate-report.sh, and
-# tests. No side effects on source. set -u / set -e safe.
+# tests. The mate-side reply correlation at the end of this file is the
+# helper's; see its section note. No side effects on source. set -u / set -e safe.
 #
 # Tunables (env):
 #   FM_PENDING_REPLY_GRACE_SECS   default 120; counted from the request turn's
@@ -1699,4 +1700,94 @@ fm_pending_reply_task_has_open() {  # <state-dir> <task_id>
     return 0
   done
   return 1
+}
+
+# ---------------------------------------------------------------------------
+# Mate-side reply correlation (bin/fm-secondmate-report.sh).
+#
+# A reply without its request's corr= cannot resolve the parent's record, so
+# the parent re-rings REPOST REQUIRED. The mate side therefore takes the corr
+# from the request itself rather than from the model's memory: every marked
+# request lands as a durable record in this mate's steering inbox, so the open
+# requests are the marked records whose corr has no resolving line on the
+# parent channel yet. Correlation is by token only, never by task or time.
+#
+# The mate's inbox, resolved from the same identity and binding as the parent
+# channel (the caller must have sourced bin/fm-parent-channel-lib.sh and
+# bin/fm-task-inbox-lib.sh): a
+# local route's inbox is the parent home's state/<id>.inbox, a remote route's
+# is the host-local state/parent-route/<id>.inbox the remote steer leg writes
+# (bin/fm-remote-secondmate-control.sh).
+fm_pending_reply_mate_inbox_dir() {  # <home> <state>
+  local home=$1 state=$2 id
+  fm_parent_channel_destination "$home" "$state" >/dev/null || return 1
+  id=$FM_PARENT_CHANNEL_ID
+  case "$FM_PARENT_CHANNEL_ROUTE" in
+    local) printf '%s/state/%s.inbox\n' "$FM_SECONDMATE_PARENT_HOME" "$id" ;;
+    remote) printf '%s/parent-route/%s.inbox\n' "$state" "$id" ;;
+    *) return 1 ;;
+  esac
+}
+
+# The corr ids of marked requests in <inbox-dir>, pending and handled, oldest
+# first and each once. A record without the from-firstmate marker is not a
+# reply-bearing request, whatever its text quotes.
+fm_pending_reply_mate_received_corrs() {  # <inbox-dir>
+  local inbox=$1 rec body corr
+  [ -d "$inbox" ] || return 0
+  {
+    for rec in "$inbox"/*.msg "$inbox"/handled/*.msg; do
+      [ -f "$rec" ] || continue
+      printf '%s\t%s\n' "$(fm_task_inbox_seq_of "$(basename "$rec")" || echo 0)" "$rec"
+    done
+  } | sort -n -k1,1 | while IFS=$'\t' read -r _ rec; do
+    body=$(fm_task_inbox_body "$rec") || continue
+    case "$body" in "$FM_FROMFIRST_MARK"*) ;; *) continue ;; esac
+    corr=$(fm_pending_reply_extract_corr "$body")
+    [ -n "$corr" ] && printf '%s\n' "$corr"
+  done | awk '!seen[$0]++'
+}
+
+# 0 when <channel> already holds a line that resolves <corr_id>.
+fm_pending_reply_mate_answered() {  # <channel> <corr_id>
+  [ -n "$(fm_pending_reply_find_resolve_line "$1" "$2")" ]
+}
+
+# Choose the corr a reply carries. With <corr_id> empty, the single open request
+# is used; none or several open is refused, the error naming the fix. An
+# explicit <corr_id> already answered on <channel> while another request is
+# open is a stale reply and is refused. Prints the chosen corr; errors go to
+# stderr with return 1.
+fm_pending_reply_mate_reply_corr() {  # <home> <state> <channel> [corr_id]
+  local home=$1 state=$2 channel=$3 corr=${4-} inbox c open=''
+  local n=0
+  inbox=$(fm_pending_reply_mate_inbox_dir "$home" "$state") || inbox=
+  while IFS= read -r c; do
+    [ -n "$c" ] || continue
+    fm_pending_reply_mate_answered "$channel" "$c" && continue
+    open="$open $c"
+    n=$((n + 1))
+  done < <([ -z "$inbox" ] || fm_pending_reply_mate_received_corrs "$inbox")
+  if [ -n "$corr" ]; then
+    # A second line on an answered request is a legitimate follow-up only
+    # while nothing else is waiting; with a request open it is the stale
+    # token that leaves that request unanswered.
+    if [ "$n" -gt 0 ] && fm_pending_reply_mate_answered "$channel" "$corr"; then
+      printf 'error: corr=%s was already answered on the parent channel (stale reply); the open request is:%s - pass that corr instead\n' "$corr" "$open" >&2
+      return 1
+    fi
+    printf '%s\n' "$corr"
+    return 0
+  fi
+  case "$n" in
+    1) printf '%s\n' "${open# }" ;;
+    0)
+      printf 'error: no open marked request to answer, so this reply has no corr= and is refused; pass the corr=<id> from the request you are answering\n' >&2
+      return 1
+      ;;
+    *)
+      printf 'error: %s marked requests are open:%s - pass the corr of the one you are answering as the second argument\n' "$n" "$open" >&2
+      return 1
+      ;;
+  esac
 }
