@@ -20,6 +20,8 @@
 # repository (the firstmate checkout) and be synced under that directory's label.
 # Anything else is reported as "skipped: not a clone root" naming the repository
 # that would have been touched.
+# Every clone root, synced or skipped, that tracks .githooks/ gets
+# core.hooksPath=.githooks when it has none (bin/fm-githooks-lib.sh owns the rule).
 # Pruning never deletes the checked-out branch or a branch that still has a
 # worktree, so it cannot discard unlanded work; set FM_FLEET_PRUNE=0 to disable it.
 # When the fetch fails on an orphaned .git/packed-refs.lock (left by a ref rewrite
@@ -45,6 +47,8 @@ PROJECTS="${FM_PROJECTS_OVERRIDE:-$FM_HOME/projects}"
 # Inert unless FM_TIMING_LOG names a file; only the deferred network stage sets it.
 # shellcheck source=bin/fm-timing-lib.sh
 . "$SCRIPT_DIR/fm-timing-lib.sh"
+# shellcheck source=bin/fm-githooks-lib.sh
+. "$SCRIPT_DIR/fm-githooks-lib.sh"
 FM_LOCK_LOG_PREFIX=fleet-sync
 "$FM_ROOT/bin/fm-guard.sh" || true
 
@@ -299,7 +303,15 @@ report_stuck() {
   echo "$label: STUCK: on $state, $behind commits behind $BASE - needs attention"
 }
 
+# Applied after the sync so hooks a fast-forward just brought in take effect,
+# and only once the clone-root guard below has passed.
 sync_project() {
+  CLONE_ROOT=no
+  sync_project_body "$1"
+  [ "$CLONE_ROOT" = no ] || fm_githooks_apply "$PROJ"
+}
+
+sync_project_body() {
   PROJ=$1
   label=$(project_label)
 
@@ -328,6 +340,7 @@ sync_project() {
     echo "$label: skipped: not a clone root (git would act on $proj_top)"
     return 0
   fi
+  CLONE_ROOT=yes
   if ! mode_line=$("$FM_ROOT/bin/fm-project-mode.sh" "$label" 2>/dev/null); then
     echo "$label: skipped: registry entry does not resolve to a delivery posture (run bin/fm-project-mode.sh $label for the refusal)"
     return 0

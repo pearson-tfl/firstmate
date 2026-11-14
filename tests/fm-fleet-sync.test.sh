@@ -27,6 +27,11 @@
 # worktree dir as its cwd also blocks removal (the clone-dir liveness check); a
 # transient lock that self-clears is retried without a force-remove; and any
 # non-packed-refs.lock fetch failure keeps today's behavior with no retry.
+#
+# It also pins tracked-hooks wiring: a clone whose repository tracks .githooks/
+# gets core.hooksPath=.githooks, including when the fast-forward itself brings
+# the directory in; a clone that tracks none, or already sets its own
+# core.hooksPath, is left alone.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -747,6 +752,30 @@ test_non_signature_fetch_failure_is_not_retried() {
   pass "a non-packed-refs.lock fetch failure keeps today's behavior (no retry)"
 }
 
+hooks_path() { git -C "$1" config --local --get core.hooksPath 2>/dev/null || true; }
+
+test_tracked_githooks_sets_hooks_path() {
+  local home plain hooked custom work
+  home=$(new_home)
+  plain=$(build_pair "$home" plainhooks)
+  hooked=$(build_pair "$home" hooked)
+  custom=$(build_pair "$home" customhooks)
+  for work in "$home/work-hooked" "$home/work-customhooks"; do
+    mkdir -p "$work/.githooks"
+    commit_file "$work" .githooks/pre-commit '#!/bin/sh' "add hooks"
+    git -C "$work" push -q origin main
+  done
+  git -C "$custom" config core.hooksPath .husky
+
+  run_sync "$home" >/dev/null
+
+  [ -f "$hooked/.githooks/pre-commit" ] || fail "fixture: fast-forward did not bring .githooks in"
+  [ "$(hooks_path "$hooked")" = .githooks ] || fail "clone tracking .githooks did not get core.hooksPath=.githooks"
+  [ -z "$(hooks_path "$plain")" ] || fail "clone without .githooks had core.hooksPath set"
+  [ "$(hooks_path "$custom")" = .husky ] || fail "an existing core.hooksPath was overwritten"
+  pass "tracked .githooks sets core.hooksPath only where tracked and unset"
+}
+
 test_detached_clean_ancestor_recovers
 test_detached_unique_commit_is_stuck_untouched
 test_detached_clean_ancestor_with_diverged_local_default_is_stuck_untouched
@@ -774,3 +803,4 @@ test_non_clone_dir_never_syncs_the_enclosing_repo
 test_non_clone_dir_named_directly_never_syncs_the_enclosing_repo
 test_symlinked_clone_still_syncs
 test_clone_root_named_by_another_spelling_still_syncs
+test_tracked_githooks_sets_hooks_path

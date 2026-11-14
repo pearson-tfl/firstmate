@@ -279,6 +279,10 @@ test_home_seed_uses_treehouse_acquired_home() {
   acquired="$TMP_ROOT/dash-acquired-home"
   mkdir -p "$home/projects" "$home/data" "$home/state"
   fm_git_init_commit "$home/projects/alpha"
+  mkdir -p "$home/projects/alpha/.githooks"
+  printf '#!/bin/sh\n' > "$home/projects/alpha/.githooks/pre-commit"
+  git -C "$home/projects/alpha" add .githooks
+  git -C "$home/projects/alpha" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm hooks
   fm_git_add_origin "$home/projects/alpha" "$TMP_ROOT/remotes/dash-alpha.git"
   printf '%s\n' '- alpha [direct-PR] - alpha project (added 2026-06-22)' > "$home/data/projects.md"
   git clone --quiet "$ROOT" "$acquired"
@@ -299,6 +303,8 @@ test_home_seed_uses_treehouse_acquired_home() {
   [ -f "$acquired/.fm-secondmate-home" ] || fail "seed did not mark acquired home"
   [ "$(cat "$acquired/.fm-secondmate-home")" = dash ] || fail "seed wrote wrong acquired-home marker"
   [ -d "$acquired/projects/alpha/.git" ] || fail "seed did not clone project into acquired home"
+  [ "$(git -C "$acquired/projects/alpha" config --local --get core.hooksPath)" = .githooks ] \
+    || fail "seed did not point the clone at its tracked .githooks"
   grep -F "home: $acquired_abs" "$home/data/secondmates.md" >/dev/null || fail "registry did not record acquired home"
   pass "home seeding durably leases treehouse-acquired dash homes under the secondmate id"
 }
