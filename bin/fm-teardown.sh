@@ -81,16 +81,15 @@
 # declared scratch and the report at data/<task-id>/report.md is the work
 # product. Teardown proceeds only once the report exists and the shared
 # unresolved-decision completion gate verifies its captain-held inventory.
-# A scratch copy (kind=scout) and a --force run discard untracked content.
 # Treehouse's return resets with `git clean -fd`, which never deletes a nested
-# git repository, so the pool slot stays dirty and later checkouts skip it.
-# Before that return, teardown runs `git clean -ffdq` in the copy, and a forced
-# secondmate teardown does the same in each child copy it returns.
-# The second -f removes nested repositories, and -x stays off so ignored files remain.
-# A ship teardown without --force does not run that clean: it refuses untracked
-# entries, except those under the .claude/ allowance, so a nested repository
-# there can still survive the return.
-# After a return that succeeds, teardown reads `git status --porcelain --untracked-files=all`.
+# git repository or an ignored file, so the pool slot would hand them on.
+# Before that return, teardown moves every untracked and ignored path in the
+# copy - nested repositories included - into data/slot-archive/ under this home
+# (bin/fm-wake-lib.sh's fm_worktree_archive_leftovers), and a forced secondmate
+# teardown does the same in each child copy it returns. Nothing is deleted. A
+# ship teardown without --force still refuses untracked entries outside the
+# .claude/ allowance first, so only that allowance and ignored content move.
+# After a return that succeeds, teardown reads `git status --porcelain --untracked-files=all --ignored`.
 # Any remaining output, a status read that fails, or a copy that is missing or
 # no longer a readable worktree is reported at once with the lost pool slot and
 # what remains. Teardown then finishes every cleanup step, reports the lost slot
@@ -2076,17 +2075,18 @@ report_worktree_dirt() {
   ' >&2
 }
 
-# Scratch and --force copies are scrubbed before Treehouse return. See the
-# script header for why `git clean -fd` is not enough and why a dirty return
-# is not reported as clean.
-teardown_scrub_scratch_copy() {
-  local wt=$1
-  # A non-git path has no nested repository this clean can remove.
+# Every copy's ignored and untracked leftovers are archived before Treehouse
+# return. See the script header for why `git clean -fd` is not enough and why
+# a dirty return is not reported as clean.
+teardown_archive_leftovers() {  # <worktree> <task-id>
+  local wt=$1 id=$2 archive
+  # A non-git path has no leftovers git can list.
   git -C "$wt" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
-  git -C "$wt" clean -ffdq || {
-    echo "error: could not clean scratch in worktree $wt before returning it; teardown aborted" >&2
+  archive=$(fm_worktree_archive_leftovers "$wt" "$DATA/slot-archive" "$id" return) || {
+    echo "error: could not move ignored or untracked leftovers out of worktree $wt before returning it; teardown aborted" >&2
     return 1
   }
+  [ -z "$archive" ] || echo "teardown: moved ignored or untracked leftovers from $wt to $archive" >&2
 }
 
 # Callers run this only for a copy that was a Treehouse pool slot before the
@@ -2094,7 +2094,7 @@ teardown_scrub_scratch_copy() {
 teardown_note_dirty_return() {
   local wt=$1 residue_rc=0 residue slot_dir slot_label
   if git -C "$wt" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    residue=$(git -C "$wt" status --porcelain --untracked-files=all) || residue_rc=$?
+    residue=$(git -C "$wt" status --porcelain --untracked-files=all --ignored) || residue_rc=$?
     [ "$residue_rc" -ne 0 ] || [ -n "$residue" ] || return 0
   else
     residue_rc=1
@@ -3537,7 +3537,7 @@ cleanup_firstmate_home_children() {
             || rm -f "$child_wt/CLAUDE.local.md"
         fi
         if [ -n "$child_proj" ] && [ -d "$child_proj" ] && command -v treehouse >/dev/null 2>&1; then
-          teardown_scrub_scratch_copy "$child_wt" || return 1
+          teardown_archive_leftovers "$child_wt" "$child_id" || return 1
           child_pool_slot=0
           fm_treehouse_pool_slot "$child_proj" "$child_wt" && child_pool_slot=1
           if teardown_treehouse_return "$child_wt" "$child_proj" "child worktree"; then
@@ -3908,9 +3908,7 @@ elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
   if [ "$FORCE" != "--force" ] && [ "$KIND" != scout ] && [ "$KIND" != secondmate ]; then
     post_lock_cleanup_check=validate_worktree_teardown_safety
   fi
-  if [ "$KIND" = scout ] || [ "$FORCE" = "--force" ]; then
-    teardown_scrub_scratch_copy "$WT" || exit 1
-  fi
+  teardown_archive_leftovers "$WT" "$ID" || exit 1
   wt_pool_slot=0
   fm_treehouse_pool_slot "$PROJ" "$WT" && wt_pool_slot=1
   teardown_treehouse_return "$WT" "$PROJ" "worktree" "$post_lock_cleanup_check" || {
