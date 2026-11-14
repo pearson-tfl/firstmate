@@ -288,6 +288,7 @@ case "${1:-}" in
   display-message)
     for a in "$@"; do
       case "$a" in
+        *pane_id*) printf '%%901\n'; exit 0 ;;
         *pane_current_command*)
           case "$mode" in
             missing) printf '%s\n' node; exit 0 ;;

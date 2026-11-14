@@ -1733,15 +1733,15 @@ fm_pending_reply_mate_inbox_dir() {  # <home> <state>
 # first and each once. A record without the from-firstmate marker is not a
 # reply-bearing request, whatever its text quotes.
 fm_pending_reply_mate_received_corrs() {  # <inbox-dir>
-  local inbox=$1 rec body corr
+  local inbox=$1 msg body corr
   [ -d "$inbox" ] || return 0
   {
-    for rec in "$inbox"/*.msg "$inbox"/handled/*.msg; do
-      [ -f "$rec" ] || continue
-      printf '%s\t%s\n' "$(fm_task_inbox_seq_of "$(basename "$rec")" || echo 0)" "$rec"
+    for msg in "$inbox"/*.msg "$inbox"/handled/*.msg; do
+      [ -f "$msg" ] || continue
+      printf '%s\t%s\n' "$(fm_task_inbox_seq_of "$(basename "$msg")" || echo 0)" "$msg"
     done
-  } | sort -n -k1,1 | while IFS=$'\t' read -r _ rec; do
-    body=$(fm_task_inbox_body "$rec") || continue
+  } | sort -n -k1,1 | while IFS=$'\t' read -r _ msg; do
+    body=$(fm_task_inbox_body "$msg") || continue
     case "$body" in "$FM_FROMFIRST_MARK"*) ;; *) continue ;; esac
     corr=$(fm_pending_reply_extract_corr "$body")
     [ -n "$corr" ] && printf '%s\n' "$corr"

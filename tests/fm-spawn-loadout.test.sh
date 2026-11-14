@@ -37,7 +37,7 @@ make_case() {
 # the role's skill posture and a contrary disableWorkflows laid over them, as
 # the real launch.py lays a role's launch settings over the base.
 install_loadout_stub() {
-  local code=${1:-0} tools=${2-Bash,Read,Edit} sources=${3:-project,local} perm=${4-'"--permission-mode", "auto", '} extra=${5:-} stub="$CASE_DIR/loadout-line"
+  local code=${1:-0} tool_list=${2-Bash,Read,Edit} sources=${3:-project,local} perm=${4-'"--permission-mode", "auto", '} extra=${5:-} stub="$CASE_DIR/loadout-line"
   cat > "$stub" <<PY
 #!/usr/bin/env python3
 import json, sys
@@ -49,7 +49,7 @@ args = sys.argv[1:]
 base = json.loads(args[args.index("--base-settings") + 1])
 base.update({"skillOverrides": {"tdd": "off"}, "disableWorkflows": False$extra})
 print(json.dumps({
-    "model": "role-model", "effort": "max", "tools": "$tools",
+    "model": "role-model", "effort": "max", "tools": "$tool_list",
     "settings": json.dumps(base), "mcp": json.dumps({"mcpServers": {"fetch": {"command": "fetch-mcp"}}}),
     "standing": False, "system_text": "lane-context.md", "system_text_loading": "append",
     "setting_sources": "$sources",
@@ -327,7 +327,7 @@ test_more_refusals() {
   assert_contains "$out" "--workflows applies to a claude crewmate" "the refusal should name the flag"
 
   make_case wf-secondmate lo-f5
-  out=$(run_spawn lo-f5 "$CASE_DIR" --secondmate --workflows on)
+  out=$(run_spawn lo-f5 "$CASE_DIR" claude --secondmate --workflows on)
   expect_code 1 "$?" "--workflows on a secondmate should be refused: $out"
   assert_contains "$out" "a secondmate takes neither" "the refusal should name the secondmate rule"
 

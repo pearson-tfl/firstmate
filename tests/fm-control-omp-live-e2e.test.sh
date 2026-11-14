@@ -36,8 +36,8 @@ fm_backend_source tmux || fail 'cannot load tmux adapter'
 "$REAL_TMUX" -L "$SOCKET" new-session -d -s lab -n control /bin/sh || fail 'cannot create private server'
 
 wait_idle() {
-  local target=$1 n state composer busy screen status
-  for n in $(seq 1 150); do
+  local target=$1 state composer busy screen status
+  for _ in $(seq 1 150); do
     state=$(fm_backend_agent_state tmux "$target")
     composer=$(fm_backend_composer_state tmux "$target")
     busy=$(fm_pane_busy_state "$target" omp)

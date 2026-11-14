@@ -3263,6 +3263,7 @@ case "${1:-}" in
   display-message)
     for a in "$@"; do
       case "$a" in
+        *pane_id*) printf '%%901\n'; exit 0 ;;
         *pane_current_command*) printf '%s\n' "$cmd"; exit 0 ;;
         *cursor_y*) printf '0\n'; exit 0 ;;
       esac

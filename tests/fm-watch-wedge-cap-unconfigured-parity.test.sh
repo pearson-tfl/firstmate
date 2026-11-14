@@ -84,8 +84,8 @@ record_pi_state() {  # <state-dir> <id> <busy|idle>
   local state=$1 id=$2 want=$3 gen event
   gen=$("$ROOT/bin/fm-busy-event.sh" arm "$state" "$id")
   case "$want" in
-    busy) event=agent-start ;;
-    *) event=agent-end ;;
+    busy) event='agent-start' ;;
+    *) event='agent-end' ;;
   esac
   "$ROOT/bin/fm-busy-event.sh" apply "$state" "$id" "$want" --gen "$gen" \
     --source pi-ext --event "$event" >/dev/null
