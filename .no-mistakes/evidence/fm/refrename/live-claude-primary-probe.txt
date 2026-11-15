@@ -1,0 +1,18 @@
+ ▐▛███▛█   Claude Code v2.1.325
+▝▜██████▀  Opus 5.5 with high effort · Claude Ultra
+ ▝▝   ▝▝   /tmp/fmref.XXCHml/tgt · /rc
+● ponytail: its classic.UserPromptSubmit hook was skipped. "cc-plugin-sec-default" runs first and sent the event on past it.
+❯ Test probe, do not run any tools or commands: quote verbatim from your session-start context the line beginning 'SUPERVISION OPERATING INSTRUCTIONS' and the line beginning 'Mode:' that follows it.
+  If absent, say ABSENT.
+● Captain, ABSENT. Neither line shows up anywhere in what this session was given at startup.
+  The startup report was too long, so I only received its first part. That part ends partway through the wake-queue section, before any supervision instructions. The full report was saved to
+  ~/.claude/projects/-tmp-fmref-XXCHml-tgt/f26f2b44-eb01-4e0e-bd60-9f5e8c831915/tool-results/hook-a54a7a0e-bff1-4a05-9c08-cf810167f74e-stdout.txt. Both lines may well be in that file, but
+  you asked me not to run tools, so I haven't opened it. I can't tell whether they are missing from the report or just weren't shown to me.
+✻ Cooked for 6s · done 12:23 PM
+● full  $0.39  last $0.39  7s                                                                                                                                         Review  Audit  Board  Details [-]
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 60.0k · 5h – · 7d 66% ↺5d10h · high · cache 59m
+  tgt ⎇ master · v2.1.325 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

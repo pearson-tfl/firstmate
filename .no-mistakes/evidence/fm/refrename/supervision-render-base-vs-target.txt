@@ -1,0 +1,48 @@
+host=default harness=claude base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=8307
+host=default harness=codex base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=2140
+host=default harness=opencode base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=2991
+host=default harness=pi base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=8180
+host=default harness=pi-signed base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=8187
+host=default harness=grok base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=3685
+host=default harness=cursor base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=4346
+host=default harness=omp base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=5313
+host=default harness=agy base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=4537
+host=default harness=bogus base-vs-target=IDENTICAL target-equals-unknown-fallback=yes target-bytes=1583
+host=on harness=claude base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=8307
+host=on harness=codex base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=5221
+host=on harness=opencode base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=5862
+host=on harness=pi base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=8180
+host=on harness=pi-signed base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=8187
+host=on harness=grok base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=6862
+host=on harness=cursor base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=8583
+host=on harness=omp base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=8184
+host=on harness=agy base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=7418
+host=on harness=bogus base-vs-target=IDENTICAL target-equals-unknown-fallback=yes target-bytes=1583
+host=off harness=claude base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=4071
+host=off harness=codex base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=2140
+host=off harness=opencode base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=2991
+host=off harness=pi base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=8180
+host=off harness=pi-signed base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=8187
+host=off harness=grok base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=3685
+host=off harness=cursor base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=4346
+host=off harness=omp base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=5313
+host=off harness=agy base-vs-target=IDENTICAL target-equals-unknown-fallback=no target-bytes=4537
+host=off harness=bogus base-vs-target=IDENTICAL target-equals-unknown-fallback=yes target-bytes=1583
+--- target --harness claude (supervision host default) first 15 lines ---
+================================================================================
+SUPERVISION OPERATING INSTRUCTIONS - primary harness: claude
+================================================================================
+Current state:
+- Lock: held by this session; this session owns normal supervision unless away mode says otherwise.
+- Away/quiet mode: inactive.
+- X mode: inactive; use the default watcher cadence.
+- Supervision host: on; it takes away-posture wakes and, where the dialog mirror is verified, eligible attended wakes itself, and hands the rest to you (protocol at the end of this block).
+- Ordinary wake: the Stop-owned auto-arm (bin/fm-claude-stop-autoarm.sh) already owns watcher continuity; drain and handle the wake, and do not arm another cycle yourself.
+
+Mode: Claude Stop-hook-owned supervision.
+
+When this session owns supervision and away mode is not active:
+1. Drain first with `bin/fm-wake-drain.sh`.
+   After handling all emitted wakes and reconciling open decisions and unread status lines, run the exact `--ack-through` command printed as `WAKE_ACK_REQUIRED`; until then the work remains durable for idempotent re-handling after interruption.
+--- repair line claude ---
+watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.

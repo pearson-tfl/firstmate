@@ -1,0 +1,12 @@
+Adversarial (supervision-host-off so only the harness snippet renders): renamed doc present, explicit claude mapping removed
+mutant claude bytes=1662; unknown bytes=1583; real target claude bytes=4071
+mutant differs from unknown
+2c2
+< SUPERVISION OPERATING INSTRUCTIONS - primary harness: claude
+---
+> SUPERVISION OPERATING INSTRUCTIONS - primary harness: unknown
+8c8
+< - Ordinary wake: the Stop-owned auto-arm (bin/fm-claude-stop-autoarm.sh) already owns watcher continuity; drain and handle the wake, and do not arm another cycle yourself.
+---
+> - Ordinary wake: follow the continuation in the harness protocol below; do not use shell &.
+RESULT: target (with mapping) renders the Claude protocol, not the fallback

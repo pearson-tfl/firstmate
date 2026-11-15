@@ -1,0 +1,11 @@
+$ bin/fm-doc-audience-check.sh
+fm-doc-audience-check: ok surfaces=138 local_links=1126
+exit=0
+$ git ls-files | grep -i claude.md in renamed dirs
+.agents/skills/harness-adapters/references/harness/claude-code.md
+docs/supervision-protocols/claude-code.md
+$ git grep old paths
+grep-exit=1 (1 = no matches)
+$ rename similarity
+ rename .agents/skills/harness-adapters/references/harness/{claude.md => claude-code.md} (100%)
+ rename docs/supervision-protocols/{claude.md => claude-code.md} (100%)
