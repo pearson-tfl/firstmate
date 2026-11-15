@@ -29,7 +29,7 @@ jq -e --arg model "$MODEL" '.models | any(.name == $model)' "$TMP_ROOT/tags.json
 cat > "$EXPECTED_JSON" <<'JSON'
 {
   "cases": [
-    {"id":"start.default","common":["references/common/dispatch.md","references/common/model-and-effort.md"],"harness":"references/harness/claude.md"},
+    {"id":"start.default","common":["references/common/dispatch.md","references/common/model-and-effort.md"],"harness":"references/harness/claude-code.md"},
     {"id":"start.trust-dialog","common":["references/common/control-and-recovery.md"],"harness":"references/harness/codex.md"},
     {"id":"trust.default","common":["references/common/control-and-recovery.md"],"harness":"references/harness/opencode.md"},
     {"id":"skill.default","common":["references/common/control-and-recovery.md"],"harness":"references/harness/pi.md"},
@@ -38,7 +38,7 @@ cat > "$EXPECTED_JSON" <<'JSON'
     {"id":"resume.default","common":["references/common/control-and-recovery.md"],"harness":"references/harness/kimi.md"},
     {"id":"recovery.default","common":["references/common/control-and-recovery.md"],"harness":"references/harness/cursor.md"},
     {"id":"recovery.replacement-profile","common":["references/common/control-and-recovery.md","references/common/dispatch.md","references/common/model-and-effort.md"],"harness":"references/harness/muse.md"},
-    {"id":"recovery.secondmate","common":["references/common/control-and-recovery.md","references/common/primary-hooks.md"],"harness":"references/harness/claude.md"},
+    {"id":"recovery.secondmate","common":["references/common/control-and-recovery.md","references/common/primary-hooks.md"],"harness":"references/harness/claude-code.md"},
     {"id":"recovery.replacement-secondmate","common":["references/common/control-and-recovery.md","references/common/dispatch.md","references/common/model-and-effort.md","references/common/primary-hooks.md"],"harness":"references/harness/codex.md"},
     {"id":"primary.default","common":["references/common/primary-hooks.md"],"harness":"references/harness/opencode.md"},
     {"id":"model-effort.default","common":["references/common/model-and-effort.md"],"harness":"references/harness/pi.md"},

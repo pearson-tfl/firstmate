@@ -17,7 +17,7 @@ Select only its documented trust choice from the active Firstmate home, binding 
 No observed dialog proves only that launch.
 
 Each supported harness handles its folder-trust gate differently, and the tool reference owns the detail.
-For Claude, load `references/harness/claude.md`; its workspace-trust section owns the non-key-answerable gate and spawn-time pre-registration for every spawn kind.
+For Claude, load `references/harness/claude-code.md`; its workspace-trust section owns the non-key-answerable gate and spawn-time pre-registration for every spawn kind.
 agy gates every fresh worktree too; the spawn pre-registers it in agy's own store the same way, and a strict post-launch gate answers any dialog that still renders before the spawn reports success.
 Cursor suppresses its dialog with launch-time `--trust`, and Muse suppresses its own with `--yolo`.
 Kiro suppresses its `--trust-all-tools` confirmation modal with a `chat.disableTrustAllConfirmation` setting the spawn seeds into the per-task `KIRO_HOME`; `references/harness/kiro.md` owns that recipe and where the decision persists.
