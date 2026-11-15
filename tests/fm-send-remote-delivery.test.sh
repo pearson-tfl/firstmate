@@ -25,10 +25,10 @@
 #   7. Pure transport loss (ssh 255 twice, nothing executed) fails with
 #      resend-safe guidance - the deleted "do not resend" trap is gone - and
 #      preserves the marked expectation for the record that may have landed.
-#   8. A LOCAL typed-plane send (an explicit backend target or harness-native
-#      slash) keeps its exit-3 delivered-unconfirmed contract, never closes a
-#      --resolve-key decision unconfirmed, and keeps a marked expectation
-#      armed.
+#   8. A LOCAL typed-plane send (an explicit backend target) keeps its exit-3
+#      delivered-unconfirmed contract and never closes a --resolve-key decision
+#      unconfirmed, while a LOCAL marked harness-native "/..." steer rides the
+#      inbox even past a pending composer and keeps its expectation armed.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -748,17 +748,25 @@ test_local_secondmate_pending_keeps_expectation_armed() {
   fm_write_meta "$home/state/lsm.meta" \
     "window=sess:fm-lsm" "harness=claude" "kind=secondmate" "mode=secondmate" "home=$home/sm"
 
-  # A harness-native slash invocation keeps the typed plane for a LOCAL marked
-  # secondmate target, so this pins the kept armed-expectation semantics there.
+  # A marked harness-native slash invocation to a LOCAL secondmate rides the
+  # inbox like any marked steer: a pending composer only skips the advisory
+  # ring, the durable record is delivery, and the expectation stays armed.
   : > "$log"
   rc=0
   env PATH="$fb:$PATH" FM_FAKE_TMUX_PENDING=1 \
     FM_ROOT_OVERRIDE="$home" FM_HOME="$home" FM_SEND_LOG="$log" FM_SEND_SETTLE=0 \
     "$SEND" lsm "/audit the ledger" >/dev/null 2>&1 || rc=$?
-  expect_code 3 "$rc" "an unconfirmed local secondmate submit must exit delivered-unconfirmed"
+  expect_code 0 "$rc" "a marked local secondmate slash steer is sent at enqueue"
+  case "$(fm_task_inbox_body "$home/state/lsm.inbox/001.msg")" in
+    "$FM_FROMFIRST_MARK"corr=*' /audit the ledger') : ;;
+    *) fail "a marked local secondmate slash steer must be recorded in full in its inbox" ;;
+  esac
+  case "$(cat "$log")" in
+    *audit*) fail "a marked local secondmate slash payload must never be typed" ;;
+  esac
   rec=$(pending_record "$home")
   [ -n "$rec" ] \
-    || fail "the pending-reply expectation must survive an unconfirmed local secondmate send"
+    || fail "the pending-reply expectation must survive a marked local secondmate slash steer"
   [ "$(fm_pending_reply_get "$rec" phase)" = awaiting_report ] \
     || fail "the surviving expectation must stay armed, got $(fm_pending_reply_get "$rec" phase)"
   # Armed means resolvable: the mate's correlated report still closes it.
@@ -766,7 +774,7 @@ test_local_secondmate_pending_keeps_expectation_armed() {
   printf 'done [corr=%s]: ledger clean\n' "$corr" > "$home/state/lsm.status"
   fm_pending_reply_try_resolve "$home/state" "$corr" \
     || fail "a correlated report must still resolve the preserved expectation"
-  pass "fm-send local: an unconfirmed secondmate send keeps its reply expectation armed"
+  pass "fm-send local: a marked secondmate slash steer rides the inbox and keeps its reply expectation armed"
 }
 
 test_local_pending_reports_delivered_unconfirmed() {
