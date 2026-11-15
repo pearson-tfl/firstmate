@@ -1,0 +1,29 @@
+## live claude argv (lab secondmate fm-labseat)
+2581443 ~/.local/bin/claude --dangerously-skip-permissions --add-dir /tmp/fm-lab.v5WrMM/state/labseat.inbox --name labseat --settings /tmp/fm-lab.v5WrMM/state/labseat.claude-settings.json --plugin-dir /tmp/fm-lab.v5WrMM/plugins/lab probe --session-id 11f614d8-091d-4a10-9eab-09a19818a7e3 : Firstmate operational input waiting: read '/tmp/fm-lab.v5WrMM-sm/state/operational-inbox/1794747063-8c62e5fcb6999de0.msg' and handle its contents as Firstmate operational input.
+
+## generated per-launch settings
+{
+ "env": {
+  "LAB_SEAT_VERSION": "v5"
+ },
+ "hookEvents": [
+  "UserPromptSubmit",
+  "Stop",
+  "StopFailure",
+  "SessionEnd"
+ ],
+ "feedbackDrafts": "off",
+ "attribution": {
+  "commit": "",
+  "pr": "",
+  "sessionUrl": false
+ }
+}
+
+## slash autocomplete after typing /labpro
+  ❯ /labprobe:labprobe   (labprobe) Lab probe command from seat plugin
+
+## spawn.out
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.v5WrMM
+warning: secondmate labseat sync skipped before launch: primary default-branch commit cannot be resolved
+spawned labseat harness=claude kind=secondmate mode=secondmate yolo=off window=primary:fm-labseat worktree=/tmp/fm-lab.v5WrMM-sm

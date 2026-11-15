@@ -1,0 +1,3 @@
+ok - secondmate seat plugins: mapped argv and env, inert absent/unmapped/non-Claude, invalid config refused
+# all fm-secondmate-harness tests passed
+exit=0
