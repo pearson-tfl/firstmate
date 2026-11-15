@@ -6,6 +6,32 @@ This record contains reusable version-scoped evidence for active runtime guarant
 The backend guides own current setup, safety boundaries, and limitations.
 Exact task chronology, branch names, temporary homes, local paths, process ids, thread ids, and delivery transcripts remain in private reports or PR evidence.
 
+## Clone-scoped Treehouse allocation
+
+Verified on 2026-11-06 on macOS arm64 with Treehouse v2.2.1, using independent fixture clones of one bare origin:
+
+```sh
+FM_TREEHOUSE_CLONE_LIVE_E2E=1 bin/fm-test-run.sh tests/fm-spawn-pool-base-freshen.test.sh
+bin/fm-test-run.sh tests/fm-backend-t3code.test.sh
+```
+
+The native Treehouse integration is token-free and runs when a compatible tool is installed; `FM_TREEHOUSE_CLONE_LIVE_E2E=1` requires it rather than skipping an unavailable or older tool.
+Observed allocation regression output:
+
+```text
+ok - Treehouse requests distinguish clones and preserve linked copies and quoted aliases
+ok - an isolated slot of another clone is refused before refresh or worker configuration
+ok - Treehouse without native --root is refused before opening an endpoint
+# native Treehouse v2.2.1: two independent clone leases own their Git common dirs; legacy lease unchanged
+ok - native Treehouse leases disjoint clone pools without touching an existing global lease
+```
+
+The terminal-request fixture verifies the shared acquisition path used by tmux, herdr, zellij, cmux, paseo, rex, tern, and hc.
+The T3 API fixture separately verifies its durable lease request carries the clone root.
+These tests exercise allocation and Git ownership, not real terminal sessions or model turns; the harness-independent resolver applies to every worker harness on these backends.
+Orca owns allocation independently and does not enter either Treehouse path.
+Secondmate-home seeding is unchanged, as are origin-scoped capacity locks and explicit-path returns of recorded slots.
+
 ## Polytoken worker lifecycle
 
 Verified on 2026-10-14 with Polytoken 0.9.0 on macOS arm64 using the tmux worker path.
