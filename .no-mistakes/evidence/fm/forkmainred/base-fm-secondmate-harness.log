@@ -1,0 +1,34 @@
+FM_TEST_BEGIN 2026-11-15T11:37:30Z tests/fm-secondmate-harness.test.sh family=secondmate expected_gate_skip=none
+ok - A1 fm-harness.sh secondmate resolves the fallback chain; crew mode unchanged
+ok - fm-harness detects only Cursor Agent CLI's exact invocation marker
+ok - C1 fm-harness.sh secondmate-model/secondmate-effort resolve the optional tokens; bare harness stays empty (backward-compat)
+ok - D1 fm-harness.sh honors a mate override line for its id and changes nothing else
+ok - D2 malformed config/secondmate-harness refuses with its line number on every read verb
+ok - D3 a config/secondmate-harness that declares no mate line is never refused
+ok - pi-signed identity: authoritative launch selection distinguishes shared wrapper ancestry
+ok - harness identity: dash-leading ps command names are basename operands, not options
+ok - B1 propagate_inheritable_config: copy, idempotence, convergence, absence-mirror, exclusion, no-op, skip diagnostics
+ok - B2 spawn: secondmate runs the secondmate harness; its home inherits declared config
+ok - B3 spawn: an absent secondmate-harness falls back to the crew harness (backward-compat)
+ok - B4 spawn: no config at all -> own harness and no propagation side effects
+ok - B5 spawn: an explicit per-spawn harness arg overrides config/secondmate-harness
+ok - B6 spawn: an unverified resolved secondmate harness is refused (guard intact)
+skip: cursor executable not resolvable in this environment, so the launch could not be built
+ok - B5b spawn: FM_BACKEND wins over inherited config/backend
+ok - B5c spawn: explicit --backend wins over FM_BACKEND and inherited config/backend
+ok - C2 spawn: a bare harness-only secondmate-harness file launches with no model/effort flag (backward-compat)
+ok - C3 spawn: config/secondmate-harness's model token threads --model into the launch and meta
+ok - C4 spawn: config/secondmate-harness's model+effort tokens thread into the launch and meta
+ok - C10 spawn: a legacy secondmate-harness file still launches on its first line (opt-in scope)
+ok - C11 spawn: a declared pin file that is malformed refuses the spawn with its line number
+ok - C5 spawn: an explicit --model overrides config/secondmate-harness's model token; the file's effort token still applies
+ok - C6 spawn: an explicit --effort overrides config/secondmate-harness's effort token; the file's model token still applies
+ok - C7 spawn: an explicit --harness starts with clean model/effort defaults
+ok - C8 spawn: an explicit --harness still honors explicit model/effort flags
+ok - C9 spawn: secondmate launch pins supervision to its own harness
+not ok - crew-unaffected: expected an ordinary ship task
+FM_TEST_END 2026-11-15T11:38:16Z tests/fm-secondmate-harness.test.sh exit=1 duration_ms=45948 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=1 skipped_gate=0 duration_ms=46024
+FM_TEST_SUMMARY_FAMILY family=secondmate count=1 duration_ms=45948 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/fm-secondmate-harness.test.sh duration_ms=45948
+exit=1

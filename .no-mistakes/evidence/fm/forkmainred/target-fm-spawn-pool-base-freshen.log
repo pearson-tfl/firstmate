@@ -1,0 +1,10 @@
+FM_TEST_BEGIN 2026-11-15T11:38:42Z tests/fm-spawn-pool-base-freshen.test.sh family=standalone expected_gate_skip=none
+ok - Treehouse requests distinguish clones and preserve linked copies and quoted aliases
+ok - an isolated slot of another clone is refused before refresh or worker configuration
+ok - Treehouse without native --root is refused before opening an endpoint
+skip: live: treehouse absent
+FM_TEST_END 2026-11-15T11:38:48Z tests/fm-spawn-pool-base-freshen.test.sh exit=0 duration_ms=5816 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=5899
+FM_TEST_SUMMARY_FAMILY family=standalone count=1 duration_ms=5816 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-spawn-pool-base-freshen.test.sh duration_ms=5816
+exit=0

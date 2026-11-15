@@ -1,0 +1,11 @@
+FM_TEST_BEGIN 2026-11-15T11:37:30Z tests/fm-spawn-batch.test.sh family=backend-dispatch expected_gate_skip=none
+ok - batch dispatch re-execs and reports every id=repo pair
+ok - batch detection: single pair batches, non-pair rejected, single-task and slash-id stay single
+ok - batch dispatch requires the shared ship delivery contract before any pair runs
+ok - scout batch refuses ship delivery flags instead of ignoring them
+not ok - FM_HOME scopes projects/: projects/alpha was not resolved through the home before the brief check
+FM_TEST_END 2026-11-15T11:37:35Z tests/fm-spawn-batch.test.sh exit=1 duration_ms=4163 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=1 skipped_gate=0 duration_ms=4222
+FM_TEST_SUMMARY_FAMILY family=backend-dispatch count=1 duration_ms=4163 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/fm-spawn-batch.test.sh duration_ms=4163
+exit=1

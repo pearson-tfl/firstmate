@@ -1,0 +1,12 @@
+FM_TEST_BEGIN 2026-11-15T11:37:30Z tests/fm-tangle-guard.test.sh family=session-bootstrap expected_gate_skip=none
+ok - fm_primary_tangle_branch: feature branch alarms; default/detached/non-git stay silent
+ok - fm-guard: bordered tangle banner fires only for a feature branch and suppresses repair commands in read-only mode
+ok - fm-bootstrap: TANGLE problem line fires only for a feature branch and suppresses repair commands in detect-only mode
+ok - fm-brief: ship brief asserts worktree isolation before the branch step
+ok - fm-spawn: aborts unless the resolved worktree is a genuine, isolated worktree
+not ok - treehouse get must be sent to the stable window id
+FM_TEST_END 2026-11-15T11:37:40Z tests/fm-tangle-guard.test.sh exit=1 duration_ms=9809 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=1 skipped_gate=0 duration_ms=9889
+FM_TEST_SUMMARY_FAMILY family=session-bootstrap count=1 duration_ms=9809 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/fm-tangle-guard.test.sh duration_ms=9809
+exit=1
