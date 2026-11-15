@@ -64,6 +64,7 @@ Four exclusions keep the shape test from producing false positives.
 - The peer-message carve-out: a Claude `SendMessage` call whose stdin `tool_input` is a plain-text message to a peer is allowed.
   It is the only exclusion that reads the tool input rather than the name, and the script's carve-out comment owns the exact rule.
   Named peers discovered through `ListAgents` and legacy `uds:` recipients are supported, with idle notifications enabled or disabled.
+  The optional Claude compatibility keys `type`, `recipient`, `recipient_kind`, and `content` are supported alongside `to`, `message`, `summary`, and `notify_when_idle`, subject to the script's strict shape checks.
   Protocol objects such as shutdown or plan-approval responses and the `--tool` CLI form, which carries no input to inspect, stay denied.
   Messaging an existing peer creates no agent or workspace the fleet would lose.
   The carve-out does not judge message content, which has no tool-shape signal; a message that asks the peer to do project work is the same judgment boundary [Purpose and boundary](#purpose-and-boundary) leaves out of scope.

@@ -1,0 +1,20 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "/fixture/session.jsonl",
+  "cwd": "/fixture/primary",
+  "prompt_id": "00000000-0000-4000-8000-000000000002",
+  "permission_mode": "bypassPermissions",
+  "effort": { "level": "high" },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "SendMessage",
+  "tool_input": {
+    "to": "CTO",
+    "summary": "Peer message test; no action needed.",
+    "message": "Peer message test; no action needed.",
+    "type": "message",
+    "recipient": "CTO",
+    "recipient_kind": "name",
+    "content": "Peer message test; no action needed."
+  },
+  "tool_use_id": "toolu_fixture"
+}

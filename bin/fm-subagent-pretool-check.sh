@@ -177,8 +177,11 @@ done
 # tool_input: `to` is any single-line string (no CR or LF), including a peer name
 # discovered with ListAgents or a legacy uds:<socket> address; `message` is a
 # non-empty plain string, not a protocol object such as a shutdown or
-# plan-approval response; and no key outside to, message, summary, and
-# notify_when_idle is present. Either notify_when_idle value is allowed.
+# plan-approval response; and no key outside to, message, summary,
+# notify_when_idle, type, recipient, recipient_kind, and content is present.
+# When present, type must be the string "message", recipient a single-line
+# string (no CR or LF), and recipient_kind and content strings.
+# Either notify_when_idle value is allowed.
 # Structured messages and the --tool CLI form, which carries no input to
 # inspect, stay denied. Messaging an existing peer creates no agent or
 # workspace for the fleet to lose track of; docs/subagent-guard.md owns the
@@ -189,7 +192,12 @@ if [ "$NORMALIZED" = sendmessage ] && [ "$TOOL_SET" -eq 0 ] && [ "$AGY_MODE" -eq
     | ($i | type) == "object"
       and ($i.to | type) == "string" and ($i.to | test("[\\r\\n]") | not)
       and ($i.message | type) == "string" and ($i.message | length) > 0
-      and ((($i | keys) - ["to", "message", "summary", "notify_when_idle"]) | length) == 0
+      and (($i | has("type") | not) or $i.type == "message")
+      and (($i | has("recipient") | not) or
+        (($i.recipient | type) == "string" and ($i.recipient | test("[\\r\\n]") | not)))
+      and (($i | has("recipient_kind") | not) or ($i.recipient_kind | type) == "string")
+      and (($i | has("content") | not) or ($i.content | type) == "string")
+      and ((($i | keys) - ["to", "message", "summary", "notify_when_idle", "type", "recipient", "recipient_kind", "content"]) | length) == 0
   ' >/dev/null 2>&1 && exit 0
 fi
 
