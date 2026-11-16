@@ -1,0 +1,10 @@
+$ bash bin/fm-doc-audience-check.sh
+fm-doc-audience-check: ok surfaces=141 local_links=1137
+exit=0
+
+$ git diff --stat 222227e8 HEAD -- AGENTS.md CLAUDE.md
+(empty above = unchanged)
+
+$ ls docs/adr GLOSSARY.md
+ls: cannot access 'docs/adr': No such file or directory
+ls: cannot access 'GLOSSARY.md': No such file or directory

@@ -1,0 +1,3 @@
+$ (throwaway git copy of HEAD with the three docs/agents entries removed) bash bin/fm-doc-audience-check.sh
+fm-doc-audience-check: unclassified: docs/agents/domain.md, docs/agents/issue-tracker.md, docs/agents/triage-labels.md
+exit=1
