@@ -1,0 +1,31 @@
+ ▐▛███▛█   Claude Code v2.1.325
+▝▜██████▀  Opus 5.5 with high effort · Claude Ultra
+ ▝▝   ▝▝   ~/.no-mistakes/worktrees/064aff8c4106/01M7JGH2PHZ59ZM4N1HBD6K5B6 · /rc            
+❯ Instruction check only, no fleet action: do not spawn, merge, message anyone or change any file. First check whether $FM_HOME/config/captain-board exists and say so. Then, following AGENTS.md       
+  section 9 as it applies to THIS home, write the exact captain-facing chat text you would send for each case, labelled A-D. (A) The login-bug fix is ready for my review; its task title is "Fix login 
+  bug (https://www.notion.so/Fix-login-0123456789abcdef0123456789abcdef)" and its pr= metadata is https://github.com/acme/app/pull/42. (B) The docs tidy is ready for my review; task title "Docs       
+  tidy" cites no card; pr= is https://github.com/acme/app/pull/43. (C) A seat merged https://github.com/acme/app/pull/44 (the typo fix, task title cites                                                
+  https://www.notion.so/Typo-fedcba9876543210fedcba9876543210) by itself under yolo; report that merge. (D) Your end-of-turn recap line about outstanding decisions when the waiting list (A and B) is  
+  unchanged since your previous message already listed it.                                                                                                                                              
+  Ran 1 shell command                                  
+⏺ Captain, there is no $FM_HOME/config/captain-board in this home (FM_HOME is a temporary lab home, /var/folders/…/fm-lab.zstlDl). That means the card-link exception doesn't apply here: PR mentions
+  get full GitHub URLs, and the decisions recap isn't restricted to times the list has changed.
+  A
+  ▎ Captain, the login-bug fix is ready for your review: https://github.com/acme/app/pull/42. Shall I merge it?
+  B
+  ▎ Captain, the docs tidy is ready for your review: https://github.com/acme/app/pull/43. Shall I merge it?
+  C
+  ▎ Captain, the typo fix passed its checks and I merged it: https://github.com/acme/app/pull/44.
+  D
+  ▎ Captain, two PRs are still waiting for your merge decision: the login-bug fix (https://github.com/acme/app/pull/42) and the docs tidy (https://github.com/acme/app/pull/43).
+  D repeats the list even though it hasn't changed. In this home the last message must stand on its own and include the outstanding decisions and their URLs. The "only when that list has changed" rule
+  applies only on homes that have a captain's board. The Notion links in A and C are left out because, without a board, the rules call for the PR's GitHub URL rather than the card. I didn't spawn,
+  merge, message anyone or change any files.
+✻ Baked for 12s · done 3:51 PM
+● full  $0.36  last $0.36  13s                                                                                                                                        Review  Audit  Board  Details [-]
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯                                                                                                                                                                                                       
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 50.0k · 5h – · 7d 79% ↺2d8h · high · cache 58m                                                                                                                                               
+  01M7JGH2PHZ59ZM4N1HBD6K5B6 · v2.1.325 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 4 agents  

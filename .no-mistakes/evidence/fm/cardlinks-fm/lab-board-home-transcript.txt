@@ -1,0 +1,38 @@
+  https://www.notion.so/Typo-fedcba9876543210fedcba9876543210) by itself under yolo; report that merge. (D) Your end-of-turn recap line about outstanding decisions when the waiting list (A and B) is  
+  unchanged since your previous message already listed it.                                                                                                                                              
+  Listed 1 directory 
+⏺ Captain, $FM_HOME/config/captain-board exists (in /var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.mZ5B64/config/). This home has a captain's board, so the board-home rules in section 9
+  apply: give a card link instead of a GitHub link, use plain words when no card is cited, and repeat the waiting list only when it has changed.
+  A
+  ▎ Captain, the login-bug fix is ready for your review: https://www.notion.so/Fix-login-0123456789abcdef0123456789abcdef – shall I merge it?
+  B
+  ▎ Captain, the docs tidy is ready for your review – shall I merge it?
+  (The task has no card, so it gets no link. The GitHub link for pull request 43 is left out.)                                                  
+  C
+  ▎ Captain, the typo fix has merged.                                                                                                        
+  (Section 9 says an automatic merge on a board home is reported in plain words with no link, so even the typo card's link is left out.)
+  D                                                                                                                                                                                                
+  No recap line. The waiting list (the login-bug fix and the docs tidy) hasn't changed since my last message listed it, so section 9 says not to repeat it. Any other content in that message would
+  still address you as captain.                                                               
+  I didn't open the captain-board file itself; I only confirmed it exists.
+✻ Sautéed for 12s · done 3:51 PM     
+❯ Still instruction check only, no action. Read .agents/skills/ship-landing/SKILL.md and, following that skill as it applies to this home, write the exact chat text telling me case A (the login-bug   
+  fix) is ready for review. Label it E.                                                                                                                                                                 
+  Searched for 1 pattern, ran 1 shell command                                                                                                                                                      
+⏺ E
+  ▎ Captain, the login-bug fix is ready for your review: https://www.notion.so/Fix-login-0123456789abcdef0123456789abcdef – [one-line summary of what the fix changes]. The automated review rated it 
+  ▎ [risk level]. Shall I merge it?
+  Line 19 of .agents/skills/ship-landing/SKILL.md asks for three things, which I've applied to this home:
+  - Link: Because this home has a captain's board, the card link from the task title takes the place of the GitHub link for pull request 42, as section 9 of AGENTS.md says.
+  - Outcome summary: Case A gives no summary of the fix, so I left a bracketed gap rather than make one up.                                                                                             
+  - Risk level: The skill wants the automated review's risk rating only when the fix went through that review. Case A doesn't give the rating or say whether that review ran, so that sentence is also a
+    gap. If it didn't run, the sentence comes out.
+  Everything outside the brackets is exact. I read only the section of the skill about reporting a fix as ready.
+✻ Worked for 12s · done 3:52 PM                                                                   
+● full  $0.42  last $0.07  25s                                                                                                                                        Review  Audit  Board  Details [-]
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯                                                                                                                                                                                                       
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 50.0k · 5h – · 7d 79% ↺2d8h · high · cache 59m                                                                                                                                               
+  01M7JGH2PHZ59ZM4N1HBD6K5B6 · v2.1.325 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 4 agents  
