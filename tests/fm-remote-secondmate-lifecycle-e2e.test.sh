@@ -1534,6 +1534,7 @@ FM_HOME="$PARENT" bash -c '
 printf 'confirmed:%s\n' "$retired_wake_corr" > "$PARENT/state/.backlog-handoff-ios.wake-pending"
 printf '%s\tattempt\n' "$(date +%s)" > "$PARENT/state/.secondmate-relaunch-ios"
 printf '%s\tdead\n' "$(date +%s)" > "$PARENT/state/.secondmate-relaunch-bound-ios"
+: > "$PARENT/state/.secondmate-down-noted-ios"
 liveness_lock="$PARENT/state/.secondmate-liveness-ios.lock"
 # The link is published before the claim finishes; signal only after acquire.
 # shellcheck disable=SC2016 # Positional parameters expand in the child shell.
@@ -1647,6 +1648,8 @@ assert_absent "$PARENT/state/.secondmate-relaunch-ios" \
   "remote retirement left the relaunch ledger a same-id replacement would inherit"
 assert_absent "$PARENT/state/.secondmate-relaunch-bound-ios" \
   "remote retirement left the relaunch park marker a same-id replacement would inherit"
+assert_absent "$PARENT/state/.secondmate-down-noted-ios" \
+  "remote retirement left the down-episode marker that would silence a same-id replacement's emergency note"
 assert_absent "$liveness_lock" "remote retirement left its liveness lock behind"
 assert_no_grep '- ios ' "$PARENT/data/secondmates.md" "remote retirement did not remove the registry route"
 jq -e --arg workspace "$SIBLING_WORKSPACE" --arg pane "$SIBLING_PANE" '

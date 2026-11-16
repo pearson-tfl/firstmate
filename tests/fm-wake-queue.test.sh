@@ -3400,6 +3400,8 @@ test_secondmate_liveness_tick_relaunches_dead_endpoint_once() {
     || fail "the durable auto-relaunch wake row was not queued exactly once: $(cat "$state/.wake-queue")"
   [ -e "$state/.secondmate-liveness-tick" ] \
     || fail "the liveness cadence marker was not stamped"
+  [ "$(grep -rlF 'EMERGENCY: second mate sm1 is down' "$state/inbox" 2>/dev/null | wc -l | tr -d ' ')" -eq 1 ] \
+    || fail "the down detection did not post exactly one emergency captain-inbox note: $(ls -R "$state/inbox" 2>&1)"
 
   # A restarted watcher sees the relaunched endpoint alive and stays quiet -
   # the durable row remains for the drain and no second notification fires.
@@ -3412,6 +3414,8 @@ test_secondmate_liveness_tick_relaunches_dead_endpoint_once() {
   kill_liveness_leg "$pid"
   [ "$(grep -c 'secondmate-relaunch-sm1' "$state/.wake-queue" 2>/dev/null || true)" -eq 0 ] \
     || fail "a live post-relaunch probe produced a second wake: $(cat "$state/.wake-queue")"
+  [ "$(grep -rlF 'EMERGENCY: second mate sm1 is down' "$state/inbox" 2>/dev/null | wc -l | tr -d ' ')" -eq 1 ] \
+    || fail "a live post-relaunch probe posted another emergency note"
   pass "watch liveness: a dead secondmate is relaunched once, ledgered, and quiet afterwards"
 }
 
@@ -3617,16 +3621,98 @@ test_secondmate_liveness_tick_fails_closed_on_ledger_errors() {
     rc=0
     wait_for_exit "$pid" 300 || rc=$?
     chmod 644 "$ledger"
-    [ "$rc" -eq 1 ] || fail "a mode-$mode relaunch ledger did not fail the watcher (rc=$rc): $(cat "$dir/watch-ledger.out" "$dir/watch-ledger.err")"
-    grep -F 'secondmate liveness check failed' "$dir/watch-ledger.err" >/dev/null \
-      || fail "a mode-$mode ledger failure was not reported: $(cat "$dir/watch-ledger.err")"
     [ ! -s "$dir/tmux.log" ] \
       || fail "a mode-$mode relaunch ledger still killed or spawned: $(cat "$dir/tmux.log")"
     [ ! -s "$ledger" ] || fail "a mode-$mode ledger gained rows: $(cat "$ledger")"
-    ! grep -F 'secondmate-relaunch' "$state/.wake-queue" >/dev/null 2>&1 \
-      || fail "a mode-$mode ledger failure queued a relaunch wake: $(cat "$state/.wake-queue")"
+    if [ "$mode" = 444 ]; then
+      # The emergency note already promised an outcome, so an unwritable
+      # attempt row escalates exactly like a failed relaunch.
+      [ "$rc" -eq 0 ] || fail "an unwritable ledger did not wake as a failed relaunch (rc=$rc): $(cat "$dir/watch-ledger.out" "$dir/watch-ledger.err")"
+      grep -F 'check: secondmate sm1 auto-relaunch failed after confirmed agent absence on existing endpoint: relaunch ledger' \
+        "$dir/watch-ledger.out" >/dev/null \
+        || fail "an unwritable ledger was not escalated as a failed relaunch: $(cat "$dir/watch-ledger.out" "$dir/watch-ledger.err")"
+      [ "$(grep -c 'secondmate-relaunch-failed-sm1-' "$state/.wake-queue")" -eq 1 ] \
+        || fail "the unwritable-ledger failure wake was not queued exactly once: $(cat "$state/.wake-queue")"
+      [ "$(grep -rlF 'EMERGENCY: second mate sm1 is down' "$state/inbox" 2>/dev/null | wc -l | tr -d ' ')" -eq 1 ] \
+        || fail "the unwritable-ledger detection did not post exactly one emergency note"
+      # The ledger stays unwritable across later ticks: the skip already
+      # escalated this down episode, so no further wake is raised.
+      chmod 444 "$ledger"
+      drain_liveness_wakes "$dir"
+      rm -f "$state/.secondmate-liveness-tick"
+      run_liveness_leg "$dir" ledger-again FM_FAKE_TMUX_CURRENT_COMMAND=zsh; pid=$LIVENESS_PID
+      sleep 4
+      kill_liveness_leg "$pid"
+      chmod 644 "$ledger"
+      ! grep -F 'auto-relaunch failed' "$dir/watch-ledger-again.out" >/dev/null \
+        || fail "a repeated unwritable-ledger skip escalated again: $(cat "$dir/watch-ledger-again.out")"
+      ! grep -F 'secondmate-relaunch-failed-sm1-' "$state/.wake-queue" >/dev/null 2>&1 \
+        || fail "a repeated unwritable-ledger skip queued another failure wake: $(cat "$state/.wake-queue")"
+      [ "$(grep -c 'already escalated this down episode' "$state/.watch-triage.log")" -ge 2 ] \
+        || fail "later skip ticks did not run against the unwritable ledger: $(cat "$state/.watch-triage.log")"
+    else
+      [ "$rc" -eq 1 ] || fail "an unreadable relaunch ledger did not fail the watcher (rc=$rc): $(cat "$dir/watch-ledger.out" "$dir/watch-ledger.err")"
+      grep -F 'secondmate liveness check failed' "$dir/watch-ledger.err" >/dev/null \
+        || fail "an unreadable ledger failure was not reported: $(cat "$dir/watch-ledger.err")"
+      ! grep -F 'secondmate-relaunch' "$state/.wake-queue" >/dev/null 2>&1 \
+        || fail "an unreadable ledger failure queued a relaunch wake: $(cat "$state/.wake-queue")"
+      ! grep -rqF 'EMERGENCY' "$state/inbox" 2>/dev/null \
+        || fail "an unreadable ledger posted an emergency note with no relaunch behind it"
+    fi
   done
-  pass "watch liveness: an unwritable or unreadable relaunch ledger refuses to kill or spawn"
+  pass "watch liveness: a bad relaunch ledger never spawns; an unwritable one escalates as a failed relaunch"
+}
+
+test_secondmate_liveness_tick_busy_relaunch_lock_notes_once_and_stays_quiet() {
+  local dir state pid holder leg i
+  dir=$(make_secondmate_liveness_case liveness-busy)
+  state="$dir/state"
+
+  # Another relaunch holds the per-home relaunch lock: it owns the outcome, so
+  # the tick posts the episode's one emergency note and queues no wake, and a
+  # later tick on the same still-down mate posts no second note.
+  ( STATE="$state" bash -c '. "$1" && fm_lock_acquire_wait "$2" && sleep 60' \
+      _ "$ROOT/bin/fm-wake-lib.sh" "$state/.secondmate-relaunch.lock" ) &
+  holder=$!
+  i=0
+  while [ ! -d "$state/.secondmate-relaunch.lock" ] && [ "$i" -lt 100 ]; do
+    sleep 0.05
+    i=$((i + 1))
+  done
+  [ -d "$state/.secondmate-relaunch.lock" ] || fail "the fixture never acquired the relaunch lock"
+
+  for leg in busy1 busy2; do
+    rm -f "$state/.secondmate-liveness-tick"
+    run_liveness_leg "$dir" "$leg" FM_FAKE_TMUX_CURRENT_COMMAND=zsh FM_SECONDMATE_LIVENESS_TIMEOUT=1; pid=$LIVENESS_PID
+    sleep 5
+    kill_liveness_leg "$pid"
+    ! grep -F 'check: secondmate sm1 auto-relaunch' "$dir/watch-$leg.out" >/dev/null \
+      || fail "a relaunch skipped behind a busy lock woke with an outcome: $(cat "$dir/watch-$leg.out")"
+    drain_liveness_wakes "$dir"
+  done
+  kill "$holder" 2>/dev/null || true
+  wait "$holder" 2>/dev/null || true
+  ! grep -F 'secondmate-relaunch' "$state/.wake-queue" >/dev/null 2>&1 \
+    || fail "a relaunch skipped behind a busy lock queued a wake: $(cat "$state/.wake-queue")"
+  [ ! -e "$state/.secondmate-relaunch-sm1" ] || fail "a busy-lock skip ledgered an attempt"
+  [ "$(grep -c 'another secondmate relaunch still owns the per-home relaunch lock' "$state/.watch-triage.log")" -ge 2 ] \
+    || fail "both ticks did not reach the busy relaunch lock: $(cat "$state/.watch-triage.log")"
+  [ "$(grep -rlF 'EMERGENCY: second mate sm1 is down' "$state/inbox" 2>/dev/null | wc -l | tr -d ' ')" -eq 1 ] \
+    || fail "a mate still down across ticks did not get exactly one emergency note: $(ls -R "$state/inbox" 2>&1)"
+
+  # A live probe ends the episode; the next death posts a fresh note.
+  rm -f "$state/.secondmate-liveness-tick"
+  run_liveness_leg "$dir" busy-up FM_FAKE_TMUX_CURRENT_COMMAND=claude; pid=$LIVENESS_PID
+  sleep 4
+  kill_liveness_leg "$pid"
+  [ ! -e "$state/.secondmate-down-noted-sm1" ] || fail "a live probe did not end the down episode"
+  drain_liveness_wakes "$dir"
+  rm -f "$state/.secondmate-liveness-tick"
+  run_liveness_leg "$dir" busy-down FM_FAKE_TMUX_CURRENT_COMMAND=zsh; pid=$LIVENESS_PID
+  wait_for_exit "$pid" 300 || fail "the watcher did not relaunch the mate once the lock was free"
+  [ "$(grep -rlF 'EMERGENCY: second mate sm1 is down' "$state/inbox" 2>/dev/null | wc -l | tr -d ' ')" -eq 2 ] \
+    || fail "a new down episode after a live probe did not post a fresh emergency note"
+  pass "watch liveness: a busy relaunch lock leaves the outcome to the in-flight relaunch; one note per down episode"
 }
 
 test_secondmate_liveness_tick_error_keeps_scanning_and_wakes() {
@@ -3833,6 +3919,7 @@ test_secondmate_liveness_tick_cadence_gates_the_probe
 test_secondmate_liveness_tick_attempt_bound_parks_then_rearm_on_alive
 test_secondmate_liveness_tick_relaunch_failure_reports_once
 test_secondmate_liveness_tick_fails_closed_on_ledger_errors
+test_secondmate_liveness_tick_busy_relaunch_lock_notes_once_and_stays_quiet
 test_secondmate_liveness_tick_error_keeps_scanning_and_wakes
 test_secondmate_liveness_tick_unqueued_outcome_is_an_error_not_a_wake
 test_secondmate_liveness_tick_skips_mate_whose_lock_is_held

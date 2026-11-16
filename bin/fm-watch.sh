@@ -178,11 +178,17 @@
 #                          same guarded fm-spawn.sh --secondmate path the
 #                          session-start sweep uses; one wake per relaunch, and
 #                          state/.secondmate-relaunch-<id> keeps the durable
-#                          per-mate count (bin/fm-secondmate-liveness-lib.sh)
+#                          per-mate count (bin/fm-secondmate-liveness-lib.sh);
+#                          the same detection first posts an EMERGENCY
+#                          captain-inbox note (fm-inbox.sh note, its own check
+#                          wake) unless the mate is already parked
 #   check: secondmate <id> auto-relaunch failed after <cause>: <detail>
 #                          the same verdict authorized recovery but the
 #                          relaunch itself failed; the attempt is ledgered and
-#                          counts toward the bound below
+#                          counts toward the bound below. A relaunch skipped
+#                          before spawning (ledger or close-proof error) wakes
+#                          the same way, once per down episode, with the skip
+#                          reason as <detail>
 #   check: secondmate <id> auto-relaunch paused after <n> attempts in <s>s; ...
 #                          a mate that kept dying exceeded its bounded relaunch
 #                          budget and is parked until a probe reads it live
@@ -1203,6 +1209,19 @@ EOF
   return 0
 }
 
+secondmate_down_note() {  # <id> <epoch>; once per down episode; logs a failed post and always returns 0
+  local rc=0 noted="$STATE/.secondmate-down-noted-$1"
+  [ ! -e "$noted" ] || return 0
+  "$SCRIPT_DIR/fm-inbox.sh" note --request-id "secondmate-down-$1-$2" -- \
+    "EMERGENCY: second mate $1 is down ($FM_SM_LIVE_CAUSE; $FM_SM_LIVE_WHERE); automatic relaunch is being attempted now and its outcome follows separately." \
+    >/dev/null 2>&1 || rc=$?
+  # Exit 3 means the note was saved but its wake was not announced.
+  case "$rc" in 0|3) : > "$noted" || true; return 0 ;; esac
+  echo "watcher: secondmate $1 liveness: emergency inbox note could not be posted" >&2
+  triage_log "secondmate $1 liveness: emergency inbox note could not be posted" || true
+  return 0
+}
+
 # The ordinary-supervision half of the secondmate liveness guarantee, paired
 # with bin/fm-bootstrap.sh's session-start sweep over the shared library in
 # bin/fm-secondmate-liveness-lib.sh (which owns the state contract, the remote
@@ -1219,13 +1238,18 @@ EOF
 # the marker so a manually recovered mate rejoins the guarantee with a full
 # budget. The per-mate liveness lock serializes this tick against a concurrent
 # session-start sweep, so neither side can kill or re-probe an endpoint the
-# other is mid-relaunch on.
+# other is mid-relaunch on. The first relaunch attempt of a down episode is
+# preceded by an emergency captain-inbox note in this home (fm-inbox.sh note),
+# so the down mate reaches the captain at detection without anyone noticing
+# it; a live probe ends the episode. Its outcome always follows: a relaunch
+# skipped because another relaunch holds the per-home lock is left to that
+# in-flight relaunch, and any other skip escalates as a failed relaunch.
 secondmate_liveness_tick() {
   local tick_marker="$STATE/.secondmate-liveness-tick"
   [ "$(age_of "$tick_marker")" -ge "$SECONDMATE_LIVENESS_SECS" ] || return 0
   touch "$tick_marker" || return 1
   local now=$(( $(date +%s) )) meta id kind
-  local bound_marker attempts notify_key reason queued err first_reason='' failed=0
+  local bound_marker attempts notify_key reason queued err first_reason='' failed=0 noted escalate_once
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || continue
     kind=$(fm_meta_get "$meta" kind 2>/dev/null || true)
@@ -1236,7 +1260,8 @@ secondmate_liveness_tick() {
     fm_secondmate_liveness_lock "$id" || continue
     fm_secondmate_liveness_probe "$meta" "$id" poll
     bound_marker="$STATE/.secondmate-relaunch-bound-$id"
-    reason='' notify_key='' err=''
+    noted="$STATE/.secondmate-down-noted-$id"
+    reason='' notify_key='' err='' escalate_once=0
     case "$FM_SM_LIVE_STATUS" in
       relaunchable)
         if [ -e "$bound_marker" ] || [ -L "$bound_marker" ]; then
@@ -1250,17 +1275,27 @@ secondmate_liveness_tick() {
           else
             err="relaunch park marker could not be written; endpoint left $FM_SM_LIVE_STATE"
           fi
-        elif fm_secondmate_liveness_relaunch "$meta" "$id" "$SECONDMATE_LIVENESS_TIMEOUT"; then
+        elif secondmate_down_note "$id" "$now" \
+          && fm_secondmate_liveness_relaunch "$meta" "$id" "$SECONDMATE_LIVENESS_TIMEOUT"; then
           reason="check: secondmate $id auto-relaunched after $FM_SM_LIVE_CAUSE ($FM_SM_LIVE_WHERE)"
           notify_key="secondmate-relaunch-$id-$now"
+        elif [ "$FM_SM_LIVE_BUSY" = 1 ]; then
+          triage_log "secondmate $id liveness: $FM_SM_LIVE_REASON"
         elif [ "$FM_SM_LIVE_STATUS" = skipped ]; then
-          err=$FM_SM_LIVE_REASON
+          if [ "$(cat "$noted" 2>/dev/null || true)" = escalated ]; then
+            triage_log "secondmate $id liveness: $FM_SM_LIVE_REASON (already escalated this down episode)"
+          else
+            reason="check: secondmate $id auto-relaunch failed after $FM_SM_LIVE_CAUSE: $FM_SM_LIVE_REASON"
+            notify_key="secondmate-relaunch-failed-$id-$now"
+            escalate_once=1
+          fi
         else
           reason="check: secondmate $id auto-relaunch failed after $FM_SM_LIVE_CAUSE: $(fm_sm_live_first_line "$FM_SM_LIVE_OUT")"
           notify_key="secondmate-relaunch-failed-$id-$now"
         fi
         ;;
       alive)
+        rm -f "$noted"
         if [ -e "$bound_marker" ] || [ -L "$bound_marker" ]; then
           if ! fm_secondmate_liveness_ledger_add "$id" rearmed; then
             err="relaunch ledger is unwritable; auto-relaunch stays paused"
@@ -1280,6 +1315,8 @@ secondmate_liveness_tick() {
       if printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1 \
         || fm_wake_append check "$notify_key" "$reason"; then
         [ -n "$first_reason" ] || first_reason=$reason
+        [ "$escalate_once" -eq 0 ] || printf 'escalated\n' > "$noted" \
+          || err="down-episode escalation could not be recorded"
       else
         err="check wake row could not be queued: $reason"
       fi

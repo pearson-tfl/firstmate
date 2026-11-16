@@ -320,6 +320,7 @@ make_composer_stub() {  # <dir>
 set -u
 case "${1:-}" in
   send-keys)
+    [ -z "${FM_FAKE_SCREEN:-}" ] || printf 'SENT: %s\n' "$*" >> "$FM_SEND_LOG"
     shift
     literal=0
     while [ $# -gt 0 ]; do
@@ -345,6 +346,7 @@ case "${1:-}" in
     case "$*" in *cursor_y*) printf '2\n'; exit 0 ;; esac
     printf 'fakepane\n'; exit 0 ;;
   capture-pane)
+    [ -z "${FM_FAKE_SCREEN:-}" ] || { cat "$FM_FAKE_SCREEN"; exit 0; }
     rule=$(printf '─%.0s' $(seq 64))
     printf '● done\n%s\n' "$rule"
     if [ -s "$FM_FAKE_COMPOSER" ]; then
@@ -376,7 +378,8 @@ test_ring_submits_its_own_stuck_doorbell() {
   log="$dir/send.log"; composer="$dir/composer"; drops="$dir/drops"
   ring() {
     PATH="$dir/fakebin:$PATH" FM_SEND_LOG="$log" FM_FAKE_COMPOSER="$composer" \
-      FM_FAKE_DROP_ENTERS="$drops" inbox_lib "$state" fm_task_inbox_ring tmux sess:fm-t1 "$rec" fm-t1
+      FM_FAKE_DROP_ENTERS="$drops" FM_CONFIG_OVERRIDE="$dir/no-config" \
+      inbox_lib "$state" fm_task_inbox_ring tmux sess:fm-t1 "$rec" fm-t1
   }
 
   : > "$log"; printf '%s' "$doorbell" > "$composer"
@@ -408,6 +411,131 @@ test_ring_submits_its_own_stuck_doorbell() {
     || fail "the retry Enter should submit the doorbell once:"$'\n'"$(cat "$log")"
   [ ! -s "$composer" ] || fail "a lost Enter left the doorbell unsubmitted"
   pass "inbox: the ring submits its own stuck doorbell, skips other pending text, and retries a lost Enter once on both paths"
+}
+
+# Stuck input that is automation's own but not this exact doorbell (another
+# inbox's doorbell, stacked copies after lost Enters, or anything at all in a
+# home declaring config/unattended-input) is submitted first, then this
+# doorbell rings; without that declaration a non-doorbell line is never touched.
+test_ring_clears_stuck_automation_input_then_rings() {
+  local dir state rec doorbell other_doorbell log composer cfg rc stuck
+  dir="$TMP_ROOT/ring-automation"
+  state="$dir/state"; cfg="$dir/config"
+  mkdir -p "$state" "$cfg"
+  make_composer_stub "$dir"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "please continue")
+  doorbell=$(inbox_lib "$state" fm_task_inbox_doorbell_line "$rec")
+  other_doorbell=$(inbox_lib "$state" fm_task_inbox_doorbell_line \
+    "$(inbox_lib "$state" fm_task_inbox_write "$state" t2 "other")")
+  log="$dir/send.log"; composer="$dir/composer"
+  ring() {
+    PATH="$dir/fakebin:$PATH" FM_SEND_LOG="$log" FM_FAKE_COMPOSER="$composer" \
+      FM_FAKE_DROP_ENTERS="$dir/drops" FM_CONFIG_OVERRIDE="$cfg" \
+      inbox_lib "$state" fm_task_inbox_ring tmux sess:fm-t1 "$rec" fm-t1
+  }
+
+  for stuck in "$other_doorbell" "$doorbell$doorbell"; do
+    : > "$log"; printf '%s' "$stuck" > "$composer"
+    rc=0; ring || rc=$?
+    [ "$rc" = 0 ] || fail "stuck doorbell text should be submitted and then rung, got rc $rc for: $stuck"
+    [ "$(cat "$log")" = "SUBMIT: $stuck"$'\n'"SUBMIT: $doorbell" ] \
+      || fail "stuck doorbell text should be submitted, then this doorbell rung:"$'\n'"$(cat "$log")"
+  done
+
+  : > "$log"; printf '/clear' > "$composer"
+  rc=0; ring || rc=$?
+  [ "$rc" = 1 ] || fail "a non-doorbell line outside an unattended home must skip, got rc $rc"
+  [ ! -s "$log" ] && [ "$(cat "$composer")" = /clear ] \
+    || fail "a non-doorbell line outside an unattended home was touched:"$'\n'"$(cat "$log")"
+
+  : > "$cfg/unattended-input"
+  rc=0; ring || rc=$?
+  [ "$rc" = 0 ] || fail "any stuck line in an unattended-input home should be submitted then rung, got rc $rc"
+  [ "$(cat "$log")" = "SUBMIT: /clear"$'\n'"SUBMIT: $doorbell" ] \
+    || fail "the unattended home should submit the stuck line, then ring:"$'\n'"$(cat "$log")"
+  pass "inbox: stuck automation input is submitted before ringing; only an unattended-input home treats any line as automation's"
+}
+
+# A modal picker is not input-box text: even in an unattended-input home the
+# ring must not press Enter on Claude's background-task exit picker, whose
+# selected row would exit the agent and stop its background work.
+test_ring_never_confirms_exit_picker_in_unattended_home() {
+  local dir state rec log cfg screen rc
+  dir="$TMP_ROOT/ring-exit-picker"
+  state="$dir/state"; cfg="$dir/config"
+  mkdir -p "$state" "$cfg"
+  make_composer_stub "$dir"
+  : > "$cfg/unattended-input"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "please continue")
+  log="$dir/send.log"; : > "$log"
+  screen="$dir/screen"
+  printf '%s\n' \
+    'Background work is running' \
+    '❯ 1. Exit and stop tasks' \
+    'The following will stop when you exit:' \
+    'shell · sleep 300' \
+    '  2. Move to background and exit' \
+    '  3. Stay' \
+    'Enter to confirm · Esc to cancel' > "$screen"
+  rc=0
+  PATH="$dir/fakebin:$PATH" FM_SEND_LOG="$log" FM_FAKE_COMPOSER="$dir/composer" \
+    FM_FAKE_SCREEN="$screen" FM_CONFIG_OVERRIDE="$cfg" \
+    inbox_lib "$state" fm_task_inbox_ring tmux sess:fm-t1 "$rec" fm-t1 || rc=$?
+  [ "$rc" = 1 ] || fail "the exit picker should skip the ring, got rc $rc"
+  [ ! -s "$log" ] || fail "the ring sent keys to the exit picker:"$'\n'"$(cat "$log")"
+  pass "inbox: an unattended-input home never presses Enter on the exit picker"
+}
+
+test_ring_never_confirms_trust_picker_in_unattended_home() {
+  local dir state rec log cfg screen rc
+  dir="$TMP_ROOT/ring-trust-picker"
+  state="$dir/state"; cfg="$dir/config"
+  mkdir -p "$state" "$cfg"
+  make_composer_stub "$dir"
+  : > "$cfg/unattended-input"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "please continue")
+  log="$dir/send.log"; : > "$log"
+  screen="$dir/screen"
+  printf '%s\n' \
+    ' Security guide' \
+    ' ❯ No, exit' \
+    '   Yes, I trust this folder' \
+    ' Enter to confirm · Esc to cancel' \
+    '' > "$screen"
+  rc=0
+  PATH="$dir/fakebin:$PATH" FM_SEND_LOG="$log" FM_FAKE_COMPOSER="$dir/composer" \
+    FM_FAKE_SCREEN="$screen" FM_CONFIG_OVERRIDE="$cfg" \
+    inbox_lib "$state" fm_task_inbox_ring tmux sess:fm-t1 "$rec" fm-t1 || rc=$?
+  [ "$rc" = 1 ] || fail "the trust picker should skip the ring, got rc $rc"
+  [ ! -s "$log" ] || fail "the ring sent keys to the trust picker:"$'\n'"$(cat "$log")"
+  pass "inbox: an unattended-input home never presses Enter on the folder-trust picker"
+}
+
+test_ring_never_confirms_model_picker_in_unattended_home() {
+  local dir state rec log cfg screen rc
+  dir="$TMP_ROOT/ring-model-picker"
+  state="$dir/state"; cfg="$dir/config"
+  mkdir -p "$state" "$cfg"
+  make_composer_stub "$dir"
+  : > "$cfg/unattended-input"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "please continue")
+  log="$dir/send.log"; : > "$log"
+  screen="$dir/screen"
+  # Claude's /model picker footer differs from the confirm footer; Enter here
+  # would change the default model for new sessions.
+  printf '%s\n' \
+    ' Select model' \
+    ' ❯ 1. Default (recommended)' \
+    '   2. Opus' \
+    ' Enter to set as default · s to use this session only · Esc to cancel' \
+    '' > "$screen"
+  rc=0
+  PATH="$dir/fakebin:$PATH" FM_SEND_LOG="$log" FM_FAKE_COMPOSER="$dir/composer" \
+    FM_FAKE_SCREEN="$screen" FM_CONFIG_OVERRIDE="$cfg" \
+    inbox_lib "$state" fm_task_inbox_ring tmux sess:fm-t1 "$rec" fm-t1 || rc=$?
+  [ "$rc" = 1 ] || fail "the /model picker should skip the ring, got rc $rc"
+  [ ! -s "$log" ] || fail "the ring sent keys to the /model picker:"$'\n'"$(cat "$log")"
+  pass "inbox: an unattended-input home never presses Enter on the /model picker"
 }
 
 test_idempotent_write_dedups_exact_body() {
@@ -1377,6 +1505,10 @@ test_doorbell_is_a_shell_noop
 test_doorbell_rejects_terminal_controls
 test_ring_skips_dead_agent
 test_ring_submits_its_own_stuck_doorbell
+test_ring_clears_stuck_automation_input_then_rings
+test_ring_never_confirms_exit_picker_in_unattended_home
+test_ring_never_confirms_trust_picker_in_unattended_home
+test_ring_never_confirms_model_picker_in_unattended_home
 test_idempotent_write_dedups_exact_body
 test_idempotent_write_prefilters_history
 test_idempotent_write_prefilter_preserves_exact_bodies

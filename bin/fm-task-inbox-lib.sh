@@ -52,7 +52,7 @@
 # Re-ring ladder (fm_task_inbox_due_action): an unhandled message older than
 # FM_TASK_INBOX_GRACE_SECS is due one delivery attempt per grace period; an
 # attempt may ring or be skipped to protect another draft in a proven pending
-# composer; an unsubmitted copy of this doorbell is retried. After
+# composer; unsubmitted automation input is submitted first. After
 # FM_TASK_INBOX_RING_MAX attempts without an acknowledgement it escalates. The
 # caller owns the busy and recovery-grade endpoint checks: due actions deferred
 # by the caller's delivery guard consume a separate durable consecutive-poll budget,
@@ -372,7 +372,7 @@ fm_task_inbox_doorbell_line() {  # <record-path>
 # composer pre-check, then the backend's submit machinery with a minimal retry
 # budget, verdict discarded.
 # Returns 0 rang, 1 skipped because the composer PROVENLY holds pending text
-# other than our own doorbell (the watcher re-rings later), 2 the backend send
+# that is not provably automation's own (the watcher re-rings later), 2 the backend send
 # failed, 3 skipped because the endpoint is positively dead or missing (nothing
 # typed; recovery owns the record). No return value is delivery proof; the
 # acknowledgement move is the only delivery signal.
@@ -382,12 +382,16 @@ fm_task_inbox_doorbell_line() {  # <record-path>
 # CONSTANT line the worker recovers semantically, while skipping on ambiguous
 # verdicts would starve a harness whose idle screen the classifier cannot
 # positively identify (that classifier is advisory here by design).
-# A pending composer holding exactly our own doorbell line is a previous ring
-# whose Enter never landed, so on an agent not reported busy it is submitted
-# rather than skipped; skipping it would block every later ring. On both paths
-# a lost first Enter gets one confirmed retry.
+# A pending composer holding text that is provably automation's own
+# (fm_task_inbox_held_by_automation) is stuck input whose Enter never landed,
+# so on an agent not reported busy it is submitted rather than skipped;
+# skipping it would block every later ring. When that text is exactly this
+# doorbell, its submission is the ring, and a lost first Enter gets one
+# confirmed retry. Other automation text is submitted first, and this doorbell
+# rings only once the composer no longer reads pending. Text a human may have
+# typed is never submitted.
 fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
-  local backend=$1 target=$2 rec=$3 label=${4:-} line cstate verdict
+  local backend=$1 target=$2 rec=$3 label=${4:-} line cstate verdict held
   case "$(fm_backend_agent_state "$backend" "$target" 2>/dev/null || true)" in
     dead|missing) return 3 ;;
   esac
@@ -397,14 +401,19 @@ fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
   cstate=$(fm_backend_composer_state "$backend" "$target" "$label" 2>/dev/null) || cstate=unknown
   case "$cstate" in
     pending)
-      fm_task_inbox_composer_holds "$backend" "$target" "$line" "$label" \
+      held=$(fm_task_inbox_composer_text "$backend" "$target" "$label") \
+        && fm_task_inbox_held_by_automation "$held" \
         && [ "$(fm_backend_busy_state "$backend" "$target" 2>/dev/null)" != busy ] \
         || return 1
       fm_backend_send_key "$backend" "$target" Enter "$label" >/dev/null 2>&1 || return 2
       sleep 0.3
-      fm_task_inbox_composer_holds "$backend" "$target" "$line" "$label" || return 0
-      fm_backend_send_key "$backend" "$target" Enter "$label" >/dev/null 2>&1 || return 2
-      return 0
+      if [ "$(fm_task_inbox_squash "$held")" = "$(fm_task_inbox_squash "$line")" ]; then
+        fm_task_inbox_composer_holds "$backend" "$target" "$line" "$label" || return 0
+        fm_backend_send_key "$backend" "$target" Enter "$label" >/dev/null 2>&1 || return 2
+        return 0
+      fi
+      cstate=$(fm_backend_composer_state "$backend" "$target" "$label" 2>/dev/null) || cstate=unknown
+      [ "$cstate" != pending ] || return 1
       ;;
   esac
   # Accepted residual race: terminal input and Enter are separate delivery
@@ -420,13 +429,57 @@ fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
   return 0
 }
 
+fm_task_inbox_squash() {  # <text>
+  printf '%s' "$1" | tr -d '[:space:]'
+}
+
+# The composer's selected content, or fail when it cannot be read or the
+# screen is a blocking dialog or any modal picker (its last line ends with
+# Claude's picker footer "Esc to cancel": trust, exit, /model) whose next Enter
+# would answer it.
+fm_task_inbox_composer_text() {  # <backend> <target> [expected-label]
+  local cap
+  fm_backend_source "$1" || return 1
+  cap=$(fm_backend_capture "$1" "$2" "$FM_COMPOSER_CAPTURE_LINES" "${3:-}" 2>/dev/null) || return 1
+  ! fm_composer_blocking_dialog "$cap" >/dev/null || return 1
+  ! printf '%s\n' "$cap" | fm_composer_strip_ansi | LC_ALL=C awk '
+    /[^ \t\r]/ { last = $0 }
+    END { exit !(last ~ /Esc to cancel[ \t\r]*$/) }' || return 1
+  fm_composer_extract_selected_content styled=0 "$cap"
+}
+
 # Whether the composer's content, ignoring line wrapping, is exactly <line>.
 fm_task_inbox_composer_holds() {  # <backend> <target> <line> [expected-label]
-  local cap held
-  fm_backend_source "$1" || return 1
-  cap=$(fm_backend_capture "$1" "$2" "$FM_COMPOSER_CAPTURE_LINES" "${4:-}" 2>/dev/null) || return 1
-  held=$(fm_composer_extract_selected_content styled=0 "$cap") || return 1
-  [ -n "$held" ] && [ "$(printf '%s' "$held" | tr -d '[:space:]')" = "$(printf '%s' "$3" | tr -d '[:space:]')" ]
+  local held
+  held=$(fm_task_inbox_composer_text "$1" "$2" "${4:-}") || return 1
+  [ -n "$held" ] && [ "$(fm_task_inbox_squash "$held")" = "$(fm_task_inbox_squash "$3")" ]
+}
+
+# Whether unsent composer text is provably automation's own, so a ring may
+# submit it (issue #6252). Two cases, and nothing else:
+#   - the whole text, ignoring line wrapping, is one or more steering-inbox
+#     doorbell lines for any inbox (lost Enters stack them); text a human added
+#     before, between, or after them fails the match;
+#   - this home declares config/unattended-input: no human ever types into its
+#     agents (the Dell homes), so any unsent text there was typed by
+#     automation, such as a rotation command.
+# Everywhere else a human draft is never touched.
+fm_task_inbox_held_by_automation() {  # <held-text>
+  local s doorbell pre suf rest name
+  s=$(fm_task_inbox_squash "$1")
+  [ -n "$s" ] || return 1
+  [ ! -e "${FM_CONFIG_OVERRIDE:-${FM_HOME:-}/config}/unattended-input" ] || return 0
+  doorbell=$(fm_task_inbox_squash "$(fm_task_inbox_doorbell_line /fm-no-such-dir/@/0.msg)") || return 1
+  pre=${doorbell%%"'@'"*}"'"
+  suf="'"${doorbell#*"'@'"}
+  while [ -n "$s" ]; do
+    case "$s" in "$pre"*) ;; *) return 1 ;; esac
+    rest=${s#"$pre"}
+    case "$rest" in *"$suf"*) ;; *) return 1 ;; esac
+    name=${rest%%"$suf"*}
+    case "$name" in ''|*"'"*) return 1 ;; esac
+    s=${rest#"$name$suf"}
+  done
 }
 
 fm_task_inbox_is_fire_and_forget() {  # <record-path>
