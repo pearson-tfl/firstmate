@@ -2170,14 +2170,13 @@ fm_backend_herdr_explicit_close_pane_confirmed() {  # <session> <pane_id>
 #
 #   agent      - a foreground process is a verified harness (any identity
 #                surface: kernel name, argv[0], or a node-bundle argument), or
-#                a verified harness is still a descendant of the pane shell
-#                outside the foreground group (suspended or backgrounded). A
-#                registered agent whose process still exists is never demoted.
-#   shell      - every foreground process is a recognized shell AND no
-#                descendant of the pane shell is a verified harness: positive
-#                proof the pane is shell-only. The descendant walk is what makes
-#                this safe for the crew shape, where a nested `treehouse get`
-#                shell sits under the pane's top shell.
+#                the foreground list is empty and a verified harness is a
+#                descendant of the pane shell.
+#   shell      - every foreground process is a recognized shell: the pane sits
+#                at a bare shell prompt, so it counts as down even when a
+#                harness lingers suspended or backgrounded under that shell
+#                (issue #6252; the tmux adapter's rule). An empty foreground
+#                with no harness descendant of the pane shell is also `shell`.
 #   other      - the foreground group holds something that is neither: a tool
 #                the agent is running in its own process group, a pager, a
 #                stranger's process. Not a shell-only pane. An idle shell
@@ -2186,14 +2185,13 @@ fm_backend_herdr_explicit_close_pane_confirmed() {  # <session> <pane_id>
 #                on), so this verdict alone is resampled for the same bounded
 #                settle window and the first agent or shell reading wins; only
 #                an exhausted window keeps `other`.
-#   unreadable - process-info failed, described a different pane, named no
-#                shell pid, or the process table could not be read or does not
-#                contain the shell pid. An empty foreground-process list is NOT
-#                unreadable: it is the real, momentary shape of the exec-to-
-#                shell handoff (the harness process has exited but Herdr has
-#                not yet repopulated the foreground group), so it is treated
-#                like a shells-only foreground and settled by the same
-#                descendant-process check below.
+#   unreadable - process-info failed, described a different pane, or named no
+#                shell pid, or an empty foreground's process table could not be
+#                read or does not contain the shell pid. An empty foreground-
+#                process list is NOT unreadable: it is the real, momentary shape
+#                of the exec-to-shell handoff (the harness process has exited
+#                but Herdr has not yet repopulated the foreground group), so it
+#                is settled by the descendant-process check below.
 #
 # Verified on Herdr 0.9.0 (docs/verification/runtime-backends.md "Stale agent
 # registration"): process-info's `.name` is the kernel process name (`node` for
@@ -2252,11 +2250,13 @@ fm_backend_herdr_pane_process_state_sample() {  # <session> <pane_id>
   done
 
   # Nothing in the foreground is a harness. A foreground that is not purely
-  # shells is already `other`, whatever else the pane holds. Before calling a
-  # shells-only foreground a shell-only PANE, look for a harness that is still a
-  # descendant of the pane shell outside the foreground group; only its
-  # absence, read from the real process table, is proof of an agent-free pane.
+  # shells is already `other`, whatever else the pane holds, and a non-empty
+  # shells-only foreground is a bare shell prompt. Only an empty foreground
+  # list is settled by looking for a harness descendant of the pane shell;
+  # its absence, read from the real process table, is proof of an agent-free
+  # pane.
   [ "$others" -eq 0 ] || { printf 'other'; return 0; }
+  [ "$count" -eq 0 ] || { printf 'shell'; return 0; }
   ps_bin=${FM_HERDR_PS_BIN:-ps}
   command -v "$ps_bin" >/dev/null 2>&1 || { printf 'unreadable'; return 0; }
   rows=$(LC_ALL=C "$ps_bin" -axo pid=,ppid=,comm= 2>/dev/null) || { printf 'unreadable'; return 0; }

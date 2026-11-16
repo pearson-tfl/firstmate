@@ -793,6 +793,14 @@ With it present, ship and scout briefs gain the `# Waiting` section and the fore
 With the file absent, generated briefs omit the waiting section and the no-poll inbox line, the drive text backgrounds the call, recovery sends during an open decision, and a fire-and-forget steer is not owed a retry ring.
 The flag is a home-local preference and is not inherited by secondmate homes.
 
+## Unattended input (config/unattended-input)
+
+The optional local, gitignored `config/unattended-input` presence flag declares that no person ever types into this home's agent panes, such as a home on a headless host.
+With it present, a doorbell ring that finds unsent text in an agent's input box treats that text as automation's own, submits it, and then rings.
+With the file absent, only steering-inbox doorbell lines count as automation's, and any other unsent text is left untouched because a person may be typing it.
+The flag is read in the home where the ring runs, so a remote second mate's steer reads the remote home's flag; it is home-local and not inherited by secondmate homes.
+`bin/fm-task-inbox-lib.sh` owns the exact matching rule.
+
 ## PR health monitor (config/pr-health-monitor)
 
 The optional local, gitignored `config/pr-health-monitor` presence flag opts this home into a mechanical monitor of the pull requests it owns.

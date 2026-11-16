@@ -3400,6 +3400,8 @@ test_secondmate_liveness_tick_relaunches_dead_endpoint_once() {
     || fail "the durable auto-relaunch wake row was not queued exactly once: $(cat "$state/.wake-queue")"
   [ -e "$state/.secondmate-liveness-tick" ] \
     || fail "the liveness cadence marker was not stamped"
+  [ "$(grep -rlF 'EMERGENCY: second mate sm1 is down' "$state/inbox" 2>/dev/null | wc -l | tr -d ' ')" -eq 1 ] \
+    || fail "the down detection did not post exactly one emergency captain-inbox note: $(ls -R "$state/inbox" 2>&1)"
 
   # A restarted watcher sees the relaunched endpoint alive and stays quiet -
   # the durable row remains for the drain and no second notification fires.
@@ -3412,6 +3414,8 @@ test_secondmate_liveness_tick_relaunches_dead_endpoint_once() {
   kill_liveness_leg "$pid"
   [ "$(grep -c 'secondmate-relaunch-sm1' "$state/.wake-queue" 2>/dev/null || true)" -eq 0 ] \
     || fail "a live post-relaunch probe produced a second wake: $(cat "$state/.wake-queue")"
+  [ "$(grep -rlF 'EMERGENCY: second mate sm1 is down' "$state/inbox" 2>/dev/null | wc -l | tr -d ' ')" -eq 1 ] \
+    || fail "a live post-relaunch probe posted another emergency note"
   pass "watch liveness: a dead secondmate is relaunched once, ledgered, and quiet afterwards"
 }
 

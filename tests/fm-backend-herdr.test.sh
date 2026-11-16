@@ -569,6 +569,10 @@ shell_only_process_info() {  # <shell-pid>
   printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":%s,"foreground_process_group_id":%s,"foreground_processes":[{"pid":%s,"name":"zsh","argv0":"zsh","argv":["-zsh"],"cmdline":"-zsh"}]}}}' "$1" "$1" "$1"
 }
 
+empty_foreground_process_info() {  # <shell-pid>
+  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":%s,"foreground_process_group_id":%s,"foreground_processes":[]}}}' "$1" "$1"
+}
+
 test_stale_registration_over_a_shell_only_pane_is_agent_free() {
   local sleep_bin shell_pid out
   sleep_bin=$(command -v sleep) || fail "sleep not found"
@@ -730,8 +734,8 @@ test_exhausted_settle_window_keeps_a_non_shell_foreground_live() {
   pass "herdr stale registration: an exhausted settle window still reads a non-shell foreground as live"
 }
 
-test_registered_agent_with_an_agent_descendant_outside_the_foreground_stays_alive() {
-  local lab standin sleep_bin shell_pid out shell_verdict
+test_agent_descendant_behind_a_bare_shell_prompt_is_down() {
+  local lab standin sleep_bin shell_pid out empty_out shell_verdict
   sleep_bin=$(command -v sleep) || fail "sleep not found"
   lab="$TMP_ROOT/stale-reg-descendant-bin"; mkdir -p "$lab"
   # A symlink to a real long-running stand-in so the kernel records `pi` as the
@@ -741,26 +745,31 @@ test_registered_agent_with_an_agent_descendant_outside_the_foreground_stays_aliv
     return 0
   }
   ln -sf "$standin" "$lab/pi"
-  # A real shell whose child is that agent-named process, while the canned
-  # foreground view shows only the shell (a suspended or backgrounded agent).
+  # A real shell whose child is that agent-named process. With the shell in
+  # the foreground (a suspended or backgrounded agent) the pane sits at a bare
+  # shell prompt, which counts as down (issue #6252).
   sh -c "'$lab/pi' 300; :" &
   shell_pid=$!
   sleep 0.3
   out=$(stale_registration_case descendant idle "$(shell_only_process_info "$shell_pid")")
+  # The same process tree under an empty foreground list (the exec-to-shell
+  # handoff read) is settled by the descendant walk and stays live.
+  empty_out=$(stale_registration_case descendant-empty idle "$(empty_foreground_process_info "$shell_pid")")
   pkill -P "$shell_pid" 2>/dev/null || true
   kill "$shell_pid" 2>/dev/null || true
-  [ "$out" = "live alive refused" ] \
-    || fail "a registered agent with a live agent-named descendant must stay live/alive, got '$out'"
-  # The divergence itself: the identical canned foreground view reads
-  # stale-agent for a childless shell, so the descendant walk is what carried
-  # this verdict.
+  [ "$out" = "stale-agent dead refused" ] \
+    || fail "a bare shell prompt over a backgrounded agent must read stale-agent/dead, got '$out'"
+  [ "$empty_out" = "live alive refused" ] \
+    || fail "an empty foreground over a live agent-named descendant must stay live/alive, got '$empty_out'"
+  # The empty-foreground control: a childless shell settles to stale-agent, so
+  # the descendant walk is what carried the live verdict above.
   "$sleep_bin" 300 &
   shell_pid=$!
-  shell_verdict=$(stale_registration_case descendant-childless idle "$(shell_only_process_info "$shell_pid")")
+  shell_verdict=$(stale_registration_case descendant-childless idle "$(empty_foreground_process_info "$shell_pid")")
   kill "$shell_pid" 2>/dev/null || true
   [ "$shell_verdict" = "stale-agent dead refused" ] \
     || fail "the childless control must read stale-agent so the descendant case is not vacuous, got '$shell_verdict'"
-  pass "herdr stale registration: an agent process outside the foreground group still counts as alive"
+  pass "herdr stale registration: a bare shell prompt is down even with a backgrounded agent; an empty foreground still walks descendants"
 }
 
 test_agent_descendant_under_a_spaced_install_path_stays_alive() {
@@ -777,7 +786,7 @@ test_agent_descendant_under_a_spaced_install_path_stays_alive() {
   sh -c "'$lab/pi' 300; :" &
   shell_pid=$!
   sleep 0.3
-  out=$(stale_registration_case spaced-descendant idle "$(shell_only_process_info "$shell_pid")")
+  out=$(stale_registration_case spaced-descendant idle "$(empty_foreground_process_info "$shell_pid")")
   pkill -P "$shell_pid" 2>/dev/null || true
   kill "$shell_pid" 2>/dev/null || true
   [ "$out" = "live alive refused" ] \
@@ -6202,7 +6211,7 @@ test_registered_agent_with_a_live_foreground_process_stays_alive
 test_registered_agent_with_a_non_shell_foreground_process_stays_alive
 test_transient_prompt_helper_settles_into_stale_agent
 test_exhausted_settle_window_keeps_a_non_shell_foreground_live
-test_registered_agent_with_an_agent_descendant_outside_the_foreground_stays_alive
+test_agent_descendant_behind_a_bare_shell_prompt_is_down
 test_agent_descendant_under_a_spaced_install_path_stays_alive
 test_registered_agent_with_an_unreadable_process_view_is_unknown
 test_registered_agent_with_an_empty_foreground_over_a_real_shell_settles_via_descendant_walk

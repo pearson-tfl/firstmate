@@ -834,8 +834,9 @@ It uses the shared harness-process classifier in `bin/fm-agent-process-lib.sh`, 
 
 | What the process view shows | Verdict |
 | --- | --- |
-| A harness in the foreground process group, or still a descendant of the pane shell | The registration stays live. |
-| A foreground that is nothing but shells, with no harness descendant | A `stale-agent` pane: agent-free, with that explicit reason. |
+| A harness in the foreground process group | The registration stays live. |
+| A foreground that is nothing but shells | A `stale-agent` pane: agent-free, with that explicit reason, even when a suspended or backgrounded harness is still a descendant of the pane shell, because a bare shell prompt cannot take input. |
+| An empty foreground list, the momentary exec-to-shell handoff | Live while a harness is still a descendant of the pane shell, otherwise `stale-agent`. |
 | A foreground holding anything else | The registration stays live, but only after the same bounded settle window the idle-shell proof uses. |
 | An unreadable process view | The pane is `unknown`, trusting neither the registration nor its absence. |
 

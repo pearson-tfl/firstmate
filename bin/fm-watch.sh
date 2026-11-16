@@ -178,7 +178,10 @@
 #                          same guarded fm-spawn.sh --secondmate path the
 #                          session-start sweep uses; one wake per relaunch, and
 #                          state/.secondmate-relaunch-<id> keeps the durable
-#                          per-mate count (bin/fm-secondmate-liveness-lib.sh)
+#                          per-mate count (bin/fm-secondmate-liveness-lib.sh);
+#                          the same detection first posts an EMERGENCY
+#                          captain-inbox note (fm-inbox.sh note, its own check
+#                          wake) unless the mate is already parked
 #   check: secondmate <id> auto-relaunch failed after <cause>: <detail>
 #                          the same verdict authorized recovery but the
 #                          relaunch itself failed; the attempt is ledgered and
@@ -1203,6 +1206,18 @@ EOF
   return 0
 }
 
+secondmate_down_note() {  # <id> <epoch>; logs a failed post and always returns 0
+  local rc=0
+  "$SCRIPT_DIR/fm-inbox.sh" note --request-id "secondmate-down-$1-$2" -- \
+    "EMERGENCY: second mate $1 is down ($FM_SM_LIVE_CAUSE; $FM_SM_LIVE_WHERE); automatic relaunch is being attempted now and its outcome follows separately." \
+    >/dev/null 2>&1 || rc=$?
+  # Exit 3 means the note was saved but its wake was not announced.
+  case "$rc" in 0|3) return 0 ;; esac
+  echo "watcher: secondmate $1 liveness: emergency inbox note could not be posted" >&2
+  triage_log "secondmate $1 liveness: emergency inbox note could not be posted" || true
+  return 0
+}
+
 # The ordinary-supervision half of the secondmate liveness guarantee, paired
 # with bin/fm-bootstrap.sh's session-start sweep over the shared library in
 # bin/fm-secondmate-liveness-lib.sh (which owns the state contract, the remote
@@ -1219,7 +1234,9 @@ EOF
 # the marker so a manually recovered mate rejoins the guarantee with a full
 # budget. The per-mate liveness lock serializes this tick against a concurrent
 # session-start sweep, so neither side can kill or re-probe an endpoint the
-# other is mid-relaunch on.
+# other is mid-relaunch on. Every relaunch attempt is preceded by an emergency
+# captain-inbox note in this home (fm-inbox.sh note), so the down mate reaches
+# the captain at detection without anyone noticing it.
 secondmate_liveness_tick() {
   local tick_marker="$STATE/.secondmate-liveness-tick"
   [ "$(age_of "$tick_marker")" -ge "$SECONDMATE_LIVENESS_SECS" ] || return 0
@@ -1250,7 +1267,8 @@ secondmate_liveness_tick() {
           else
             err="relaunch park marker could not be written; endpoint left $FM_SM_LIVE_STATE"
           fi
-        elif fm_secondmate_liveness_relaunch "$meta" "$id" "$SECONDMATE_LIVENESS_TIMEOUT"; then
+        elif secondmate_down_note "$id" "$now" \
+          && fm_secondmate_liveness_relaunch "$meta" "$id" "$SECONDMATE_LIVENESS_TIMEOUT"; then
           reason="check: secondmate $id auto-relaunched after $FM_SM_LIVE_CAUSE ($FM_SM_LIVE_WHERE)"
           notify_key="secondmate-relaunch-$id-$now"
         elif [ "$FM_SM_LIVE_STATUS" = skipped ]; then
