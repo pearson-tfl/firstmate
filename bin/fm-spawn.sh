@@ -136,9 +136,6 @@
 #   blocked backend contract. Default tmux spawns do not write backend= to meta;
 #   absent backend= means tmux. Orca, cmux, paseo, tern, and hc do not support
 #   --secondmate spawns.
-#   Fresh worker acquisition requires Treehouse --root support (v2.2.0+);
-#   fm_treehouse_clone_root in fm-wake-lib.sh owns its clone-local scope and
-#   compatibility with recorded slots in older pools.
 #   A rex crewmate or scout opens one tab in the Rex session the launching
 #   firstmate runs in when it runs directly inside Rex, otherwise in its home's
 #   own Rex session; a --secondmate launch opens its tab in that secondmate
@@ -4758,21 +4755,10 @@ spawn_endpoint_hint() {
 }
 
 validate_spawn_worktree() { # <source> <inspect-target>
-  local source=$1 inspect_target=$2 project_root slot_root
+  local source=$1 inspect_target=$2
   if ! spawn_worktree_isolated "$WT"; then
     echo "error: $source did not yield an isolated worktree (resolved '$WT'; worktree root '${SPAWN_WT_TOP:-none}'; spawning project '$PROJ_ABS'); refusing to launch to avoid tangling the primary checkout. Inspect target $inspect_target" >&2
     exit 1
-  fi
-  # Orca owns its own isolation contract and may supply independent clones.
-  # Treehouse must supply a linked copy of this exact clone, for every harness,
-  # before base refresh, trust registration, or task files can touch the slot.
-  if [ "$BACKEND" != orca ]; then
-    project_root=$(fm_treehouse_clone_root "$PROJ_ABS") || project_root=
-    slot_root=$(fm_treehouse_clone_root "$WT") || slot_root=
-    if [ -z "$project_root" ] || [ "$project_root" != "$slot_root" ]; then
-      echo "error: $source returned '$WT', not a worktree of project '$PROJ_ABS'; leaving it untouched. Inspect target $inspect_target" >&2
-      exit 1
-    fi
   fi
 }
 
@@ -5006,21 +4992,6 @@ herdr_projection_existing_meta_allows_flat() { # <meta>
     ;;
   esac
 }
-
-# Resolve without touching any pool, and refuse unsupported tools before opening
-# an endpoint, after the brief and publication gates so their refusals still win.
-# Every session-only backend uses this scope, including T3's lease.
-SPAWN_TREEHOUSE_ROOT=
-if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
-  SPAWN_TREEHOUSE_ROOT=$(fm_treehouse_clone_root "$PROJ_ABS") || {
-    echo "error: could not resolve the clone-scoped Treehouse root for $PROJ_ABS" >&2
-    exit 1
-  }
-  if ! treehouse get --root "$SPAWN_TREEHOUSE_ROOT" --help >/dev/null 2>&1; then
-    echo "error: Treehouse must support --root (v2.2.0+); upgrade Treehouse before spawning so independent project clones cannot share a pool" >&2
-    exit 1
-  fi
-fi
 
 # Backlog preflight (bin/fm-backlog-transition-lib.sh). This spawn is about to
 # become the sole owner of the row's In-flight transition, so prove the row is
@@ -5548,7 +5519,7 @@ EOF
       # A durable lease (bin/fm-home-seed.sh's pattern): there is no pane to run
       # the interactive `treehouse get` in, and a slot a live T3 thread points at
       # must never be handed on while that thread could re-create it.
-      WT=$(cd "$PROJ_ABS" && treehouse get --root "$SPAWN_TREEHOUSE_ROOT" --lease --lease-holder "$ID") || {
+      WT=$(cd "$PROJ_ABS" && treehouse get --lease --lease-holder "$ID") || {
         echo "error: treehouse get --lease failed to lease a worktree for $ID from $PROJ_ABS" >&2
         exit 1
       }
@@ -6183,8 +6154,7 @@ elif [ "$RELAUNCH" -eq 1 ]; then
 elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   # A t3code slot was leased and validated in its target branch above.
   if [ "$BACKEND" != t3code ]; then
-    treehouse_root_quoted=${SPAWN_TREEHOUSE_ROOT//\'/\'\\\'\'}
-    spawn_send_text_line "$WT_TARGET" "treehouse get --root '$treehouse_root_quoted'"
+    spawn_send_text_line "$WT_TARGET" 'treehouse get'
 
     # Wait for the treehouse subshell: the pane's cwd moves from the project to the worktree.
     # Target the stable window id, not the name: if the name is ever lost (e.g. an
