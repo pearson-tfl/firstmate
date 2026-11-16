@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Steer a task by durable record: write the message into the task's steering
 # inbox and ring a constant doorbell through its backend endpoint, best-effort.
-# Usage: fm-send.sh <target> [--resolve-key <key>]... [--fire-and-forget <delivery-id>] <text...>
+# Usage: fm-send.sh <target> [--skill <name>] [--resolve-key <key>]... [--fire-and-forget <delivery-id>] <text...>
 #   <target> may be an exact task id, a legacy fm-<id> task label resolved
 #   through this home's state/<id>.meta, or an explicit well-formed backend
 #   target. fm-send refuses unresolved guesses rather than falling back to a
@@ -214,6 +214,11 @@
 # pane. The pause is typed-plane-only; the inbox plane, the shared submit core
 # (used by the away-mode daemon, which only needs "submitted"), and the --key
 # path do not pay it.
+# --skill <name> is a workflow-step steer, not a composer command. It prefixes
+# the stored body with the target harness's literal invocation and a mandatory
+# load instruction, and always uses the durable inbox (including secondmates
+# and remote targets). The worker must load the skill before acting; a
+# successful delivery or acknowledgement alone is not proof it loaded.
 set -eu
 
 # Print the header comment as usage before any FM_HOME check or target
@@ -516,8 +521,17 @@ fm_send_add_resolve_key() { # <key>
   esac
   RESOLVE_KEYS="${RESOLVE_KEYS}${RESOLVE_KEYS:+ }$k"
 }
+STEER_SKILL=
 while :; do
   case "${1:-}" in
+  --skill)
+    [ $# -ge 2 ] && [ -n "$2" ] && [ -z "$STEER_SKILL" ] || {
+      echo 'error: --skill requires one bare skill name' >&2; exit 1;
+    }
+    STEER_SKILL=$2
+    case "$STEER_SKILL" in *[!a-zA-Z0-9_-]*) echo 'error: --skill requires a bare skill name' >&2; exit 1 ;; esac
+    shift 2
+    ;;
   --resolve-key)
     [ $# -ge 2 ] || {
       echo "error: --resolve-key requires a key" >&2
@@ -796,6 +810,7 @@ fm_send_feed_resolved_holds() { # <answer-text>
 # error with the attempted resolution attached.
 
 if [ "${1:-}" = "--key" ]; then
+  [ -z "$STEER_SKILL" ] || { echo 'error: --skill cannot accompany --key' >&2; exit 1; }
   [ -z "$FIRE_AND_FORGET_ID" ] ||
     {
       echo "error: --fire-and-forget cannot accompany --key" >&2
@@ -830,6 +845,11 @@ if [ "${1:-}" = "--key" ]; then
   fm_send_record_interrupt "$semantic_key" || exit 1
 else
   MESSAGE=$*
+  if [ -n "$STEER_SKILL" ]; then
+    [ -n "$TARGET_SELECTOR" ] || { echo 'error: --skill requires a recorded task selector' >&2; exit 1; }
+    MESSAGE=$(fm_skill_steer "$TARGET_HARNESS" "$STEER_SKILL" "$MESSAGE" && printf x) || exit 1
+    MESSAGE=${MESSAGE%x}
+  fi
   if [ -z "${MESSAGE//[[:space:]]/}" ]; then
     echo "error: a text steer requires a nonempty message; nothing was sent (an empty marked request would deliver only marker and correlation bytes and leave the parent waiting on a reply to nothing)" >&2
     exit 1
@@ -912,7 +932,7 @@ else
   # task, the same boundary that keeps it unmarked and outside --resolve-key.
   INBOX_PLANE=0
   if [ -n "$TARGET_SELECTOR" ]; then
-    if [ "$MARK_FROM_FIRSTMATE" = 1 ] || [ "$TARGET_BACKEND" = remote ]; then
+    if [ -n "$STEER_SKILL" ] || [ "$MARK_FROM_FIRSTMATE" = 1 ] || [ "$TARGET_BACKEND" = remote ]; then
       INBOX_PLANE=1
     else
       case "$RESOLVE_ANSWER_TEXT" in

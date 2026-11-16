@@ -52,6 +52,9 @@ Publishing to this repository's upstream requires `config/firstmate-role`'s main
 Load `firstmate-self-repo` before dispatching, promoting, or delivering work that targets this repository, when a firstmate bug or improvement idea surfaces in ordinary use, and before granting or revoking upstream publication authority.
 Never add an agent name as a commit co-author.
 Use `gh-axi` for GitHub, `chrome-devtools-axi` for browser work, and compatible `lavish-axi` for visual decisions or reports; consult current help rather than memorizing flags.
+Every seat - firstmate, secondmate, ship, and scout - must begin a Pocock workflow-step message with that step's literal skill invocation, using the selected harness form owned by `harness-adapters`.
+Before writing or editing any PR title or body, every seat must explicitly invoke the `pr` skill; when the harness cannot invoke it, read its complete `SKILL.md`, and report blocked if it is unavailable.
+These requirements apply to every home, harness, and project, including routed handoffs and stored steers; `harness-adapters` owns the stored-message load procedure.
 
 ## 2. Layout and state
 

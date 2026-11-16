@@ -483,7 +483,9 @@ case "$*" in
   *'#{pane_id}'*) printf '%%901\n'; exit 0 ;;
 esac
 case "${1:-}" in
-  display-message) printf 'firstmate\n'; exit 0 ;;
+  display-message)
+    case "$*" in *'#{pane_id}'*) printf '%%901\n' ;; *) printf 'firstmate\n' ;; esac
+    exit 0 ;;
   list-windows)
     [ ! -s "$FM_FAKE_AGY_STATE.window" ] || cat "$FM_FAKE_AGY_STATE.window"
     exit 0 ;;
@@ -634,7 +636,7 @@ test_agy_launch_carries_the_brief_with_model_effort_and_autonomy() {
   out=$(run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" \
     --model gemini-3.8-flash-low --effort low)
   rc=$?
-  expect_code 0 "$rc" "agy spawn with a listed model should succeed"
+  expect_code 0 "$rc" "agy spawn with a listed model should succeed: $out"
   launch=$(cat "$CASE_DIR/launch.log")
   assert_contains "$launch" "$FAKEBIN_DIR/agy" "agy launch did not pin the resolved absolute binary"
   assert_contains "$launch" "--prompt-interactive" "agy launch did not carry the brief via --prompt-interactive"

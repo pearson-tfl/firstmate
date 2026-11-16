@@ -165,7 +165,7 @@ test_opencode_plugin_delivers_exact_nudge_once() {
   local root="$TMP_ROOT/opencode-primary" out status=0
   make_primary "$root"
   cp "$ROOT/bin/fm-sessionstart-nudge.sh" "$ROOT/bin/fm-primary-scope-lib.sh" \
-    "$ROOT/bin/fm-gate-refuse-lib.sh" "$ROOT/bin/fm-operational-input.sh" "$root/bin/"
+    "$ROOT/bin/fm-gate-refuse-lib.sh" "$ROOT/bin/fm-operational-input.sh" "$ROOT/bin/fm-skill-opener.sh" "$root/bin/"
   chmod +x "$root/bin/fm-sessionstart-nudge.sh"
   out=$(PLUGIN="$ROOT/.opencode/plugins/fm-primary-sessionstart-nudge.js" \
     WORKTREE="$root" EXPECTED="$NUDGE_LINE" node --input-type=module 2>&1 <<'EOF'
@@ -464,7 +464,7 @@ test_pi_sessionstart_generation_prerequisite() {
   cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$fixture/.pi/extensions/"
   cp "$ROOT/.pi/extensions/lib/fm-operational-input.ts" \
     "$ROOT/.pi/extensions/lib/fm-sessionstart-supervisor.mjs" "$fixture/.pi/extensions/lib/"
-  cp "$ROOT/bin/fm-operational-input.sh" "$fixture/bin/"
+  cp "$ROOT/bin/fm-operational-input.sh" "$ROOT/bin/fm-skill-opener.sh" "$fixture/bin/"
   cat > "$fixture/bin/fm-turnend-guard.sh" <<'SH'
 #!/usr/bin/env bash
 exit 0
@@ -790,7 +790,7 @@ test_pi_reload_releases_sessionstart_exit_listener() {
   cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$fixture/.pi/extensions/"
   cp "$ROOT/.pi/extensions/lib/fm-operational-input.ts" \
     "$ROOT/.pi/extensions/lib/fm-sessionstart-supervisor.mjs" "$fixture/.pi/extensions/lib/"
-  cp "$ROOT/bin/fm-operational-input.sh" "$fixture/bin/"
+  cp "$ROOT/bin/fm-operational-input.sh" "$ROOT/bin/fm-skill-opener.sh" "$fixture/bin/"
   cat > "$fixture/bin/fm-turnend-guard.sh" <<'SH'
 #!/usr/bin/env bash
 exit 0
@@ -927,7 +927,7 @@ test_pi_large_sessionstart_digest_is_delivered_loudly() {
   cp "$ROOT/bin/fm-sessionstart-run.sh" "$ROOT/bin/fm-sessionstart-nudge.sh" \
     "$ROOT/bin/fm-primary-scope-lib.sh" "$ROOT/bin/fm-gate-refuse-lib.sh" \
     "$ROOT/bin/fm-hook-host-lib.sh" \
-    "$ROOT/bin/fm-operational-input.sh" "$fixture/bin/"
+    "$ROOT/bin/fm-operational-input.sh" "$ROOT/bin/fm-skill-opener.sh" "$fixture/bin/"
   cat > "$fixture/bin/fm-session-start.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'PI_LARGE_DIGEST_PREFIX\n'

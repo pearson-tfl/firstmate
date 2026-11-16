@@ -421,7 +421,7 @@ test_relative_home_overrides_launch_with_absolute_cross_process_paths() {
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "-e '$home_real/state/$id.pi-ext.ts'" \
     "relative FM_STATE_OVERRIDE leaked into Pi's cross-process extension path"
-  assert_contains "$launch" "< '$home_real/data/$id/launch-brief.md'" \
+  assert_contains "$launch" "'$home_real/data/$id/launch-brief.md'" \
     "relative FM_DATA_OVERRIDE leaked into the cross-process brief path"
   pass "relative home overrides ignore CDPATH and become absolute before spawn launch construction"
 }
@@ -450,7 +450,7 @@ test_home_defaults_preserve_absolute_or_resolve_relative_paths() {
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "-e '$home_real/state/$relative_id.pi-ext.ts'" \
     "relative FM_HOME leaked into Pi's default cross-process extension path"
-  assert_contains "$launch" "< '$home_real/data/$relative_id/launch-brief.md'" \
+  assert_contains "$launch" "'$home_real/data/$relative_id/launch-brief.md'" \
     "relative FM_HOME leaked into the default cross-process brief path"
 
   linked_home="$CASE_DIR/home-link"
@@ -470,7 +470,7 @@ test_home_defaults_preserve_absolute_or_resolve_relative_paths() {
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "-e '$linked_home/state/$absolute_id.pi-ext.ts'" \
     "absolute FM_HOME spelling changed in Pi's default cross-process extension path"
-  assert_contains "$launch" "< '$linked_home/data/$absolute_id/launch-brief.md'" \
+  assert_contains "$launch" "'$linked_home/data/$absolute_id/launch-brief.md'" \
     "absolute FM_HOME spelling changed in the default cross-process brief path"
   pass "FM_HOME defaults resolve relative paths and preserve absolute spellings"
 }
@@ -498,7 +498,7 @@ test_absolute_override_spelling_is_preserved_in_launch_paths() {
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "-e '$linked_home/state/$id.pi-ext.ts'" \
     "absolute FM_STATE_OVERRIDE spelling changed in Pi's cross-process extension path"
-  assert_contains "$launch" "< '$linked_home/data/$id/launch-brief.md'" \
+  assert_contains "$launch" "'$linked_home/data/$id/launch-brief.md'" \
     "absolute FM_DATA_OVERRIDE spelling changed in the cross-process brief path"
   pass "absolute override spellings are preserved in spawn launch paths"
 }
@@ -930,7 +930,7 @@ test_grok_omits_invalid_max_reasoning_effort() {
   expect_code 0 "$status" "grok spawn with unsupported max reasoning effort should omit the effort flag"
   assert_meta_profile "$HOME_DIR/state/$id.meta" grok grok-4 max
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "grok --always-approve --model 'grok-4' \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < " \
+  assert_contains "$launch" "grok --always-approve --model 'grok-4' \"\$('${ROOT}/bin/fm-skill-opener.sh' 'grok' encode " \
     "grok launch did not preserve the model flag and typed brief when max effort was omitted"
   assert_not_contains "$launch" "--reasoning-effort" "grok launch must omit unsupported max reasoning effort"
   assert_not_contains "$launch" "--effort" "grok launch must not fall back to --effort for reasoning effort"
@@ -949,7 +949,7 @@ test_grok_omits_invalid_xhigh_reasoning_effort() {
   expect_code 0 "$status" "grok spawn with unsupported xhigh reasoning effort should omit the effort flag"
   assert_meta_profile "$HOME_DIR/state/$id.meta" grok grok-4 xhigh
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "grok --always-approve --model 'grok-4' \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < " \
+  assert_contains "$launch" "grok --always-approve --model 'grok-4' \"\$('${ROOT}/bin/fm-skill-opener.sh' 'grok' encode " \
     "grok launch did not preserve the model flag and typed brief when xhigh effort was omitted"
   assert_not_contains "$launch" "--reasoning-effort" "grok launch must omit unsupported xhigh reasoning effort"
   assert_not_contains "$launch" "--effort" "grok launch must not fall back to --effort for reasoning effort"
@@ -982,7 +982,7 @@ test_cursor_threads_model_workspace_and_omits_effort_axis() {
   assert_not_contains "$launch" " -w " "cursor launch must never allocate a second worktree"
   # An inherited CLAUDECODE would otherwise outrank cursor's own marker.
   assert_contains "$launch" "env -u CLAUDECODE" "cursor launch must clear foreign primary markers"
-  assert_contains "$launch" "encode launch-brief" "cursor launch did not deliver the brief positionally"
+  assert_contains "$launch" "'cursor' encode" "cursor launch did not deliver the brief positionally"
   assert_not_contains "$launch" "--effort" "cursor launch must not invent a separate effort flag"
   assert_not_contains "$launch" "--reasoning-effort" "cursor launch must not invent a separate reasoning-effort flag"
   assert_grep 'harness=cursor' "$HOME_DIR/state/$id.meta" "cursor harness was not recorded in meta"
@@ -1430,7 +1430,7 @@ test_pi_threads_model_and_max_effort() {
     "pi launch did not force the regular TUI while threading the requested model and max thinking level"
   assert_not_contains "$launch" "FM_FIRSTMATE_PI_LAUNCH_BRIEF=" \
     "pi launch still exports the removed Calm input-reroute binding"
-  assert_contains "$launch" "fm-operational-input.sh' encode launch-brief" \
+  assert_contains "$launch" "fm-skill-opener.sh' 'pi' encode" \
     "pi launch lost the canonical typed launch-brief envelope"
   pass "pi receives --model and --thinking max profile flags"
 }
@@ -1450,7 +1450,7 @@ test_pi_signed_threads_shared_pi_profile_and_preserves_identity() {
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "FM_PI_HARNESS=pi-signed '$FAKEBIN_DIR/pi-signed' --tui-mode regular --model 'openai-codex/gpt-5.6-sol' --thinking 'max' $(recorded_session_flag "$HOME_DIR/state/$id.meta")-e" \
     "pi-signed launch did not force the regular TUI with Pi's model, thinking, and extension semantics"
-  assert_contains "$launch" "fm-operational-input.sh' encode launch-brief" \
+  assert_contains "$launch" "fm-skill-opener.sh' 'pi-signed' encode" \
     "pi-signed launch lost the canonical typed launch-brief envelope"
   assert_present "$HOME_DIR/state/$id.pi-ext.ts" "pi-signed launch did not install Pi's turn-end extension"
   assert_present "$HOME_DIR/state/$id.busy-gen" "pi-signed spawn did not arm the busy-state contract"
@@ -1534,7 +1534,7 @@ test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity() {
   cmp -s "$CASE_DIR/charter-before" "$sm/data/charter.md" || fail "secondmate launch rewrote the charter"
   assert_absent "$HOME_DIR/data/$id/launch-brief.md" "secondmate launch received a worker overlay"
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "< '$sm/data/charter.md'" "secondmate launch lost its original charter"
+  assert_contains "$launch" "'$sm/data/charter.md'" "secondmate launch lost its original charter"
   assert_contains "$launch" "FM_PI_HARNESS=pi-signed '$FAKEBIN_DIR/pi-signed' --tui-mode regular --approve $(recorded_session_flag "$HOME_DIR/state/$id.meta")-e '$sm/.pi/extensions/fm-primary-turnend-guard.ts' -e '$sm/.pi/extensions/fm-primary-pi-watch.ts'" \
     "pi-signed secondmate did not force the regular TUI with Pi's primary extension launch shape and seeded-home --approve"
   if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
@@ -2434,6 +2434,66 @@ SH
   done
 }
 
+test_workflow_spawn_refusals() {
+  local rec id harness out rc
+  for harness in codex opencode; do
+    id="workflow-refusal-$harness"
+    rec=$(make_spawn_case "$id" "$harness" "$id")
+    read_case_record "$rec"
+    if [ "$harness" = codex ]; then
+      tail -n +2 "$HOME_DIR/data/$id/brief.md" > "$CASE_DIR/no-opener"
+      mv "$CASE_DIR/no-opener" "$HOME_DIR/data/$id/brief.md"
+      printf '\nDelivery contract: mode=no-mistakes\n' >> "$HOME_DIR/data/$id/brief.md"
+      out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR"); rc=$?
+    else
+      out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --scout); rc=$?
+    fi
+    [ "$rc" -ne 0 ] || fail "$harness workflow without a verified opener launched"
+    case "$harness" in
+      codex) assert_contains "$out" 'must open with a literal skill invocation' 'missing skill refusal' ;;
+      opencode) assert_contains "$out" 'no verified skill invocation' 'unsupported form refusal' ;;
+    esac
+    [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "refused workflow published task metadata"
+    [ ! -s "$LAUNCH_LOG" ] || fail "refused workflow launched an agent"
+  done
+  pass "workflow: missing ship openers and unverified scout forms refuse before launch or task publication"
+}
+
+test_unverified_form_ship_launches_plain_brief() {
+  local rec id=plain-ship-opencode out rc first
+  rec=$(make_spawn_case "$id" opencode "$id")
+  read_case_record "$rec"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR"); rc=$?
+  expect_code 0 "$rc" "opencode ship without a verified skill form must still launch: $out"
+  assert_contains "$out" "spawned $id harness=opencode" "opencode ship did not launch"
+  first=$(sed -n '1p' "$HOME_DIR/data/$id/launch-brief.md")
+  [ "$first" = '# Current worker role contract' ] || fail "opencode ship launch brief did not keep the plain carrier: $first"
+  ! grep -qx '/implement' "$HOME_DIR/data/$id/launch-brief.md" || fail "opencode ship carried an opener its harness cannot run"
+  pass "workflow: a ship on an adapter without a verified skill form launches with its plain brief"
+}
+
+test_relaunch_keeps_legacy_contract_brief() {
+  local rec id=legacy-relaunch out rc first
+  rec=$(make_spawn_case "$id" codex "$id")
+  read_case_record "$rec"
+  # The relaunch preflight needs a positively agent-free endpoint.
+  install_lane_tmux_probe
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR"); rc=$?
+  expect_code 0 "$rc" "codex ship should launch: $out"
+  tail -n +3 "$HOME_DIR/data/$id/brief.md" > "$CASE_DIR/legacy"
+  printf '\nDelivery contract: mode=no-mistakes\n' >> "$CASE_DIR/legacy"
+  mv "$CASE_DIR/legacy" "$HOME_DIR/data/$id/brief.md"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" --relaunch); rc=$?
+  expect_code 0 "$rc" "legacy contract brief without an opener must relaunch: $out"
+  [ -s "$LAUNCH_LOG" ] || fail "legacy brief relaunch did not launch the agent"
+  first=$(sed -n '1p' "$HOME_DIR/data/$id/launch-brief.md")
+  [ "$first" = '# Current worker role contract' ] || fail "legacy brief relaunch gained an opener: $first"
+  pass "relaunch: a legacy contract brief without an opener relaunches with its original carrier"
+}
+test_workflow_spawn_refusals
+test_unverified_form_ship_launches_plain_brief
+test_relaunch_keeps_legacy_contract_brief
+
 test_launch_environment_allowlist
 test_launch_environment_invalid_config_refuses
 test_launch_environment_inaccessible_config_refuses
@@ -2489,8 +2549,11 @@ SH
     # The current identity must precede the authored task, because a Firstmate
     # worktree's own AGENTS.md assigns the unrelated supervisor identity.
     first_line=$(sed -n '1p' "$prompt")
-    [ "$first_line" = '# Current worker role contract' ] ||
-      fail "$brief_kind $kind did not establish worker identity before task content"
+    if [ "$kind" != scout ] || [ "$brief_kind" != scaffold ]; then
+      [ "$first_line" = "\$implement" ] || fail "$kind lost its literal skill opener"
+    else
+      [ "$first_line" = '# Current worker role contract' ] || fail "plain scout lost its role"
+    fi
     role_line=$(grep -n '^# Current worker role contract$' "$prompt" | cut -d: -f1)
     task_line=$(grep -n '^# Task$' "$prompt" | head -1 | cut -d: -f1)
     [ "$role_line" -lt "$task_line" ] || fail "$brief_kind $kind put the worker identity after the task"

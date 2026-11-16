@@ -83,7 +83,7 @@ case "${1:-}" in
           printf 'zsh' > "$D/command"
           [ -z "${FM_FAKE_EXIT_TRANSPORT_FAIL_AFTER_STOP:-}" ] || exit 1
           ;;
-        *'encode launch-brief'* | *'Firstmate operational input waiting: read'* | *'--resume '*)
+        *'fm-skill-opener.sh'*'encode'* | *'Firstmate operational input waiting: read'* | *'--resume '*)
           cat "$D/becomes" > "$D/command"
           [ -z "${FM_FAKE_LAUNCH_TRANSPORT_FAIL_AFTER_START:-}" ] || exit 1
           ;;
@@ -1188,6 +1188,26 @@ test_pi_exclude_tools_follow_the_relaunch() {
   assert_not_contains "$(cat "$dir/fake/literal")" "--exclude-tools" \
     "a relaunch without the file must launch with no exclusions"
   pass "fm-control relaunch: a Pi replacement keeps the home's tool exclusions"
+}
+
+# fm-spawn refuses a non-ship workflow opener the target adapter has no
+# verified form for, so fm-control must refuse it before stopping the agent.
+test_workflow_scout_onto_unverified_skill_form_refuses_before_stop() {
+  local dir out rc id=rl-skill-refuse
+  dir=$(new_case skill-refuse "$id")
+  add_ship_task "$dir" "$id" claude
+  sed -i.bak -e 's/^kind=ship$/kind=scout/' -e '/^mode=/d' -e '/^yolo=/d' "$dir/home/state/$id.meta"
+  rm -f "$dir/home/state/$id.meta.bak"
+  { printf '/grilling\n\n'; cat "$dir/home/data/$id/brief.md"; } > "$dir/brief.next"
+  mv "$dir/brief.next" "$dir/home/data/$id/brief.md"
+  cp "$dir/home/state/$id.meta" "$dir/meta-before"
+  out=$(run_control "$dir" "$id" relaunch --harness opencode --note "switch runtime"); rc=$?
+  expect_code 1 "$rc" "a workflow scout relaunch onto an adapter without a verified skill form must refuse"
+  assert_contains "$out" "no verified invocation for the /grilling workflow" "refusal must name the workflow skill"
+  [ "$(cat "$dir/fake/command")" = claude ] || fail "the refusal stopped the running agent"
+  [ ! -s "$dir/fake/literal" ] || fail "a refused relaunch sent lifecycle input"
+  cmp -s "$dir/meta-before" "$dir/home/state/$id.meta" || fail "a refused relaunch must leave the task record untouched"
+  pass "fm-control relaunch: a workflow scout onto an adapter without a verified skill form refuses before the agent stops"
 }
 
 test_exclude_tools_refusals_happen_before_the_agent_stops() {
@@ -2688,7 +2708,7 @@ case "${1:-} ${2:-}" in
       ". '"*"'") staged=${payload#". '"}; staged=${staged%"'"}; [ ! -f "$staged" ] || payload=$(cat "$staged") ;;
     esac
     case "$payload" in
-      *'encode launch-brief'* | *'Firstmate operational input waiting: read'*)
+      *'fm-skill-opener.sh'*'encode'* | *'Firstmate operational input waiting: read'*)
         printf '%s\n' "$payload" > "$D/launched-command"
         : > "$D/herdr-agent-live" ;;
     esac
@@ -3209,6 +3229,7 @@ test_signed_out_worker_account_pin_refuses_before_stop
 test_worker_account_pin_follows_the_relaunch
 test_secondmate_account_pin_follows_relaunch_and_refuses_before_stop
 test_pi_exclude_tools_follow_the_relaunch
+test_workflow_scout_onto_unverified_skill_form_refuses_before_stop
 test_exclude_tools_refusals_happen_before_the_agent_stops
 test_explicit_model_wins_over_the_recorded_one
 test_relaunch_onto_an_unverified_harness_is_refused

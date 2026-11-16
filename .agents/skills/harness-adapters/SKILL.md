@@ -102,3 +102,20 @@ A new tool remains undispatchable until the `verify` plan, its harness entry, ev
   }
 }
 ```
+
+## Workflow skill openers
+
+`bin/fm-skill-opener.sh` consumes this invocation map when rendering a workflow launch.
+A null entry refuses a skill-bearing scout or secondmate launch until that adapter has a verified form; a ship there launches with its plain brief, as before openers existed.
+The selected harness reference owns live evidence and any discovery limits.
+For a stored steer, the harness parser never sees its body: load the named skill through the harness skill tool or read its complete `SKILL.md` before executing that step; if unavailable, report blocked.
+
+```json harness-skill-invocations-v1
+{
+  "claude": "/", "codex": "$", "pi": "/skill:", "pi-signed": "/skill:",
+  "grok": "/", "kimi": null, "cursor": "/", "gemini": "/",
+  "muse": "/", "devin": "/", "commandcode": "/", "cortex": "/",
+  "polytoken": "@skill:", "rovo": null, "opencode": null,
+  "omp": null, "agy": null, "kiro": null
+}
+```

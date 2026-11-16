@@ -1737,3 +1737,43 @@ test_branch_prefix_is_refused_where_it_does_not_apply
 test_branch_prefix_value_is_validated
 test_branch_prefix_command_is_shell_safe
 test_crewmate_scaffolds_forbid_pool_administration
+
+# Exercise the scaffold and public launch renderer, including the provenance
+# parser, rather than inspecting implementation bytes.
+test_workflow_skill_openers() {
+  local home="$TMP_ROOT/workflow-skills" brief rendered first harness expected rc
+  mkdir -p "$home/data"
+  FM_HOME="$home" bash "$ROOT/bin/fm-brief.sh" workflow repo --mode direct-PR >/dev/null || fail "workflow scaffold failed"
+  brief="$home/data/workflow/brief.md"
+  IFS= read -r first < "$brief"
+  [ "$first" = /implement ] || fail "ship scaffold must open with /implement"
+  assert_contains "$(cat "$brief")" 'explicitly invoke the pr skill' "PR delivery must require pr"
+  for harness in claude codex pi pi-signed polytoken; do
+    case "$harness" in
+      claude) expected=/implement ;;
+      codex) expected="\$implement" ;;
+      pi|pi-signed) expected=/skill:implement ;;
+      polytoken) expected=@skill:implement ;;
+    esac
+    rendered=$(FM_STATE_OVERRIDE="$home/state" bash "$ROOT/bin/fm-skill-opener.sh" "$harness" encode "$brief") || fail "$harness opener failed"
+    first=${rendered%%$'\n'*}
+    [ "$first" = "$expected" ] || fail "$harness opener starts with $first"
+    [ "$(printf '%s' "$rendered" | bash "$ROOT/bin/fm-operational-input.sh" kind)" = launch-brief ] || fail "$harness opener lost operational provenance"
+    [ "$(printf '%s' "$rendered" | bash "$ROOT/bin/fm-operational-input.sh" body)" = "$(cat "$brief")" ] || fail "$harness opener changed brief body"
+  done
+  rendered=$(FM_STATE_OVERRIDE="$home/state" bash "$ROOT/bin/fm-skill-opener.sh" claude record "$brief") || fail "record opener failed"
+  [ "${rendered%%$'\n'*}" = /implement ] || fail "Claude doorbell shadowed the skill"
+  [ "$(printf '%s' "$rendered" | bash "$ROOT/bin/fm-operational-input.sh" doorbell-kind)" = launch-brief ] || fail "prefixed record lost provenance"
+  for harness in unknown rovo opencode omp agy kiro; do
+    rendered=$(bash "$ROOT/bin/fm-skill-opener.sh" "$harness" encode "$brief" 2>&1); rc=$?
+    [ "$rc" -ne 0 ] || fail "unverified $harness skill form passed"
+    assert_contains "$rendered" 'no verified skill invocation' "refusal must explain the missing form"
+  done
+  FM_HOME="$home" bash "$ROOT/bin/fm-brief.sh" grill repo --scout --skill grilling >/dev/null || fail "scout skill override failed"
+  IFS= read -r first < "$home/data/grill/brief.md"
+  [ "$first" = /grilling ] || fail "scout override missing"
+  if FM_HOME="$home" bash "$ROOT/bin/fm-brief.sh" invalid repo --mode direct-PR --skill '../bad' >/dev/null 2>&1; then fail "invalid skill accepted"; fi
+  if FM_HOME="$home" bash "$ROOT/bin/fm-brief.sh" empty repo --scout --skill '' >/dev/null 2>&1; then fail "empty workflow skill accepted"; fi
+  pass "workflow: literal harness skill precedes each carrier, provenance survives, unsupported forms refuse"
+}
+test_workflow_skill_openers

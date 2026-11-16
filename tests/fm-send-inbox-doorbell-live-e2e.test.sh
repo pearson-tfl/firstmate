@@ -36,6 +36,195 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# FM_WORKFLOW_SKILL_LIVE=1 exercises literal openers and stored workflow
+# steers in real Claude/Pi/Codex print-mode sessions. PI provider/model can be
+# selected with FM_WORKFLOW_PI_PROVIDER and FM_WORKFLOW_PI_MODEL. Pi runs with
+# the production worker flags: its real agent directory and extensions, the
+# Firstmate busy extension fm-spawn writes, and default skill discovery from
+# the user-level ~/.agents/skills (a lab HOME holding the fixture skills beside
+# links to the real ones), never --skill. Proof lives in
+# FM_WORKFLOW_SKILL_PROOF_DIR (otherwise a temporary directory).
+if [ "${FM_WORKFLOW_SKILL_LIVE:-0}" = 1 ]; then
+  fm_live_gate opt-in FM_WORKFLOW_SKILL_LIVE python3
+  PROOF_DIR=${FM_WORKFLOW_SKILL_PROOF_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/fm-workflow-skill.XXXXXX")}
+  python3 - "$ROOT" "$PROOF_DIR" <<'PY'
+"""Live opener + stored-steer proof, called by the existing doorbell live guard.
+
+Uses real print-mode sessions, resuming each for its stored steer. Random
+sentinels occur only in SKILL.md, never in the prompts or skill descriptions.
+The durable writer and constant doorbell are production inbox interfaces.
+"""
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import uuid
+
+root, lab = map(Path, sys.argv[1:3])
+lab.mkdir(parents=True, exist_ok=True)
+checked = 0
+real_home = Path.home()
+
+
+def pi_executable():
+    # The mise shim re-resolves under HOME; the lab HOME must reach the real binary.
+    if shutil.which("mise"):
+        found = subprocess.run(["mise", "which", "pi"], capture_output=True, text=True)
+        if found.returncode == 0 and found.stdout.strip():
+            return found.stdout.strip()
+    return shutil.which("pi")
+
+
+def firstmate_pi_extension(directory, task):
+    """Render the worker busy extension exactly as fm-spawn writes it."""
+    source = (root / "bin/fm-spawn.sh").read_text()
+    start = source.index('cat >"$STATE/$ID.pi-ext.ts" <<EOF\n') + len('cat >"$STATE/$ID.pi-ext.ts" <<EOF\n')
+    body = source[start:source.index("\nEOF\n", start)]
+    state = directory / "state"
+    (directory / "config").mkdir(exist_ok=True)
+    values = {"busy_notify_turnend": "true", "EXCLUDE_TOOLS": "", "CONFIG": str(directory / "config"),
+              "STATE": str(state), "ID": task, "FM_ROOT": str(root), "STATE_REAL": str(state.resolve()),
+              "BUSY_GEN": "1", "TURNEND": str(state / (task + ".turn-ended"))}
+    rendered = subprocess.check_output(["bash", "-c", 'eval "cat <<EOF\n$1\nEOF"', "_", body],
+                                       env={**os.environ, **values}, text=True)
+    extension = state / (task + ".pi-ext.ts")
+    extension.write_text(rendered)
+    return extension
+
+
+def run(args, directory, output, env):
+    (directory / (output + ".command.json")).write_text(json.dumps(args))
+    with (directory / output).open("w") as stream:
+        result = subprocess.run(args, cwd=directory, env=env, stdin=subprocess.DEVNULL, stdout=stream,
+                                stderr=subprocess.STDOUT, timeout=180, check=False)
+    if result.returncode:
+        raise RuntimeError(f"{args[0]} exited {result.returncode}; see {directory / output}")
+    events = []
+    for line in (directory / output).read_text().splitlines():
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+    return events
+
+
+def assistant_text(events):
+    texts = []
+    for event in events:
+        if event.get("type") in ("message_end", "assistant"):
+            message = event.get("message", {})
+            if message.get("stopReason") == "error":
+                raise RuntimeError(message.get("errorMessage", "provider error"))
+            if message.get("role") == "assistant":
+                texts.extend(block.get("text", "") for block in message.get("content", [])
+                             if block.get("type") == "text")
+        if event.get("type") == "item.completed":
+            item = event.get("item", {})
+            if item.get("type") == "agent_message":
+                texts.append(item.get("text", ""))
+    return texts
+
+
+for harness in ("claude", "pi", "codex"):
+    executable = pi_executable() if harness == "pi" else shutil.which(harness)
+    if not executable:
+        print(f"skip: workflow skills: {harness} absent", flush=True)
+        continue
+    version = subprocess.check_output([executable, "--version"], text=True).strip()
+    print(f"# checking {harness} {version}", flush=True)
+    directory = lab / harness
+    directory.mkdir(exist_ok=True)
+    env = os.environ.copy()
+    env["DISABLE_AUTOUPDATER"] = "1"
+    env["FM_STATE_OVERRIDE"] = str(directory / "state")
+    env["FM_TASK_INBOX"] = str(directory / "state/proof.inbox")
+    (directory / "state").mkdir(exist_ok=True)
+    skills = directory / ".agents/skills"
+    if harness == "pi":
+        env["PI_CODING_AGENT_DIR"] = os.environ.get("PI_CODING_AGENT_DIR", str(real_home / ".pi/agent"))
+        env["HOME"] = str(directory / "home")
+        skills = directory / "home/.agents/skills"
+        skills.mkdir(parents=True, exist_ok=True)
+        real_skills = real_home / ".agents/skills"
+        for installed in (real_skills.iterdir() if real_skills.is_dir() else ()):
+            if not (skills / installed.name).exists():
+                (skills / installed.name).symlink_to(installed)
+    tokens = {}
+    for name in ("fm-opener-proof", "fm-steer-proof"):
+        skill = skills / name
+        skill.mkdir(parents=True, exist_ok=True)
+        tokens[name] = "SKILL_" + uuid.uuid4().hex
+        body = f"Reply with exactly {tokens[name]} and do nothing else."
+        if name == "fm-steer-proof":
+            body = f"Move the pending inbox record to its handled directory, then {body.lower()}"
+        (skill / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: Live verification fixture.\n---\n{body}\n")
+        claude_skill = directory / ".claude/skills" / name
+        claude_skill.parent.mkdir(parents=True, exist_ok=True)
+        if harness == "claude" and not claude_skill.exists():
+            claude_skill.symlink_to(skill)
+    brief = directory / "brief.md"
+    brief.write_text("/fm-opener-proof\n\nFollow the invoked skill. Read-only verification.\n")
+    opener = subprocess.check_output(
+        ["bash", str(root / "bin/fm-skill-opener.sh"), harness,
+         "record" if harness == "claude" else "encode", str(brief)], env=env, text=True)
+    (directory / "opener.prompt").write_text(opener)
+    session = str(uuid.uuid4())
+    if harness == "claude":
+        common = ["claude", "-p", "--setting-sources", "project,local",
+                  "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose"]
+        args = common + ["--session-id", session, opener]
+    elif harness == "pi":
+        common = [executable, "-p", "--mode", "json",
+                  "--provider", os.environ.get("FM_WORKFLOW_PI_PROVIDER", "openai"),
+                  "--model", os.environ.get("FM_WORKFLOW_PI_MODEL", "openai/gpt-6.1-sol"),
+                  "--session-dir", str(directory / "sessions"), "--session-id", session,
+                  "-e", str(firstmate_pi_extension(directory, "proof"))]
+        args = common + [opener]
+    else:
+        common = ["codex", "exec", "--json", "--skip-git-repo-check", "--disable", "hooks",
+                  "-c", 'sandbox_mode="danger-full-access"']
+        args = common + [opener]
+    events = run(args, directory, "opener.out", env)
+    if not any(tokens["fm-opener-proof"] in text for text in assistant_text(events)):
+        raise RuntimeError(f"{harness} {version}: opener did not return skill-only sentinel")
+    if harness == "codex":
+        session = next(event["thread_id"] for event in events if event.get("type") == "thread.started")
+    # Reuse fm-send's production stored-step formatter, then enqueue behind
+    # the constant doorbell. The prompt contains neither the body nor sentinel.
+    script = '. "$1/bin/fm-skill-opener.sh"; . "$1/bin/fm-task-inbox-lib.sh"; '
+    script += 'body=$(fm_skill_steer "$2" fm-steer-proof "Follow this step.") || exit; '
+    script += 'rec=$(fm_task_inbox_write "$3" proof "$body") || exit; fm_task_inbox_doorbell_line "$rec"'
+    doorbell = subprocess.check_output(["bash", "-c", script, "_", str(root), harness,
+                                       str(directory / "state")], env=env, text=True)
+    # The ordinary launch establishes FM_TASK_INBOX. Repeat its exact path
+    # here because print-mode Codex does not preserve arbitrary env on resume.
+    steer = doorbell + "\nYour task inbox is " + env["FM_TASK_INBOX"] + "."
+    (directory / "steer.prompt").write_text(steer)
+    if harness == "claude":
+        args = common + ["--resume", session, steer]
+    elif harness == "pi":
+        args = common + [steer]
+    else:
+        args = ["codex", "exec", "resume", "--json", "--skip-git-repo-check", "--disable", "hooks",
+                "-c", 'sandbox_mode="danger-full-access"', session, steer]
+    events = run(args, directory, "steer.out", env)
+    # The steer fixture lowercases the requested token as part of its rule.
+    if not any(tokens["fm-steer-proof"].lower() in text for text in assistant_text(events)):
+        raise RuntimeError(f"{harness} {version}: steer did not return skill-only sentinel")
+    if not (directory / "state/proof.inbox/handled/001.msg").is_file():
+        raise RuntimeError(f"{harness} {version}: steer was not acknowledged")
+    checked += 1
+    print(f"ok - {harness} {version}: opener and stored steer loaded skill-only sentinels; steer acknowledged", flush=True)
+
+if not checked:
+    raise RuntimeError("no installed harness was verified")
+print(f"workflow skills: {checked} real harnesses verified", flush=True)
+PY
+  exit $?
+fi
 fm_live_gate opt-in FM_SEND_INBOX_LIVE_E2E tmux
 
 unset NO_MISTAKES_GATE

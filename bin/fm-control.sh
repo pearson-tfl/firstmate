@@ -232,6 +232,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-omp-profile-lib.sh"
 # shellcheck source=bin/fm-exclude-tools-lib.sh
 . "$SCRIPT_DIR/fm-exclude-tools-lib.sh"
+# shellcheck source=bin/fm-skill-opener.sh
+. "$SCRIPT_DIR/fm-skill-opener.sh"
 
 POLL=${FM_CONTROL_POLL:-0.5}
 SETTLE_WAIT=${FM_CONTROL_SETTLE_WAIT:-5}
@@ -1068,6 +1070,20 @@ resolve_relaunch_profile() {
   # transaction, where nothing has changed yet.
   fm_control_harness_supports_kind "$TARGET_HARNESS" "$KIND" \
     || die "'$TARGET_HARNESS' is not verified to run a $KIND task, so relaunching $ID onto it would stop the running agent for a launch that must be refused; choose an adapter verified for this kind"
+  # The launch owner refuses a non-ship workflow brief whose skill opener the
+  # target adapter cannot render; ships fall back to their plain brief.
+  if [ "$KIND" != ship ]; then
+    local skill_brief="$DATA/$ID/brief.md" skill_home skill_name
+    if [ "$KIND" = secondmate ]; then
+      skill_home=$(fm_meta_get "$META" home)
+      [ -n "$skill_home" ] || skill_home=$WT
+      [ ! -f "$skill_home/data/charter.md" ] || skill_brief="$skill_home/data/charter.md"
+    fi
+    if [ -f "$skill_brief" ] && skill_name=$(fm_skill_brief_name "$skill_brief"); then
+      fm_skill_invocation "$TARGET_HARNESS" "$skill_name" >/dev/null 2>&1 \
+        || die "'$TARGET_HARNESS' has no verified invocation for the /$skill_name workflow that opens $skill_brief, so relaunching $ID onto it would stop the running agent for a launch that must be refused; choose an adapter with a verified skill form"
+    fi
+  fi
   # A model or effort chosen for the previous harness does not transfer to a
   # different one, so an explicit harness change resets both axes unless the
   # caller names them too.

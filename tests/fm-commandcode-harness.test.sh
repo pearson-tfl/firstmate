@@ -165,7 +165,7 @@ assert_contains "$launch" "--mod-option 'fmState=$home/state' --mod-option 'fmId
 assert_contains "$launch" '-u NO_COLOR COLORTERM=truecolor' 'placeholder styling not pinned'
 # shellcheck disable=SC2016 # the literal command substitution in the template
 assert_contains "$launch" '-- "$(' 'typed launch envelope must follow --'
-assert_contains "$launch" 'encode launch-brief' 'typed launch envelope lost'
+assert_contains "$launch" 'fm-skill-opener.sh' 'typed launch envelope lost'
 [ "$(fm_busy_classify tmux fake:w commandcode cc-low "$home/state")" = 'busy fm-spawn' ] || fail 'launch not armed'
 [ ! -e "$wt/.commandcode" ] || fail 'spawn wrote project Command Code settings'
 mkdir -p "$wt/.commandcode/taste" && : > "$wt/.commandcode/taste/taste.md"

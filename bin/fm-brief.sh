@@ -153,6 +153,11 @@
 # regular file, or text carrying its own "Delivery contract: mode=" line (which
 # a later scout promotion could not outrank), stops the scaffold before
 # anything is written. Secondmate charters never take it.
+# --skill <name> selects the workflow step, default implement for ships.
+# Scout and secondmate workflow launches must pass it explicitly; charters and
+# knowledge-only scouts without a workflow step may omit it.
+# The scaffold starts with /<name>; bin/fm-spawn.sh's header owns how that
+# opener is rendered in the selected harness form or refused.
 # Refuses to overwrite an existing brief.
 set -eu
 
@@ -235,6 +240,8 @@ UPSTREAM_CONSENT=
 UPSTREAM_CONSENT_SET=0
 PROJECT_DIR=
 PROJECT_DIR_SET=0
+SKILL=
+SKILL_SET=0
 POS=()
 want_value=
 for a in "$@"; do
@@ -243,6 +250,7 @@ for a in "$@"; do
       --*) echo "error: --$want_value requires a value" >&2; exit 1 ;;
     esac
     case "$want_value" in
+      skill) SKILL=$a; SKILL_SET=1 ;;
       mode) MODE=$a; MODE_SET=1 ;;
       branch-prefix) BRANCH_PREFIX=$a; BRANCH_PREFIX_SET=1 ;;
       base-branch) BASE_BRANCH=$a; BASE_BRANCH_SET=1 ;;
@@ -257,6 +265,8 @@ for a in "$@"; do
     continue
   fi
   case "$a" in
+    --skill) want_value=skill ;;
+    --skill=*) SKILL=${a#--skill=}; SKILL_SET=1 ;;
     --scout) KIND=scout ;;
     --secondmate) KIND=secondmate ;;
     --herdr-lab) HERDR_LAB=1 ;;
@@ -439,6 +449,12 @@ append_brief_include() {
 
 BRIEF="$DATA/$ID/brief.md"
 [ -e "$BRIEF" ] && { echo "error: $BRIEF already exists" >&2; exit 1; }
+if [ "$SKILL_SET" -eq 1 ] && [ -z "$SKILL" ]; then
+  echo 'error: --skill requires a nonempty bare skill name' >&2
+  exit 1
+fi
+[ "$KIND" != ship ] || SKILL=${SKILL:-implement}
+case "$SKILL" in *[!a-zA-Z0-9_-]*) echo 'error: --skill requires a bare skill name' >&2; exit 1 ;; esac
 mkdir -p "$DATA/$ID"
 
 ASK_USER_BLOCK=
@@ -475,6 +491,7 @@ IFS= read -r -d '' INBOX_SECTION <<EOF || true
 Firstmate steers you through durable message files in $INBOX_DIR.
 When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list them with \`find $INBOX_DIR -maxdepth 1 -name '*.msg' 2>/dev/null | sort -V\`, read the complete contents of each record (including its final line even when it is not newline-terminated) and act on each message in numeric order, then acknowledge each handled message by moving it: \`mv $INBOX_DIR/NNN.msg $INBOX_DIR/handled/\`.
 Prefer the format-aware \`fm_task_inbox_body\` reader from \`bin/fm-task-inbox-lib.sh\` when it is available. If you read manually, a header line \`body-terminator=1\` means the writer added exactly one synthetic final newline to terminate the record file; that marked newline is not part of the logical message body, so remove only it and preserve any intentional trailing newlines. Legacy records without that marker may end without a newline; read them through the file end.
+A leading skill invocation in a stored message (after any routing marker) is a required workflow step: load that skill through the skill tool or read its complete SKILL.md before acting or acknowledging it; report blocked if it is unavailable.
 The move IS the acknowledgement: without it firstmate rings again and eventually treats you as stuck. An empty or absent inbox needs no action.
 EOF
 if [ -e "$CONFIG/wait-no-turns" ]; then
@@ -526,7 +543,8 @@ else
   PROJECT_CLONES_BODY=$(printf '%s\n' "$SECONDMATE_PROJECTS" | tr ' ' '\n' | sed 's/^/- /')
   PROJECT_CLONES_NOTE="The projects above are local clones for work you supervise; they are not an exclusive ownership claim."
 fi
-cat > "$BRIEF" <<EOF
+if [ -n "$SKILL" ]; then printf '/%s\n\n' "$SKILL" > "$BRIEF"; else : > "$BRIEF"; fi
+cat >> "$BRIEF" <<EOF
 You are a persistent second mate managed by the main firstmate. Work on your own; do not wait for a human.
 
 # Charter
@@ -702,7 +720,8 @@ if "$SCRIPT_DIR/fm-bootstrap.sh" lavish-compatible >/dev/null 2>&1; then
 else
   LAVISH_LINE='Lavish is unavailable (lavish-axi is missing or below its supported version floor), so deliver your findings as a text report without Lavish, even for a visual deliverable.'
 fi
-cat > "$BRIEF" <<EOF
+if [ -n "$SKILL" ]; then printf '/%s\n\n' "$SKILL" > "$BRIEF"; else : > "$BRIEF"; fi
+cat >> "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
 $TASK_SECTION
@@ -778,7 +797,8 @@ esac
 RULE1=$(fm_ship_rule_one "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH") || exit 1
 DOD=$(fm_dod_block "$MODE" "$ID" "$BRANCH" "$FORGE" "$BASE_BRANCH" "$UPSTREAM_CONSENT" "$PR_TEXT") || exit 1
 
-cat > "$BRIEF" <<EOF
+if [ -n "$SKILL" ]; then printf '/%s\n\n' "$SKILL" > "$BRIEF"; else : > "$BRIEF"; fi
+cat >> "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
 $TASK_SECTION

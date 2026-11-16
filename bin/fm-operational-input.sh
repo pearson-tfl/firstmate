@@ -8,6 +8,9 @@
 # Current generic wire form:
 #   U+2063 FIRSTMATE_OP: v1 <kind>: <body>
 #
+# A workflow launch may prepend one standalone literal skill invocation line.
+# Its syntax is recognized by fm-skill-opener.sh; it grants no provenance and
+# the following envelope or record still has to pass the ordinary checks.
 # The landed U+2063 + "FIRSTMATE_OP: " prefix is permanent compatibility.
 # The version and kind header make current inputs structurally typed without
 # deriving provenance from body prose. The established from-firstmate routing
@@ -51,6 +54,18 @@
 # classifier: a doorbell is recognized only through `doorbell-kind` or `open`.
 # All successful data commands print exactly one value and no diagnostics.
 # A non-match exits 1 silently. Invalid use exits 2. Bash 3.2 compatible.
+
+# shellcheck source=bin/fm-skill-opener.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fm-skill-opener.sh"
+
+fm_operational_without_skill() { # <message> <result-var>
+  local text=$1 first
+  first=${text%%$'\n'*}
+  if [ "$first" != "$text" ] && fm_skill_name "$first" >/dev/null; then
+    text=${text#*$'\n'}
+  fi
+  printf -v "$2" '%s' "$text"
+}
 
 FM_OPERATIONAL_MARK=$'\xE2\x81\xA3'
 FM_OPERATIONAL_PREFIX="${FM_OPERATIONAL_MARK}FIRSTMATE_OP: "
@@ -96,6 +111,7 @@ fm_operational_input_construct() {  # <kind> <body> <result-var>
 fm_operational_generic_kind() {  # <message> <result-var>
   local message=${1-} result_var=${2-} remainder parsed_kind body
   [ -n "$result_var" ] || return 2
+  fm_operational_without_skill "$message" message
   case "$message" in
     "$FM_OPERATIONAL_HEADER_PREFIX"*': '?*) ;;
     *) return 1 ;;
@@ -127,6 +143,7 @@ fm_operational_input_kind() {  # <message> <result-var>
 fm_operational_input_body() {  # <current-message> <result-var>
   local message=${1-} result_var=${2-} current_kind parsed_body
   [ -n "$result_var" ] || return 2
+  fm_operational_without_skill "$message" message
   if fm_operational_generic_kind "$message" current_kind; then
     parsed_body=${message#"${FM_OPERATIONAL_HEADER_PREFIX}${current_kind}: "}
     printf -v "$result_var" '%s' "$parsed_body"
@@ -277,6 +294,7 @@ fm_operational_doorbell_path() {  # <message> <result-var>
   local message=${1-} result_var=${2-} candidate dir name
   local LC_ALL=C
   [ -n "$result_var" ] || return 2
+  fm_operational_without_skill "$message" message
   case "$message" in
     "$FM_OPERATIONAL_DOORBELL_PREFIX"*"$FM_OPERATIONAL_DOORBELL_SUFFIX") ;;
     *) return 1 ;;

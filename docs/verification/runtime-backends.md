@@ -6,6 +6,34 @@ This record contains reusable version-scoped evidence for active runtime guarant
 The backend guides own current setup, safety boundaries, and limitations.
 Exact task chronology, branch names, temporary homes, local paths, process ids, thread ids, and delivery transcripts remain in private reports or PR evidence.
 
+## Workflow skill openers and stored steers
+
+Verified on 2026-11-16 on Linux with Claude Code 2.1.325, Pi 1.0.4, and codex-cli 0.164.0.
+The credentialed mode of the existing steering-inbox live guard starts a real print-mode session per installed harness, then resumes that session with a constant inbox doorbell.
+Pi runs with the production worker flags: its real agent directory and extensions, the Firstmate busy extension `fm-spawn` writes, no `--skill` directory, and default discovery from the user-level `~/.agents/skills` where Pocock skills are installed.
+The fixture skills are model-invocable, so Claude's stored steer loads through its skill tool.
+Each skill contains a fresh random sentinel absent from its description and both prompts; both turns must return the appropriate skill-only sentinel, and the stored steer must move to `handled/`.
+This proves loading from the literal opener and from the stored message rather than treating a successful send as a load.
+It verifies the shared launch renderer and inbox writer; interactive composer submission remains covered by the ordinary doorbell guard.
+
+```sh
+FM_WORKFLOW_SKILL_LIVE=1 FM_WORKFLOW_PI_PROVIDER=openai FM_WORKFLOW_PI_MODEL=openai/gpt-6.1-sol \
+  bin/fm-test-run.sh tests/fm-send-inbox-doorbell-live-e2e.test.sh
+```
+
+Observed result:
+
+```text
+ok - claude 2.1.325 (Claude Code): opener and stored steer loaded skill-only sentinels; steer acknowledged
+ok - pi 1.0.4: opener and stored steer loaded skill-only sentinels; steer acknowledged
+ok - codex codex-cli 0.164.0: opener and stored steer loaded skill-only sentinels; steer acknowledged
+workflow skills: 3 real harnesses verified
+```
+
+The harness-adapters invocation map refuses scout and secondmate workflow dispatches for adapters whose skill form remains unverified or whose loader is known incompatible; a ship on such an adapter launches with its plain brief, and a relaunch never adds an opener its brief lacks.
+Raw launch commands have no harness-owned parser and remain the caller's integration responsibility.
+Other installed Firstmate homes receive shared contracts only when updated; this repository cannot rewrite external harness configuration, estate-global rules, or independently installed skills.
+
 ## Polytoken worker lifecycle
 
 Verified on 2026-10-14 with Polytoken 0.9.0 on macOS arm64 using the tmux worker path.

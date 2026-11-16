@@ -4095,7 +4095,7 @@ test_interactive_terminal_e2e() {
     "$ROOT/bin/fm-sessionstart-nudge.sh" \
     "$ROOT/bin/fm-primary-scope-lib.sh" \
     "$ROOT/bin/fm-gate-refuse-lib.sh" \
-    "$ROOT/bin/fm-operational-input.sh" \
+    "$ROOT/bin/fm-operational-input.sh" "$ROOT/bin/fm-skill-opener.sh" \
     "$project/bin/"
   # The real digest is out of scope here: this lab is about how Calm RENDERS the
   # session-open message and whether it keeps its operational provenance, not

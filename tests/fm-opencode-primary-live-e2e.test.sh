@@ -238,7 +238,7 @@ run_ahoy_transcript_regressions() {
     "$ROOT/bin/fm-sessionstart-nudge.sh" \
     "$ROOT/bin/fm-primary-scope-lib.sh" \
     "$ROOT/bin/fm-gate-refuse-lib.sh" \
-    "$ROOT/bin/fm-operational-input.sh" \
+    "$ROOT/bin/fm-operational-input.sh" "$ROOT/bin/fm-skill-opener.sh" \
     "$AHOY_PROJECT/bin/"
   cp "$ROOT/.agents/skills/ahoy/SKILL.md" "$AHOY_PROJECT/.agents/skills/ahoy/SKILL.md"
   chmod +x "$AHOY_PROJECT/bin/fm-sessionstart-nudge.sh"
@@ -374,6 +374,7 @@ cp "$ROOT/.opencode/plugins/lib/fm-operational-input.js" "$PROJECT/.opencode/plu
 cp "$ROOT/.opencode/plugins/lib/fm-opencode2.js" "$PROJECT/.opencode/plugins/lib/fm-opencode2.js"
 cp "$ROOT/bin/fm-watch-arm.sh" "$PROJECT/bin/fm-watch-arm.sh"
 cp "$ROOT/bin/fm-operational-input.sh" "$PROJECT/bin/fm-operational-input.sh"
+cp "$ROOT/bin/fm-skill-opener.sh" "$PROJECT/bin/fm-skill-opener.sh"
 chmod +x "$PROJECT/bin/fm-operational-input.sh"
 mkdir -p "$HOME_DIR/state" "$HOME_DIR/config"
 printf 'project=fixture\n' > "$HOME_DIR/state/opencode-e2e.meta"

@@ -52,8 +52,13 @@ function isCurrentKind(kind: string): boolean {
   return (FIRSTMATE_OPERATIONAL_GENERIC_KINDS as readonly string[]).includes(kind);
 }
 
+function withoutSkill(message: string): string {
+  return message.replace(/^(?:\/skill:|@skill:|\/|\$)[a-zA-Z0-9_-]+\n/, "");
+}
+
 /** `fm_operational_generic_kind`: the kind of a current generic envelope, else undefined. */
 function genericKind(message: string): string | undefined {
+  message = withoutSkill(message);
   if (!message.startsWith(OPERATIONAL_HEADER_PREFIX)) return undefined;
   const remainder = message.slice(OPERATIONAL_HEADER_PREFIX.length);
   const separator = remainder.indexOf(": ");
@@ -107,6 +112,7 @@ const DOORBELL_SUFFIX = "' and handle its contents as Firstmate operational inpu
 
 /** `fm_operational_doorbell_path`: the record path a well-formed doorbell names. */
 export function firstmateOperationalDoorbellPath(message: string): string | undefined {
+  message = withoutSkill(message);
   if (
     message.length < DOORBELL_PREFIX.length + DOORBELL_SUFFIX.length ||
     !message.startsWith(DOORBELL_PREFIX) ||
