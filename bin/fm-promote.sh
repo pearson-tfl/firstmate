@@ -233,6 +233,8 @@ grep -qx 'kind=scout' "$META" || { echo "error: task $ID is not a scout task (ki
 # captain's project binding, so promotion takes it from the registry rather than
 # from a flag firstmate must remember.
 PROMOTE_PROJECT=$(sed -n 's/^project=//p' "$META" | head -n 1)
+PROMOTE_SKILL_FLAG=' --skill implement'
+fm_skill_invocation "$(sed -n 's/^harness=//p' "$META" | head -n 1)" implement >/dev/null 2>&1 || PROMOTE_SKILL_FLAG=
 if [ -n "$PROMOTE_PROJECT" ]; then
   PROMOTE_PROJECT_NAME=$(basename "$PROMOTE_PROJECT")
   if ! PROMOTE_STANDING_FORGE=$("$FM_ROOT/bin/fm-project-mode.sh" --forge "$PROMOTE_PROJECT_NAME"); then
@@ -426,7 +428,7 @@ HOME_Q=$(printf '%q' "$FM_HOME")
 INSTRUCTIONS_Q=$(printf '%q' "$INSTRUCTIONS")
 echo "promoted $ID to ship mode=$MODE yolo=$YOLO$PROMOTE_FORGE_WORDS$PROMOTE_PR_WORDS (teardown protection restored)"
 echo "wrote ship instructions for mode=$MODE$PROMOTE_FORGE_WORDS$PROMOTE_PR_WORDS: $INSTRUCTIONS"
-echo "next: FM_HOME=$HOME_Q bin/fm-send.sh fm-$ID --skill implement \"\$(cat $INSTRUCTIONS_Q)\""
+echo "next: FM_HOME=$HOME_Q bin/fm-send.sh fm-$ID$PROMOTE_SKILL_FLAG \"\$(cat $INSTRUCTIONS_Q)\""
 
 promote_print_rechain_hint() {
   local consent_home=$1 work_home=$2 task_id=$3 id prefix

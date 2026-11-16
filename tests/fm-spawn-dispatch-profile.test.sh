@@ -148,21 +148,7 @@ run_spawn() {
 # Ship spawns carry an explicit delivery contract (AGENTS.md section 7); these
 # tests are about profile resolution, so they pass a fixed valid one.
 run_ship_spawn() {
-  # Model/effort routing for adapters with no verified skill form remains
-  # testable as a knowledge-only scout. Their workflow refusal is tested below.
-  local harness brief
-  harness=$(cat "$1/config/crew-harness" 2>/dev/null) || harness=
-  case "$harness" in
-    opencode|omp|agy|kiro|rovo)
-      for brief in "$1"/data/*/brief.md; do
-        [ -f "$brief" ] || continue
-        tail -n +2 "$brief" > "$brief.next"
-        mv "$brief.next" "$brief"
-      done
-      run_spawn "$@" --scout
-      ;;
-    *) run_spawn "$@" --mode no-mistakes --yolo off ;;
-  esac
+  run_spawn "$@" --mode no-mistakes --yolo off
 }
 
 read_case_record() {
@@ -2458,8 +2444,10 @@ test_workflow_spawn_refusals() {
       tail -n +2 "$HOME_DIR/data/$id/brief.md" > "$CASE_DIR/no-opener"
       mv "$CASE_DIR/no-opener" "$HOME_DIR/data/$id/brief.md"
       printf '\nDelivery contract: mode=no-mistakes\n' >> "$HOME_DIR/data/$id/brief.md"
+      out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR"); rc=$?
+    else
+      out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --scout); rc=$?
     fi
-    out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --mode no-mistakes --yolo off); rc=$?
     [ "$rc" -ne 0 ] || fail "$harness workflow without a verified opener launched"
     case "$harness" in
       codex) assert_contains "$out" 'must open with a literal skill invocation' 'missing skill refusal' ;;
@@ -2468,9 +2456,43 @@ test_workflow_spawn_refusals() {
     [ ! -e "$HOME_DIR/state/$id.meta" ] || fail "refused workflow published task metadata"
     [ ! -s "$LAUNCH_LOG" ] || fail "refused workflow launched an agent"
   done
-  pass "workflow: missing openers and unverified forms refuse before launch or task publication"
+  pass "workflow: missing ship openers and unverified scout forms refuse before launch or task publication"
+}
+
+test_unverified_form_ship_launches_plain_brief() {
+  local rec id=plain-ship-opencode out rc first
+  rec=$(make_spawn_case "$id" opencode "$id")
+  read_case_record "$rec"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR"); rc=$?
+  expect_code 0 "$rc" "opencode ship without a verified skill form must still launch: $out"
+  assert_contains "$out" "spawned $id harness=opencode" "opencode ship did not launch"
+  first=$(sed -n '1p' "$HOME_DIR/data/$id/launch-brief.md")
+  [ "$first" = '# Current worker role contract' ] || fail "opencode ship launch brief did not keep the plain carrier: $first"
+  ! grep -qx '/implement' "$HOME_DIR/data/$id/launch-brief.md" || fail "opencode ship carried an opener its harness cannot run"
+  pass "workflow: a ship on an adapter without a verified skill form launches with its plain brief"
+}
+
+test_relaunch_keeps_legacy_contract_brief() {
+  local rec id=legacy-relaunch out rc first
+  rec=$(make_spawn_case "$id" codex "$id")
+  read_case_record "$rec"
+  # The relaunch preflight needs a positively agent-free endpoint.
+  install_lane_tmux_probe
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR"); rc=$?
+  expect_code 0 "$rc" "codex ship should launch: $out"
+  tail -n +3 "$HOME_DIR/data/$id/brief.md" > "$CASE_DIR/legacy"
+  printf '\nDelivery contract: mode=no-mistakes\n' >> "$CASE_DIR/legacy"
+  mv "$CASE_DIR/legacy" "$HOME_DIR/data/$id/brief.md"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" --relaunch); rc=$?
+  expect_code 0 "$rc" "legacy contract brief without an opener must relaunch: $out"
+  [ -s "$LAUNCH_LOG" ] || fail "legacy brief relaunch did not launch the agent"
+  first=$(sed -n '1p' "$HOME_DIR/data/$id/launch-brief.md")
+  [ "$first" = '# Current worker role contract' ] || fail "legacy brief relaunch gained an opener: $first"
+  pass "relaunch: a legacy contract brief without an opener relaunches with its original carrier"
 }
 test_workflow_spawn_refusals
+test_unverified_form_ship_launches_plain_brief
+test_relaunch_keeps_legacy_contract_brief
 
 test_launch_environment_allowlist
 test_launch_environment_invalid_config_refuses

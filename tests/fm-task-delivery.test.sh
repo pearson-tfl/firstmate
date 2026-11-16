@@ -374,7 +374,7 @@ STUB
   for mode in no-mistakes direct-PR local-only; do
     id="promote-dod-$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')"
     meta="$home/state/$id.meta"
-    printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$meta"
+    printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nharness=claude\n' "$id" > "$meta"
     FM_HOME="$home" "$BRIEF" "$id" fixture-project --scout >/dev/null 2>&1 \
       || fail "$mode: scout brief generation should succeed"
     fill_brief_subsections "$home/data/$id/brief.md" \
@@ -748,6 +748,25 @@ EOF
   pass "fm-spawn: the registered pr=manual binding must agree with the brief's contract line"
 }
 
+# A scout on an adapter with no verified skill form is promoted to a ship that
+# launches with its plain brief, so its printed steer must not name a skill the
+# adapter cannot run (fm-send would refuse it).
+test_promotion_steer_omits_unverified_skill_form() {
+  local home id=promote-agy-q1 out next
+  home="$TMP_ROOT/promote-agy/home"
+  mkdir -p "$home/state"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nharness=agy\n' "$id" > "$home/state/$id.meta"
+  FM_HOME="$home" "$BRIEF" "$id" fixture-project --scout >/dev/null 2>&1 \
+    || fail "agy scout brief generation should succeed"
+  fill_brief_subsections "$home/data/$id/brief.md" "Ship the fix." "Carry over only the fix."
+  out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode direct-PR --yolo off 2>&1) \
+    || fail "agy scout promotion should succeed: $out"
+  next=$(printf '%s\n' "$out" | sed -n 's/^next: //p' | grep 'fm-send\.sh')
+  assert_contains "$next" "fm-send.sh fm-$id \"" "agy promotion did not print a plain steer"
+  assert_not_contains "$next" "--skill" "agy promotion named a skill its harness cannot run"
+  pass "fm-promote: an adapter without a verified skill form gets a plain steer"
+}
+
 test_promotion_carries_the_pr_text_binding() {
   local home sendroot meta out payload id
   home="$TMP_ROOT/pr-manual-promote/home"
@@ -763,7 +782,7 @@ STUB
 
   id="pr-manual-p1"
   meta="$home/state/$id.meta"
-  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nproject=%s\n' "$id" "$home/projects/proj" > "$meta"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nharness=claude\nproject=%s\n' "$id" "$home/projects/proj" > "$meta"
   FM_HOME="$home" "$BRIEF" "$id" proj --scout >/dev/null 2>&1 \
     || fail "scout brief generation should succeed"
   fill_brief_subsections "$home/data/$id/brief.md" "Fix what the investigation found." "Carry over only the fix."
@@ -794,7 +813,7 @@ STUB
   printf '%s\n' '- proj [no-mistakes-prod-only pr=manual] - fixture (added 2026-01-01)' > "$home/data/projects.md"
   id="pr-manual-p2"
   meta="$home/state/$id.meta"
-  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nproject=%s\n' "$id" "$home/projects/proj" > "$meta"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nharness=claude\nproject=%s\n' "$id" "$home/projects/proj" > "$meta"
   FM_HOME="$home" "$BRIEF" "$id" proj --scout >/dev/null 2>&1 \
     || fail "scout brief generation should succeed"
   fill_brief_subsections "$home/data/$id/brief.md" "Fix it." "Carry over only the fix."
@@ -1801,7 +1820,7 @@ STUB
 
   id="forge-promote-g1"
   meta="$home/state/$id.meta"
-  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nproject=%s\n' "$id" "$home/projects/proj" > "$meta"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nharness=claude\nproject=%s\n' "$id" "$home/projects/proj" > "$meta"
   FM_HOME="$home" "$BRIEF" "$id" proj --scout >/dev/null 2>&1 \
     || fail "scout brief generation should succeed"
   fill_brief_subsections "$home/data/$id/brief.md" \
@@ -1873,7 +1892,7 @@ STUB
   chmod +x "$sendroot/bin/fm-send.sh"
   id="forge-forgejo-p1"
   meta="$home/state/$id.meta"
-  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nproject=%s\n' "$id" "$proj" > "$meta"
+  printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\nharness=claude\nproject=%s\n' "$id" "$proj" > "$meta"
   FM_HOME="$home" "$BRIEF" "$id" proj --scout >/dev/null 2>&1 \
     || fail "scout brief generation should succeed"
   fill_brief_subsections "$home/data/$id/brief.md" "Fix what the investigation found." "Carry over only the fix."
@@ -2024,6 +2043,7 @@ test_forge_forgejo_rides_the_same_binding
 test_pr_manual_brief_hands_the_pr_text_to_the_worker
 test_pr_manual_is_refused_where_it_cannot_apply
 test_spawn_requires_the_brief_to_carry_the_registered_pr_text
+test_promotion_steer_omits_unverified_skill_form
 test_promotion_carries_the_pr_text_binding
 test_spawn_and_promote_require_filled_task_subsections
 test_project_mode_resolves_branch_prefix

@@ -787,6 +787,8 @@
 # Workflow launches put the literal invocation before their carrier through
 # bin/fm-skill-opener.sh. Contract-bearing ships without an opener refuse;
 # legacy pre-contract implementation briefs use the scaffold's implement default.
+# A relaunch never adds an opener the brief lacks, and a ship on an adapter
+# without a verified skill form launches with its plain brief.
 # Scouts and charters declare a workflow with fm-brief.sh --skill; plain
 # knowledge-only briefs retain their old carrier. Raw launch commands are
 # caller-owned and have no modeled skill parser.
@@ -4389,7 +4391,9 @@ WORKFLOW_SKILL=
 # custom command. Supported agent adapters must validate the workflow opener.
 if [ "$RAW_LAUNCH" -eq 0 ]; then
   WORKFLOW_SKILL=$(fm_skill_brief_name "$BRIEF") || WORKFLOW_SKILL=
-  if [ "$KIND" = ship ] && [ -z "$WORKFLOW_SKILL" ]; then
+  # A relaunch replaces a running task, so a brief without an opener keeps the
+  # carrier it was launched with.
+  if [ "$KIND" = ship ] && [ -z "$WORKFLOW_SKILL" ] && [ "$RELAUNCH" -eq 0 ]; then
     if grep -q '^Delivery contract: mode=' "$BRIEF"; then
       echo "error: ship brief $BRIEF must open with a literal skill invocation; regenerate with fm-brief.sh --skill implement (or the selected step)" >&2
       exit 1
@@ -4400,7 +4404,14 @@ if [ "$RAW_LAUNCH" -eq 0 ]; then
     WORKFLOW_SKILL=implement
   fi
   if [ -n "$WORKFLOW_SKILL" ]; then
-    WORKFLOW_INVOCATION=$(fm_skill_invocation "$HARNESS" "$WORKFLOW_SKILL") || exit 1
+    if [ "$KIND" = ship ] && ! fm_skill_invocation "$HARNESS" "$WORKFLOW_SKILL" >/dev/null 2>&1; then
+      # Ships ran on every adapter before openers existed; one without a
+      # verified skill form keeps the plain brief rather than losing the lane.
+      echo "warning: $HARNESS has no verified skill invocation; ship $ID launches with its plain brief" >&2
+      WORKFLOW_SKILL=
+    else
+      WORKFLOW_INVOCATION=$(fm_skill_invocation "$HARNESS" "$WORKFLOW_SKILL") || exit 1
+    fi
   fi
 fi
 
