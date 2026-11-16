@@ -79,9 +79,8 @@
 # the one owner of what closes it. So this library owns both ends of that
 # decision: fm_pending_reply_maybe_escalate opens it under a per-request key and
 # queues one check wake under that same key (bin/fm-wake-lib.sh), deduplicated
-# against the queued check keys so a retry adds none; the opening line is a
-# self-announced append, so that check wake is main's one immediate wake for it
-# (the heartbeat backstop may still resurface the open decision later), and
+# against the queued check keys so a retry adds none; the opening line stays a
+# plain append, so its signal wake surfaces that check row in the same cycle, and
 # fm_pending_reply_close_escalation closes it once the record resolves. Resolving
 # the record alone would leave the decision open forever, re-surfacing a settled
 # request in every later OPEN DECISIONS fold.
@@ -1246,7 +1245,7 @@ _fm_pending_reply_close_escalation_locked() {  # <state-dir> <corr_id>
       # or tick that already consumed the reply, so it uses the guarded
       # self-announced append (bin/fm-wake-lib.sh, sourced by this function's
       # wrappers) and does not wake the home that wrote it; the escalation
-      # OPEN is self-announced too, announced by its own queued check wake.
+      # OPEN above stays a plain append because a new blocker must wake.
       _task=$(fm_pending_reply_get "$rec" task_id)
       _via=$(fm_pending_reply_get "$rec" resolved_via)
       close_line="resolved [key=${key}]: $(fm_pending_reply_resolved_note "$_task" "$corr" "$_via")"
@@ -1363,11 +1362,8 @@ _fm_pending_reply_maybe_escalate_locked() {  # <state-dir> <corr_id>
       *) new_episode=0 ;;
     esac
   fi
-  # The check row is the one immediate wake that tells main to act. It is
-  # queued first and the blocked line is then appended as this home's own
-  # bookkeeping, so the line still records and presents the decision without a
-  # second signal wake; a foreign write interleaved with it still wakes, and
-  # the heartbeat backstop may still resurface the open decision as a reminder. The queued-key test
+  # The check row tells main to act. It is queued before the blocked line, whose
+  # plain append raises the signal wake that surfaces it. The queued-key test
   # keeps a retry to one row; the per-request lock serializes every escalation
   # of this key, so the two queue calls need no shared lock.
   case "$kind" in
@@ -1384,9 +1380,7 @@ _fm_pending_reply_maybe_escalate_locked() {  # <state-dir> <corr_id>
   # can drain this check with no matching OPEN DECISION; retract it under the
   # queue lock if stale rows ever cause a needless resend.
   if [ "$new_episode" -eq 0 ] || ! status_event_recorded "$parent_status" "$line"; then
-    # An absent log has no size to prove the append owned, so start it empty.
-    [ -e "$parent_status" ] || : >> "$parent_status" || return 1
-    fm_wake_status_append_self_announced "$state" "$parent_status" "$line" || [ $? -eq 1 ] || return 1
+    printf '%s\n' "$(status_stamp_line "$line")" >> "$parent_status" 2>/dev/null || return 1
   fi
   now=$(fm_pending_reply_now)
   fm_pending_reply_set "$rec" escalated_epoch "$now" || return 1

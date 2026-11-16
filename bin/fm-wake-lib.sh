@@ -3046,8 +3046,7 @@ fm_wake_status_mark_current() {  # <state> <status-file>
 # Guarded self-announced status append - the one dedup primitive for the status
 # lines THIS home's own machinery writes as bookkeeping it has already presented
 # in the very turn or tick that writes them (answerer-closes resolved lines, a
-# pending-reply escalation close, captain-held transfers), or announces with its
-# own queued wake (a pending-reply escalation open). Such a close must
+# pending-reply escalation close, captain-held transfers). Such a close must
 # not wake the session that wrote it, so this appends one command's lines
 # together, records the exact appended byte range in the home-owned append
 # ledger (bin/fm-classify-lib.sh), and then advances the watcher's seen marker

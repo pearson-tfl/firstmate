@@ -624,9 +624,6 @@ test_second_missed_turn_escalates_once_and_stays_durable() {
     "check: secondmate hibit missed its reply after one automatic re-delivery: "*"pending-reply-id=$corr"*) : ;;
     *) fail "the check wake must name the mate, the miss and the request"$'\n'"$(cat "$state/.wake-queue")" ;;
   esac
-  # The status log did not exist before the escalation; it still must not signal.
-  seen_gate "$state" "$state/hibit.status" \
-    || fail "the escalation line must not also raise a status signal wake"
   # Second escalate must be a no-op (phase no longer recovery_sent).
   if fm_pending_reply_maybe_escalate "$state" "$corr" 2>/dev/null; then
     # Function returns 1 when phase is not recovery_sent - good.
@@ -674,12 +671,14 @@ test_escalation_wakes_and_its_close_stays_quiet() {
   fm_pending_reply_mark_turn_completed "$state" "$corr" recovery
   : > "$state/hibit.status"
   prime_seen "$state" "$state/hibit.status" || fail "could not prime the announced baseline"
-  # A NEW blocker wakes main through its one check row, never a second signal.
+  # A NEW blocker must wake: the escalation append leaves unannounced bytes,
+  # and the check row it queued is surfaced by that wake.
   fm_pending_reply_maybe_escalate "$state" "$corr" || fail "escalation should fire"
   [ "$(cut -f3,4 "$state/.wake-queue")" = "check	pending-reply-$corr" ] \
     || fail "a new pending-reply escalation queued no check wake"
-  seen_gate "$state" "$state/hibit.status" \
-    || fail "a new pending-reply escalation also raised a status signal wake"
+  if seen_gate "$state" "$state/hibit.status"; then
+    fail "a new pending-reply escalation was hidden from the watcher's signal gate"
+  fi
   prime_seen "$state" "$state/hibit.status" || fail "could not mark the escalation announced"
   # A genuinely new correlated reply must wake too.
   printf 'done [corr=%s]: notarization confirmed\n' "$corr" >> "$state/hibit.status"
@@ -693,7 +692,7 @@ test_escalation_wakes_and_its_close_stays_quiet() {
     || fail "resolution did not close the escalation decision"
   seen_gate "$state" "$state/hibit.status" \
     || fail "the home's own escalation close re-woke its own watcher gate"
-  pass "escalations wake once by check row, replies wake; the home's own escalation close stays quiet"
+  pass "escalations wake with a check row, replies wake; the home's own escalation close stays quiet"
 }
 
 test_escalation_publication_failure_retries() {
