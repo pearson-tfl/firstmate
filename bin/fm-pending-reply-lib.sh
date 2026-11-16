@@ -80,7 +80,8 @@
 # decision: fm_pending_reply_maybe_escalate opens it under a per-request key and
 # queues one check wake under that same key (bin/fm-wake-lib.sh), deduplicated
 # against the queued check keys so a retry adds none; the opening line is a
-# self-announced append, so that check wake is main's only wake for it, and
+# self-announced append, so that check wake is main's one immediate wake for it
+# (the heartbeat backstop may still resurface the open decision later), and
 # fm_pending_reply_close_escalation closes it once the record resolves. Resolving
 # the record alone would leave the decision open forever, re-surfacing a settled
 # request in every later OPEN DECISIONS fold.
@@ -1362,10 +1363,11 @@ _fm_pending_reply_maybe_escalate_locked() {  # <state-dir> <corr_id>
       *) new_episode=0 ;;
     esac
   fi
-  # The check row is the one wake that tells main to act. It is queued first
-  # and the blocked line is then appended as this home's own bookkeeping, so
-  # the line still records and presents the decision without a second signal
-  # wake; a foreign write interleaved with it still wakes. The queued-key test
+  # The check row is the one immediate wake that tells main to act. It is
+  # queued first and the blocked line is then appended as this home's own
+  # bookkeeping, so the line still records and presents the decision without a
+  # second signal wake; a foreign write interleaved with it still wakes, and
+  # the heartbeat backstop may still resurface the open decision as a reminder. The queued-key test
   # keeps a retry to one row; the per-request lock serializes every escalation
   # of this key, so the two queue calls need no shared lock.
   case "$kind" in
