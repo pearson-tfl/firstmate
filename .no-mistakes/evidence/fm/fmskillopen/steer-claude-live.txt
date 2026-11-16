@@ -1,0 +1,31 @@
+$ fm-send.sh proof --skill fm-steer-proof "Follow this step."
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.DU0DuK
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SEND_EXIT=0
+--- stored record (handled/001.msg)
+schema=fm-task-inbox.v1
+at=2026-11-16T18:22:59Z
+body-terminator=1
+--
+/fm-steer-proof
+Load the fm-steer-proof skill through the harness skill tool or read its complete SKILL.md before doing this step. If unavailable, report blocked and stop.
+Follow this step.
+
+--- worker pane after doorbell
+❯ : Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your
+  'proof.inbox' steering inbox, read and act on each in numeric order, then mv
+  each into its handled/.
+  ⎿  1 skill available
+  Read 1 file, listed 1 directory, ran 1 shell command
+● Skill(fm-steer-proof)
+  ⎿  Successfully loaded skill
+  Ran 1 shell command
+● STEER_BEC7E273863D4F7ABEAC4EC01C5FBC16
+✻ Baked for 9s · done 6:23 PM
+skill-only token: STEER_BEC7E273863D4F7ABEAC4EC01C5FBC16

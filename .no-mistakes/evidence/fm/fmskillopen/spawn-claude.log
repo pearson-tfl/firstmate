@@ -1,0 +1,3 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.DU0DuK
+spawned proof harness=claude kind=scout window=primary:fm-proof worktree=~/.treehouse/demo-f05b6a/1/demo
+SPAWN_EXIT=0

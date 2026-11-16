@@ -1,0 +1,8 @@
+# checking claude 2.1.325 (Claude Code)
+ok - claude 2.1.325 (Claude Code): opener and stored steer loaded skill-only sentinels; steer acknowledged
+# checking pi 1.0.4
+ok - pi 1.0.4: opener and stored steer loaded skill-only sentinels; steer acknowledged
+# checking codex codex-cli 0.164.0
+ok - codex codex-cli 0.164.0: opener and stored steer loaded skill-only sentinels; steer acknowledged
+workflow skills: 3 real harnesses verified
+exit=0

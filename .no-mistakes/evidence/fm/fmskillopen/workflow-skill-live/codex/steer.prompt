@@ -1,0 +1,2 @@
+: Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'proof.inbox' steering inbox, read and act on each in numeric order, then mv each into its handled/.
+Your task inbox is ~/.no-mistakes/evidence/01M7JNA00T48PXBSDP67SN4MNC/workflow-skill-live/codex/state/proof.inbox.

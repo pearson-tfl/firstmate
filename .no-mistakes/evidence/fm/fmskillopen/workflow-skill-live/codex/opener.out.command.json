@@ -1,0 +1,1 @@
+["codex", "exec", "--json", "--skip-git-repo-check", "--disable", "hooks", "-c", "sandbox_mode=\"danger-full-access\"", "$fm-opener-proof\n\u2063FIRSTMATE_OP: v1 launch-brief: /fm-opener-proof\n\nFollow the invoked skill. Read-only verification."]

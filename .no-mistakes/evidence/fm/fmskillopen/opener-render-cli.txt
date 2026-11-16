@@ -1,0 +1,20 @@
+$ fm-brief.sh sm --secondmate --no-projects --skill grilling
+scaffolded: /tmp/fm-lab.DU0DuK/data/sm/brief.md (secondmate charter; replace {TASK})
+/grilling
+claude     rc=0 first-line: /implement
+codex      rc=0 first-line: $implement
+pi         rc=0 first-line: /skill:implement
+pi-signed  rc=0 first-line: /skill:implement
+polytoken  rc=0 first-line: @skill:implement
+grok       rc=0 first-line: /implement
+cursor     rc=0 first-line: /implement
+kimi       rc=1 first-line: error: no verified skill invocation for harness kimi; see harness-adapters
+opencode   rc=1 first-line: error: no verified skill invocation for harness opencode; see harness-adapters
+omp        rc=1 first-line: error: no verified skill invocation for harness omp; see harness-adapters
+agy        rc=1 first-line: error: no verified skill invocation for harness agy; see harness-adapters
+kiro       rc=1 first-line: error: no verified skill invocation for harness kiro; see harness-adapters
+rovo       rc=1 first-line: error: no verified skill invocation for harness rovo; see harness-adapters
+--- claude record carrier (first 3 lines)
+/implement
+: Firstmate operational input waiting: read '/tmp/fm-lab.DU0DuK/state/operational-inbox/1794853298-d77f865d5f960f66.msg' and handle its contents as Firstmate operational input.--- knowledge-only scout brief (no opener) keeps old carrier, first line:
+⁣FIRSTMATE_OP: v1 launch-brief: You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; d

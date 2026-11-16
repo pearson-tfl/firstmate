@@ -1,0 +1,17 @@
+ ▐▛███▛█   Claude Code v2.1.325
+▝▜██████▀  Opus 5.5 with high effort · Claude Ultra
+ ▝▝   ▝▝   ~/.treehouse/demo-f05b6a/1/demo · /rc
+❯ /fm-spawn-proof : Firstmate operational input waiting: read
+'/tmp/fm-lab.DU0DuK/state/operational-inbox/1794853333-7e39f162f9433ff7.msg'
+and handle its contents as Firstmate operational input.
+● SPAWN_E2D540600F874EBDB6EC78FFD5DEC6AD
+✻ Brewed for 6s · done 6:22 PM
+● full  $0.19  last $0.19  7s                 Review  Audit  Board  Details [-]
+──────────────────────────────────────────────────────────────────────── proof ─
+❯ 
+────────────────────────────────────────────────────────────────────────────────
+  ⚠ Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker · r…
+  Opus 5.5 30.0k · 5h – · 7d 75% ↺4d4h · high · cache 59m
+  demo · v2.1.325 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+skill token: SPAWN_E2D540600F874EBDB6EC78FFD5DEC6AD

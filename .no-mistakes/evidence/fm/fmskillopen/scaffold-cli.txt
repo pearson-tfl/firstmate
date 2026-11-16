@@ -1,0 +1,44 @@
+$ fm-brief.sh shipx repo --mode direct-PR   (ship, no --skill)
+scaffolded: /tmp/fm-lab.DU0DuK/data/shipx/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+--- first 3 lines of data/shipx/brief.md
+/implement
+
+You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
+--- PR-step lines naming pr skill
+97:Before writing or editing a PR title or body, explicitly invoke the pr skill using the harness-adapters form; if native invocation is unavailable, read its complete SKILL.md, or report blocked if unavailable.
+
+$ fm-brief.sh nmship repo --mode no-mistakes
+exit=0
+/implement
+1
+
+$ fm-brief.sh lo repo --mode local-only
+exit=0
+/implement
+pr-skill lines: 0
+
+$ fm-brief.sh grill repo --scout --skill grilling
+exit=0
+/grilling
+
+
+$ fm-brief.sh plan repo --scout --skill to-spec
+exit=0
+/to-spec
+
+$ fm-brief.sh know repo --scout   (knowledge-only scout, no skill)
+exit=0
+You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
+
+$ fm-brief.sh sm --secondmate --skill grilling
+error: --secondmate requires at least one project, or --no-projects for a project-less home
+exit=0
+
+ADVERSARIAL: $ fm-brief.sh bad repo --skill '../x'
+error: --skill requires a bare skill name
+exit=1
+ls: cannot access '/tmp/fm-lab.DU0DuK/data/bad': No such file or directory
+ADVERSARIAL: $ fm-brief.sh empty repo --scout --skill ''
+error: --skill requires a nonempty bare skill name
+exit=1
