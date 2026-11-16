@@ -1,0 +1,2 @@
+primary subagent models: claude-haiku-5-5 
+second subagent models: claude-haiku-5-5 

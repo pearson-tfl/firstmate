@@ -1,0 +1,6 @@
+home=primary input=[.] exit=0 output=
+home=primary input=[.tool_input.model="opus"|.tool_input.subagent_type="general-purpose"] exit=2 output={"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"},"systemMessage":"[subagent-dispatch] the firstmate primary dispatches through t
+home=second input=[.] exit=0 output=
+home=second input=[.tool_input.model="opus"|.tool_input.subagent_type="general-purpose"] exit=2 output={"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"},"systemMessage":"[subagent-dispatch] the firstmate primary dispatches through t
+home=worker input=[.] exit=0 output=
+home=worker input=[.tool_input.model="opus"|.tool_input.subagent_type="general-purpose"] exit=0 output=

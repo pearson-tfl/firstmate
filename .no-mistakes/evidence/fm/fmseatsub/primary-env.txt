@@ -1,0 +1,2 @@
+FM_ALLOW_SUBAGENT=[unset] FM_HOME=/tmp/fm-lab.TuaEl6 PWD=/tmp/fm-lab.TuaEl6/primary
+exit=0
