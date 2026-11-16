@@ -404,10 +404,7 @@ test_seat_subagent_read_only_haiku_is_allowed() {
   for root in "$PRIMARY" "$TMP_ROOT/second"; do
     for payload in \
       "$(jq -c . "$fixture")" \
-      "$(jq -c '.tool_name = "Task"' "$fixture")" \
-      "$(jq -c '.tool_input.model = "claude-haiku-5-5"' "$fixture")" \
       "$(jq -c '.tool_input.subagent_type = "retrieval"' "$fixture")" \
-      "$(jq -c '.tool_input.subagent_type = "retrieval" | .tool_input.model = "claude-haiku-5-5"' "$fixture")" \
       "$(jq -c '.tool_input |= del(.description, .run_in_background) + {effort:"low",name:"reader"}' "$fixture")"; do
       rc=0
       FM_ALLOW_SUBAGENT='' run_payload_in "$root" "$payload" || rc=$?
@@ -426,6 +423,9 @@ test_seat_subagent_other_shapes_stay_denied() {
       '.tool_input.model = "opus"' \
       '.tool_input.model = "fable"' \
       '.tool_input.model = "Haiku"' \
+      '.tool_input.model = "claude-haiku-5-5"' \
+      '.tool_name = "Task"' \
+      '.tool_input.subagent_type = "retrieval" | .tool_input.model = "claude-haiku-5-5"' \
       '.tool_input.model = null' \
       '.tool_input |= del(.model)' \
       '.tool_input.subagent_type = "general-purpose"' \

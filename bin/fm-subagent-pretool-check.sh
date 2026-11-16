@@ -207,23 +207,23 @@ if [ "$NORMALIZED" = sendmessage ] && [ "$TOOL_SET" -eq 0 ] && [ "$AGY_MODE" -eq
   ' >/dev/null 2>&1 && exit 0
 fi
 
-# Seat-subagent carve-out: a Claude Agent (or legacy Task) call is allowed only
+# Seat-subagent carve-out: a Claude Agent call is allowed only
 # when the stdin tool_input pins subagent_type "Explore", Claude's built-in
 # read-only type that carries no Edit, Write, NotebookEdit, or Agent tool, or
 # "retrieval", the estate's reader whose definition grants only Read, Grep,
-# Glob, and Bash, and pins model "haiku" or "claude-haiku-5-5"; prompt and
+# Glob, and Bash, and pins model "haiku"; prompt and
 # description are strings, and no key outside description, prompt, subagent_type, model, effort, name, and
 # run_in_background is present, so isolation (worktree or remote) and team keys
 # deny. An unpinned call inherits the seat's model and stays denied, as does the
 # --tool CLI form, which carries no input to inspect. Such a subagent creates no
 # runnable work outside the session and dies with it; docs/subagent-guard.md owns
 # the rationale and residuals.
-if [ "$TOOL_SET" -eq 0 ] && [ "$AGY_MODE" -eq 0 ] && { [ "$NORMALIZED" = agent ] || [ "$NORMALIZED" = task ]; }; then
+if [ "$TOOL_SET" -eq 0 ] && [ "$AGY_MODE" -eq 0 ] && [ "$NORMALIZED" = agent ]; then
   printf '%s' "$PAYLOAD" | jq -e '
     .tool_input as $i
     | ($i | type) == "object"
       and ($i.subagent_type == "Explore" or $i.subagent_type == "retrieval")
-      and ($i.model == "haiku" or $i.model == "claude-haiku-5-5")
+      and $i.model == "haiku"
       and ($i.prompt | type) == "string"
       and (($i | has("description") | not) or ($i.description | type) == "string")
       and (($i | has("effort") | not) or ($i.effort | type) == "string")

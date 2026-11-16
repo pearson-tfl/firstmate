@@ -68,7 +68,7 @@ Five exclusions keep the shape test from producing false positives.
   Protocol objects such as shutdown or plan-approval responses and the `--tool` CLI form, which carries no input to inspect, stay denied.
   Messaging an existing peer creates no agent or workspace the fleet would lose.
   The carve-out does not judge message content, which has no tool-shape signal; a message that asks the peer to do project work is the same judgment boundary [Purpose and boundary](#purpose-and-boundary) leaves out of scope.
-- The seat-subagent carve-out: a Claude `Agent` (or legacy `Task`) call that is read-only and pinned to Haiku is allowed in every primary and secondmate home with no launch flag or environment variable.
+- The seat-subagent carve-out: a Claude `Agent` call that is read-only and pinned to Haiku is allowed in every primary and secondmate home with no launch flag or environment variable.
   [Seat-subagent carve-out](#seat-subagent-carve-out) owns what it allows, how it is recognised, and why it is safe.
 
 Both name-exclusion lists match the whole normalized name, never a substring, so neither can widen by accident: `TaskCreateAgent`, `RemoteTaskCreate`, and `ListAgentsAndSpawn` stay denied.
@@ -89,10 +89,11 @@ The guard recognises the call from its stdin `tool_input` alone, and the script'
   `retrieval` is the estate's seat reader, whose agent definition grants only `Read`, `Grep`, `Glob`, and `Bash`.
   Like `Explore`, its read-only tool set comes from its agent definition, not from the call, so that definition must stay read-only for the allowance to hold.
   Any other type, including `general-purpose`, `Plan`, another custom agent, or an omitted type that defaults to `general-purpose`, is denied.
-- `model` is exactly `haiku` or `claude-haiku-5-5`.
+- `model` is exactly `haiku`, the alias Claude Code's `Agent` tool sends.
   An omitted model inherits the seat's own model and is denied, as is any other model.
 - `prompt` is a string, and no key outside `description`, `prompt`, `subagent_type`, `model`, `effort`, `name`, and `run_in_background` is present.
   `isolation` (worktree or remote), team keys, and any future key therefore deny until reviewed.
+- The tool name is exactly `Agent`; a legacy `Task` call is denied.
 - The `--tool` CLI form carries no input to inspect, so it stays denied, and the carve-out does not apply to other harnesses' delegation tools.
   The deny text names the qualifying shape only for a Claude stdin payload, the one form that can satisfy it.
 
@@ -166,8 +167,8 @@ That is not what this machine shows.
 A five-way A/B with a control, each run in its own directory to rule out settings caching, found that `Task` and `Agent` each independently remove the tool, and that a nonsense name leaves it present.
 The full evidence is in the validation record below.
 
-Pinning both names in the recommended local deny list is correct regardless of which build is running.
-It costs one line and removes the failure mode where a rename or a rollback silently reopens the surface.
+The recommended local deny list nevertheless leaves both names out, because denying either removes `Agent` from the schema and with it the [seat-subagent carve-out](#seat-subagent-carve-out).
+A home that opts out of seat subagents should deny both, so a rename or a rollback cannot silently reopen the surface.
 
 ## Scope
 
@@ -223,7 +224,7 @@ Applicability turns on one question: does the harness expose built-in delegation
 
 | Harness | Delegation surface | Status |
 | --- | --- | --- |
-| Claude | 16 known tools, listed above | Scoped guard wired and live-verified; untracked local deny list verified and recommended. |
+| Claude | 16 known tools: `Agent`, `Task`, and the 14 in the local deny list above | Scoped guard wired and live-verified; untracked local deny list verified and recommended. |
 | Antigravity | present (`invoke_subagent`, `define_subagent`) | Scoped guard wired and live-verified via `.agents/hooks.json` PreToolUse hook (`bin/fm-subagent-pretool-check.sh --agy`). |
 | Codex | none | Not applicable, verified empirically below. Codex 0.144.1 exposes no subagent, sub-task, or delegated-agent tool, so there is nothing to remove or intercept. `.codex/hooks.json` is unchanged. |
 | Grok | present, `send_subagent_message` confirmed in shipped artifact | Not wired pending live verification. See below. |
