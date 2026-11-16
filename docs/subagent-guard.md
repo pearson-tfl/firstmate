@@ -68,7 +68,7 @@ Five exclusions keep the shape test from producing false positives.
   Protocol objects such as shutdown or plan-approval responses and the `--tool` CLI form, which carries no input to inspect, stay denied.
   Messaging an existing peer creates no agent or workspace the fleet would lose.
   The carve-out does not judge message content, which has no tool-shape signal; a message that asks the peer to do project work is the same judgment boundary [Purpose and boundary](#purpose-and-boundary) leaves out of scope.
-- The seat-subagent carve-out: a Claude `Agent` call that is read-only and pinned to Haiku is allowed in every primary and secondmate home with no launch flag or environment variable.
+- The seat-subagent carve-out: a Claude `Agent` call that is read-only and pinned to Sonnet, or to Haiku at effort `max`, is allowed in every primary and secondmate home with no launch flag or environment variable.
   [Seat-subagent carve-out](#seat-subagent-carve-out) owns what it allows, how it is recognised, and why it is safe.
 
 Both name-exclusion lists match the whole normalized name, never a substring, so neither can widen by accident: `TaskCreateAgent`, `RemoteTaskCreate`, and `ListAgentsAndSpawn` stay denied.
@@ -79,7 +79,7 @@ That future-name behavior is the reason the tracked matcher must match all tools
 
 ## Seat-subagent carve-out
 
-A firstmate or secondmate seat may use a Claude subagent for reading, finding, quoting, and summarising, on Haiku, without any launch flag.
+A firstmate or secondmate seat may use a Claude subagent for reading, finding, quoting, and summarising, on Sonnet for more technical summary reads or on Haiku at maximum effort, without any launch flag.
 Building, writing, deciding, and every other delegation stay denied and go through the fleet.
 
 The guard recognises the call from its stdin `tool_input` alone, and the script's carve-out comment owns the exact rule:
@@ -89,8 +89,10 @@ The guard recognises the call from its stdin `tool_input` alone, and the script'
   `retrieval` is the estate's seat reader, whose agent definition grants only `Read`, `Grep`, `Glob`, and `Bash`.
   Like `Explore`, its read-only tool set comes from its agent definition, not from the call, so that definition must stay read-only for the allowance to hold.
   Any other type, including `general-purpose`, `Plan`, another custom agent, or an omitted type that defaults to `general-purpose`, is denied.
-- `model` is exactly `haiku`, the alias Claude Code's `Agent` tool sends.
-  An omitted model inherits the seat's own model and is denied, as is any other model.
+- `model` is exactly `sonnet`, or exactly `haiku` with `effort` exactly `max`; these are the aliases and the effort field Claude Code's `Agent` tool sends.
+  A `haiku` call with no `effort` or any other effort value is denied, so every Haiku read runs at maximum effort.
+  A `sonnet` call may carry any string `effort` or none.
+  An omitted model inherits the seat's own model and is denied, as is any other model, including a full model ID such as `claude-sonnet-5-5`.
 - `prompt` is a string, and no key outside `description`, `prompt`, `subagent_type`, `model`, `effort`, `name`, and `run_in_background` is present.
   `isolation` (worktree or remote), team keys, and any future key therefore deny until reviewed.
 - The tool name is exactly `Agent`; a legacy `Task` call is denied.
@@ -103,7 +105,7 @@ It runs inside the seat's own session and dies with it, so a restart loses only 
 
 Two residuals remain.
 `Explore` and `retrieval` both still have `Bash`, so read-only is the agent type's tool set and system prompt, not a sandbox on shell commands; the guard does not judge the prompt's content, which is the same judgment boundary [Purpose and boundary](#purpose-and-boundary) leaves out of scope.
-The `haiku` alias resolves to the current Haiku model, which is Haiku 5.5 on Claude Code 2.1.325; the guard cannot see the resolved version.
+The `haiku` and `sonnet` aliases resolve to the current Haiku and Sonnet models, which are Haiku 5.5 and Sonnet 5.5 on Claude Code 2.1.325; the guard cannot see the resolved version.
 
 The recommended local deny list below therefore leaves out `Agent` and `Task`: denying either removes the tool from the schema and this carve-out with it, which only a home that opts out of seat subagents should do.
 
@@ -414,14 +416,18 @@ env -u FM_ALLOW_SUBAGENT claude -p "$PROMPT" --model haiku --dangerously-skip-pe
 ```
 
 The prompt asked for two `Agent` calls.
-The call with `subagent_type` `Explore` and `model` `haiku` exited 0 and the subagent listed the directory.
+The call with `subagent_type` `Explore` and `model` `haiku` exited 0 and the subagent listed the directory, under the carve-out as it stood before Haiku required `effort` `max`; the same call now needs `effort` `max`.
 The call with `subagent_type` `general-purpose` and `model` `sonnet` exited 2 with the `[subagent-dispatch]` deny, and Claude reported it blocked.
 The captured `Explore` payload is the fixture `tests/fixtures/agent-explore-haiku-claude-2.1.325.json`.
+
+A second Claude Code 2.1.325 run, in a scratch directory whose PreToolUse hook on `Agent` recorded the payload and blocked the call, asked for an `Explore` call with `model` `haiku` and `effort` `max` and one with `model` `sonnet` and `effort` `high`.
+The recorded inputs were `{"description":"list","prompt":"List file names here.","subagent_type":"Explore","model":"haiku","effort":"max"}` and `{"description":"list2","prompt":"List file names here.","subagent_type":"Explore","model":"sonnet","effort":"high"}`, which establishes `tool_input.effort` and the `sonnet` alias as the fields the carve-out reads.
+Replayed through this script with `--claude` in a primary home, both exited 0, the Haiku call with `effort` removed exited 2, and each with `subagent_type` `general-purpose` exited 2.
 
 ## Automated validation
 
 `tests/fm-subagent-pretool-check.test.sh` owns the acceptance matrix and is registered in the `pure-contract-unit` family in `bin/fm-test-run.sh`.
-It covers the tracked Claude settings boundary that forbids a `permissions` key; the match-all Claude hook registration; denial of every work-creating delegation tool by shape; denial of hypothetical future tool names that appear on no list; the observe-or-stop, plan-only, and MCP exclusions; the seat-subagent carve-out replaying a captured Claude Code 2.1.325 `Explore` call pinned to Haiku, and the same call as `retrieval`, in primary and secondmate homes with no escape hatch, while denying other or omitted models, writing and planning agent types, isolation, extra keys, and the input-less form, and staying inert in a worker worktree; the `SendMessage` peer-message carve-out, allowing named and legacy `uds:` recipients with either idle notification value while denying multiline recipients, protocol objects, empty or nonstring messages, extra keys, and input-less shapes; exact-name `ListAgents` discovery and delegation-shaped near misses; the primary, marked secondmate, and inert-worker messaging matrix; the exactness of the plan-only exclusion against six near-miss names a substring or shorter-stem widening would release; the scout-present and scout-absent message variants; the escape hatch including its fail-closed values; inertness in a linked task worktree and in a non-firstmate repo; in-scope enforcement for a marked secondmate home; both stdin transports; the empty-stdout requirement; fail-open transport behavior; and the preserved `Bash` seatbelts and `Stop` guard.
+It covers the tracked Claude settings boundary that forbids a `permissions` key; the match-all Claude hook registration; denial of every work-creating delegation tool by shape; denial of hypothetical future tool names that appear on no list; the observe-or-stop, plan-only, and MCP exclusions; the seat-subagent carve-out replaying a captured Claude Code 2.1.325 `Explore` call pinned to Haiku at effort `max` or to Sonnet, and the same calls as `retrieval`, in primary and secondmate homes with no escape hatch, while denying a Haiku call without effort `max`, other or omitted models, full model IDs, writing and planning agent types, isolation, extra keys, and the input-less form, and staying inert in a worker worktree; the `SendMessage` peer-message carve-out, allowing named and legacy `uds:` recipients with either idle notification value while denying multiline recipients, protocol objects, empty or nonstring messages, extra keys, and input-less shapes; exact-name `ListAgents` discovery and delegation-shaped near misses; the primary, marked secondmate, and inert-worker messaging matrix; the exactness of the plan-only exclusion against six near-miss names a substring or shorter-stem widening would release; the scout-present and scout-absent message variants; the escape hatch including its fail-closed values; inertness in a linked task worktree and in a non-firstmate repo; in-scope enforcement for a marked secondmate home; both stdin transports; the empty-stdout requirement; fail-open transport behavior; and the preserved `Bash` seatbelts and `Stop` guard.
 
 Run:
 

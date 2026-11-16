@@ -396,30 +396,43 @@ run_payload_noclaude() {
   return "$rc"
 }
 
-test_seat_subagent_read_only_haiku_is_allowed() {
+test_seat_subagent_read_only_haiku_max_or_sonnet_is_allowed() {
   # Replay the sanitized Claude Code 2.1.325 capture of a read-only Explore call
-  # pinned to Haiku in a primary and a marked secondmate home, with the escape
-  # hatch explicitly absent.
+  # pinned to Haiku at effort max, or to Sonnet, in a primary and a marked
+  # secondmate home, with the escape hatch explicitly absent.
   local fixture="$ROOT/tests/fixtures/agent-explore-haiku-claude-2.1.325.json" root payload rc
   for root in "$PRIMARY" "$TMP_ROOT/second"; do
     for payload in \
-      "$(jq -c . "$fixture")" \
-      "$(jq -c '.tool_input.subagent_type = "retrieval"' "$fixture")" \
-      "$(jq -c '.tool_input |= del(.description, .run_in_background) + {effort:"low",name:"reader"}' "$fixture")"; do
+      "$(jq -c '.tool_input.effort = "max"' "$fixture")" \
+      "$(jq -c '.tool_input.subagent_type = "retrieval" | .tool_input.effort = "max"' "$fixture")" \
+      "$(jq -c '.tool_input |= del(.description, .run_in_background) + {effort:"max",name:"reader"}' "$fixture")" \
+      "$(jq -c '.tool_input.model = "sonnet"' "$fixture")" \
+      "$(jq -c '.tool_input.subagent_type = "retrieval" | .tool_input.model = "sonnet" | .tool_input.effort = "high"' "$fixture")"; do
       rc=0
       FM_ALLOW_SUBAGENT='' run_payload_in "$root" "$payload" || rc=$?
-      [ "$rc" -eq 0 ] || fail "read-only Haiku seat subagent must allow in $root, got exit $rc: $(cat "$ERR")"
+      [ "$rc" -eq 0 ] || fail "read-only Haiku-max or Sonnet seat subagent must allow in $root, got exit $rc: $(cat "$ERR")"
       [ ! -s "$OUT" ] && [ ! -s "$ERR" ] || fail "seat subagent allow wrote output in $root"
     done
   done
-  pass "a read-only Explore or retrieval subagent pinned to Haiku passes in primary and secondmate homes with no escape hatch"
+  pass "a read-only Explore or retrieval subagent pinned to Haiku at effort max, or to Sonnet, passes in primary and secondmate homes with no escape hatch"
 }
 
 test_seat_subagent_other_shapes_stay_denied() {
   local fixture="$ROOT/tests/fixtures/agent-explore-haiku-claude-2.1.325.json" root mutation payload rc
   for root in "$PRIMARY" "$TMP_ROOT/second"; do
     for mutation in \
-      '.tool_input.model = "sonnet"' \
+      'del(.tool_input.effort)' \
+      '.tool_input.effort = "high"' \
+      '.tool_input.effort = "xhigh"' \
+      '.tool_input.effort = "higher"' \
+      '.tool_input.effort = "Max"' \
+      '.tool_input.subagent_type = "retrieval" | del(.tool_input.effort)' \
+      '.tool_input.model = "Sonnet"' \
+      '.tool_input.model = "claude-sonnet-5-5"' \
+      '.tool_input.model = "sonnet" | .tool_input.subagent_type = "general-purpose"' \
+      '.tool_input.model = "sonnet" | .tool_input.subagent_type = "Plan"' \
+      '.tool_input.model = "sonnet" | .tool_input |= del(.subagent_type)' \
+      '.tool_input.model = "sonnet" | .tool_input.isolation = "worktree"' \
       '.tool_input.model = "opus"' \
       '.tool_input.model = "fable"' \
       '.tool_input.model = "Haiku"' \
@@ -432,7 +445,6 @@ test_seat_subagent_other_shapes_stay_denied() {
       '.tool_input.subagent_type = "Plan"' \
       '.tool_input.subagent_type = "explore"' \
       '.tool_input.subagent_type = "Retrieval"' \
-      '.tool_input.subagent_type = "retrieval" | .tool_input.model = "sonnet"' \
       '.tool_input.subagent_type = "retrieval" | .tool_input |= del(.model)' \
       '.tool_input |= del(.subagent_type)' \
       '.tool_input.isolation = "worktree"' \
@@ -446,11 +458,12 @@ test_seat_subagent_other_shapes_stay_denied() {
       '.tool_input = null' \
       '.tool_name = "Workflow"' \
       '.tool_name = "CronCreate"'; do
-      payload=$(jq -c "$mutation" "$fixture") || fail "could not mutate captured payload: $mutation"
+      # Start from a qualifying Haiku-max call so each mutation is the only defect.
+      payload=$(jq -c ".tool_input.effort = \"max\" | $mutation" "$fixture") || fail "could not mutate captured payload: $mutation"
       rc=0
       FM_ALLOW_SUBAGENT='' run_payload_in "$root" "$payload" || rc=$?
       [ "$rc" -eq 2 ] || fail "non-qualifying delegation must deny in $root, got exit $rc for $mutation"
-      jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.systemMessage | contains("subagent_type \"Explore\" or \"retrieval\" and model \"haiku\""))' "$ERR" >/dev/null 2>&1 \
+      jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.systemMessage | contains("subagent_type \"Explore\" or \"retrieval\" and model \"sonnet\", or model \"haiku\" with effort \"max\""))' "$ERR" >/dev/null 2>&1 \
         || fail "deny for $mutation must name the qualifying shape: $(cat "$ERR")"
     done
   done
@@ -463,7 +476,7 @@ test_seat_subagent_other_shapes_stay_denied() {
   [ "$rc" -eq 2 ] || fail "non-Claude stdin Agent call must deny, got exit $rc"
   jq -e '.reason | contains("subagent_type") | not' "$OUT" >/dev/null 2>&1 \
     || fail "non-Claude deny must not advertise the Claude seat-subagent shape: $(cat "$OUT")"
-  pass "other models, unpinned calls, writing or planning agent types, isolation, extra keys, and input-less forms stay denied"
+  pass "Haiku without effort max, other models, unpinned calls, writing or planning agent types, isolation, extra keys, and input-less forms stay denied"
 }
 
 test_seat_subagent_worker_worktree_stays_inert() {
@@ -521,7 +534,7 @@ test_send_message_captured_live_shape
 test_send_message_peer_message_is_allowed
 test_send_message_other_shapes_stay_denied
 test_peer_messaging_scope_is_unchanged
-test_seat_subagent_read_only_haiku_is_allowed
+test_seat_subagent_read_only_haiku_max_or_sonnet_is_allowed
 test_seat_subagent_other_shapes_stay_denied
 test_seat_subagent_worker_worktree_stays_inert
 test_malformed_transport_fails_open
