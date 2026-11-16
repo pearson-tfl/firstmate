@@ -90,6 +90,7 @@ A home can name the Notion card list where the captain sees the calls waiting on
 With the file present, the session-start digest and its re-emit leave out a captain-held backlog item only when its title or hold reason cites a Notion card that a live read confirms is open on that list, or on the Master board when the file also names it.
 An item with no such card, or a board that cannot be read, keeps every held item printed in full, and one line in the held group says which happened.
 Only tasks-axi backlogs are checked, and in-flight rows are never left out.
+The file also makes main give the captain card links or plain words instead of GitHub links in chat; `AGENTS.md` section 9 owns that rule.
 The file is local, gitignored, and not inherited by secondmate homes.
 [`fm-captain-board.sh --help`](../bin/fm-captain-board.sh) owns the file format and the proof, and [`bin/fm-session-start.sh`](../bin/fm-session-start.sh)'s header owns where the digest applies it.
 
