@@ -156,8 +156,8 @@
 # --skill <name> selects the workflow step, default implement for ships.
 # Scout and secondmate workflow launches must pass it explicitly; charters and
 # knowledge-only scouts without a workflow step may omit it.
-# The scaffold starts with /<name>; fm-spawn renders the selected harness form
-# through bin/fm-skill-opener.sh and refuses a ship missing its opener.
+# The scaffold starts with /<name>; bin/fm-spawn.sh's header owns how that
+# opener is rendered in the selected harness form or refused.
 # Refuses to overwrite an existing brief.
 set -eu
 
