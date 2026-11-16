@@ -3,8 +3,8 @@
 #
 # Reproduces the missed-report experience: a marked request is delivered, the
 # target turn completes, and no correlated parent report arrives. The parent
-# must notice without scraping conversation, send exactly one recovery repost,
-# and escalate once if that recovery turn is also missed.
+# must notice without scraping conversation, re-deliver the original request
+# once, and escalate once with a check wake if that recovery turn is also missed.
 #
 # Coverage:
 #   1. Normal correlated reply resolves once
@@ -41,6 +41,10 @@
 #  20. The helper carries the open request's corr= by itself, refuses a
 #      corr-less reply it cannot correlate, names overlapping requests rather
 #      than guessing, and refuses a stale reply to an already-answered request
+#  21. The recovery re-delivers the original marked request byte for byte, so
+#      the remote durable enqueue lands on the original inbox record; a record
+#      without its kept request text falls back to a summary repost
+#  22. An escalation queues exactly one check wake for main, even when retried
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -204,8 +208,8 @@ test_completed_turn_no_report_triggers_one_recovery() {
     *) fail "recovery message must carry the original corr"$'\n'"$(cat "$hook_log")" ;;
   esac
   case "$(cat "$hook_log")" in
-    *REPOST\ REQUIRED*) : ;;
-    *) fail "recovery message must ask for a repost"$'\n'"$(cat "$hook_log")" ;;
+    *"status of phase 7"*) : ;;
+    *) fail "recovery message must re-deliver the original request"$'\n'"$(cat "$hook_log")" ;;
   esac
   pass "completed turn with no report triggers exactly one recovery"
 }
@@ -617,7 +621,15 @@ test_second_missed_turn_escalates_once_and_stays_durable() {
     "blocked [key=pending-reply-$corr]"*pending-reply-missed:*pending-reply-id=$corr*) : ;;
     *) fail "parent status should carry one blocked missed-report line"$'\n'"$status_line" ;;
   esac
-  [ ! -s "$state/.wake-queue" ] || fail "direct escalation must not enqueue a duplicate check wake"
+  [ "$(cut -f3,4 "$state/.wake-queue")" = "check	pending-reply-$corr" ] \
+    || fail "escalation must queue exactly one check wake"$'\n'"$(cat "$state/.wake-queue")"
+  case "$(cut -f5 "$state/.wake-queue")" in
+    "check: secondmate hibit missed its reply after one automatic re-delivery: "*"pending-reply-id=$corr"*) : ;;
+    *) fail "the check wake must name the mate, the miss and the request"$'\n'"$(cat "$state/.wake-queue")" ;;
+  esac
+  # The status log did not exist before the escalation; it still must not signal.
+  seen_gate "$state" "$state/hibit.status" \
+    || fail "the escalation line must not also raise a status signal wake"
   # Second escalate must be a no-op (phase no longer recovery_sent).
   if fm_pending_reply_maybe_escalate "$state" "$corr" 2>/dev/null; then
     # Function returns 1 when phase is not recovery_sent - good.
@@ -665,11 +677,12 @@ test_escalation_wakes_and_its_close_stays_quiet() {
   fm_pending_reply_mark_turn_completed "$state" "$corr" recovery
   : > "$state/hibit.status"
   prime_seen "$state" "$state/hibit.status" || fail "could not prime the announced baseline"
-  # A NEW blocker must wake: the escalation append leaves unannounced bytes.
+  # A NEW blocker wakes main through its one check row, never a second signal.
   fm_pending_reply_maybe_escalate "$state" "$corr" || fail "escalation should fire"
-  if seen_gate "$state" "$state/hibit.status"; then
-    fail "a new pending-reply escalation was hidden from the watcher's signal gate"
-  fi
+  [ "$(cut -f3,4 "$state/.wake-queue")" = "check	pending-reply-$corr" ] \
+    || fail "a new pending-reply escalation queued no check wake"
+  seen_gate "$state" "$state/hibit.status" \
+    || fail "a new pending-reply escalation also raised a status signal wake"
   prime_seen "$state" "$state/hibit.status" || fail "could not mark the escalation announced"
   # A genuinely new correlated reply must wake too.
   printf 'done [corr=%s]: notarization confirmed\n' "$corr" >> "$state/hibit.status"
@@ -683,7 +696,7 @@ test_escalation_wakes_and_its_close_stays_quiet() {
     || fail "resolution did not close the escalation decision"
   seen_gate "$state" "$state/hibit.status" \
     || fail "the home's own escalation close re-woke its own watcher gate"
-  pass "escalations and replies wake; the home's own escalation close stays quiet"
+  pass "escalations wake once by check row, replies wake; the home's own escalation close stays quiet"
 }
 
 test_escalation_publication_failure_retries() {
@@ -1650,8 +1663,8 @@ test_remote_repost_waits_for_the_reply_channel() {
   lines=$(wc -l < "$hook_log" | tr -d ' ')
   [ "$lines" = 1 ] || fail "expected exactly one repost, got $lines"
   case "$(cat "$hook_log")" in
-    *REPOST\ REQUIRED*) : ;;
-    *) fail "the recovery message must ask for a repost"$'\n'"$(cat "$hook_log")" ;;
+    *"corr=$corr status of the iOS build") : ;;
+    *) fail "the recovery must re-deliver the original request"$'\n'"$(cat "$hook_log")" ;;
   esac
   unset FM_PENDING_REPLY_SEND_HOOK
   pass "a remote repost waits for the reply channel and still fires on a real miss"
@@ -2128,6 +2141,7 @@ test_same_kind_escalation_reopens_after_operator_close() {
     home=$(setup_parent same-kind)
     state="$home/state"
     fm_write_secondmate_meta "$state/mate.meta" "$home/sm" "sess:fm-mate"
+    # shellcheck disable=SC2030 # Scoped to this subshell case on purpose.
     export FM_PENDING_REPLY_NOW=10000
     corr=$(fm_pending_reply_create "$home" "$state" mate "wake after lost transport")
     status="$state/mate.status"
@@ -2212,6 +2226,82 @@ test_summary_keeps_accents_and_caps_by_character() {
   pass "the summary keeps accented letters, drops control characters, and caps by character"
 }
 
+# The recovery is the original marked request byte for byte, so the remote
+# durable enqueue lands on the original inbox record rather than a new one.
+# A record created before the request text was kept still gets a summary repost.
+test_recovery_redelivers_the_original_request() {
+  local home state corr legacy request expected sent inbox first again
+  home=$(setup_parent redeliver)
+  state="$home/state"
+  sent="$TMP_ROOT/redeliver-sent"
+  # shellcheck disable=SC2031 # This test sets its own clock; no subshell value is read.
+  export FM_PENDING_REPLY_NOW=9600
+  # Invoked indirectly through FM_PENDING_REPLY_SEND_HOOK.
+  # shellcheck disable=SC2329
+  redeliver_hook() { printf '%s' "$2" > "$sent"; }
+  export -f redeliver_hook
+  export FM_PENDING_REPLY_SEND_HOOK=redeliver_hook
+  request=$'check the release notes\n  - keep the indent\n\n'
+  corr=$(fm_pending_reply_create "$home" "$state" hibit "$request")
+  fm_pending_reply_embed_corr "$request" "$corr" expected
+  fm_pending_reply_mark_delivered "$state" "$corr"
+  fm_pending_reply_mark_turn_completed "$state" "$corr" request
+  fm_pending_reply_send_recovery "$state" "$corr" || fail "recovery send failed"
+  [ "$(cat "$sent"; printf x)" = "${expected}x" ] \
+    || fail "recovery must re-deliver the original marked request byte for byte"$'\n'"$(cat "$sent")"
+
+  inbox="$TMP_ROOT/redeliver-inbox-$RANDOM"
+  # shellcheck disable=SC2016
+  first=$(bash -c '. "$1"; fm_task_inbox_write_idempotent "$2" hibit "$3"' _ \
+    "$ROOT/bin/fm-task-inbox-lib.sh" "$inbox" "$expected") || fail "original enqueue failed"
+  # shellcheck disable=SC2016
+  again=$(bash -c '. "$1"; body=$(cat "$3"; printf x); fm_task_inbox_write_idempotent "$2" hibit "${body%x}"' _ \
+    "$ROOT/bin/fm-task-inbox-lib.sh" "$inbox" "$sent") || fail "re-delivery enqueue failed"
+  [ "$again" = "$first" ] \
+    || fail "the re-delivery must land on the original inbox record, got $first then $again"
+  printf 'done [corr=%s]: notes checked\n' "$corr" >> "$state/hibit.status"
+  fm_pending_reply_try_resolve "$state" "$corr" || fail "correlated reply should resolve"
+  [ ! -e "$(fm_pending_reply_request_path "$state" "$corr")" ] \
+    || fail "a resolved request must not keep its request text"
+
+  legacy=$(fm_pending_reply_create "$home" "$state" hibit "legacy request")
+  rm -f "$(fm_pending_reply_request_path "$state" "$legacy")"
+  fm_pending_reply_mark_delivered "$state" "$legacy"
+  fm_pending_reply_mark_turn_completed "$state" "$legacy" request
+  fm_pending_reply_send_recovery "$state" "$legacy" || fail "legacy recovery send failed"
+  case "$(cat "$sent")" in
+    *"corr=$legacy REPOST REQUIRED: "*"Original request: legacy request") : ;;
+    *) fail "a record without its request text must fall back to the summary repost"$'\n'"$(cat "$sent")" ;;
+  esac
+  unset FM_PENDING_REPLY_SEND_HOOK
+  pass "the recovery re-delivers the original request onto its original inbox record"
+}
+
+# An escalation retried after its status line and wake row were written (a
+# later record write failed) queues no second check wake.
+test_escalation_retry_queues_one_check_wake() {
+  local home state corr rows
+  home=$(setup_parent escalation-one-wake)
+  state="$home/state"
+  export FM_PENDING_REPLY_SEND_HOOK=true
+  export FM_PENDING_REPLY_NOW=9700
+  corr=$(fm_pending_reply_create "$home" "$state" hibit "one wake only")
+  fm_pending_reply_mark_delivered "$state" "$corr"
+  fm_pending_reply_mark_turn_completed "$state" "$corr" request
+  fm_pending_reply_send_recovery "$state" "$corr" || fail "recovery send failed"
+  fm_pending_reply_mark_turn_completed "$state" "$corr" recovery
+  fm_pending_reply_maybe_escalate "$state" "$corr" || fail "escalation should fire"
+  fm_pending_reply_set "$(fm_pending_reply_path "$state" "$corr")" phase recovery_sent
+  fm_pending_reply_set "$(fm_pending_reply_path "$state" "$corr")" escalated_epoch ''
+  fm_pending_reply_maybe_escalate "$state" "$corr" || fail "escalation retry should succeed"
+  rows=$(grep -c "	check	pending-reply-$corr	" "$state/.wake-queue")
+  [ "$rows" = 1 ] || fail "a retried escalation must keep one check wake, got $rows"
+  [ "$(grep -Fc "blocked [key=pending-reply-$corr]" "$state/hibit.status")" = 1 ] \
+    || fail "a retried escalation must keep one blocked line"
+  unset FM_PENDING_REPLY_SEND_HOOK
+  pass "a retried escalation queues one check wake"
+}
+
 # --- run --------------------------------------------------------------------
 
 test_normal_correlated_reply_resolves_once
@@ -2264,5 +2354,7 @@ test_local_parent_replies_is_wrong_home_evidence
 test_escalated_undelivered_correlation_stays_retryable
 test_same_kind_escalation_reopens_after_operator_close
 test_summary_keeps_accents_and_caps_by_character
+test_recovery_redelivers_the_original_request
+test_escalation_retry_queues_one_check_wake
 
 printf 'ok - all pending-reply tests passed\n'

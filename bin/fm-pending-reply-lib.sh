@@ -12,21 +12,27 @@
 # Safety property (captain direction 2026-07-22): a secondmate agent may ignore
 # the marker and answer only in its visible conversation. The parent must notice
 # the missing correlated report without scraping that conversation, send exactly
-# one automatic recovery request asking for a repost through the parent channel
-# (held back, when config/wait-no-turns is present, while the mate waits on its
-# own open decision or blocker), and
-# escalate once if the recovery turn also completes without a correlated
-# report. Never loop, never repeatedly inject, never silently expire unresolved
-# records, and never treat wrong-home or structured-home heuristics as
-# acknowledgement. A same-basename restatement-copy of the mate home's
-# state/<task_id>.status onto the parent channel is a repair of the
-# FM_HOME-relative mixup, not acknowledgement of an arbitrary mate-home file.
+# one automatic recovery that re-delivers the original marked request byte for
+# byte under its correlation (held back, when config/wait-no-turns is present,
+# while the mate waits on its own open decision or blocker), and escalate once
+# if the recovery turn also completes without a correlated report; the
+# escalation queues one check wake for main, so acting on it never depends on
+# main noticing a status line. Never loop, never repeatedly inject, never
+# silently expire unresolved records, and never treat wrong-home or
+# structured-home heuristics as acknowledgement. A same-basename
+# restatement-copy of the mate home's state/<task_id>.status onto the parent
+# channel is a repair of the FM_HOME-relative mixup, not acknowledgement of an
+# arbitrary mate-home file.
 #
 # Record location (parent FM_HOME):
 #   state/pending-replies/<corr_id>
 # One more durable input, owned by bin/fm-procevent-remote-reply.sh and read
 # here: state/remote-replies/<task_id>.caught-up, the remote reply mirror's
 # watermark (see the remote reply-channel freshness section below).
+# Beside each record, state/pending-replies/.request-<corr_id> (mode 600) keeps
+# the original request text the recovery re-delivers, removed once the record
+# resolves; a record without it (created before it existed, or unreadable)
+# falls back to a summary repost.
 # Each record is a key=value file owned by this library. Schema:
 #   schema=fm-pending-reply.v1
 #   corr_id=                privacy-safe correlation token
@@ -75,7 +81,10 @@
 # Escalation lifecycle: an escalation is not just a message, it OPENS a durable
 # keyed decision in the parent status log, and bin/fm-classify-lib.sh's fold is
 # the one owner of what closes it. So this library owns both ends of that
-# decision: fm_pending_reply_maybe_escalate opens it under a per-request key, and
+# decision: fm_pending_reply_maybe_escalate opens it under a per-request key and
+# queues one check wake under that same key (bin/fm-wake-lib.sh), deduplicated
+# against the queued check keys so a retry adds none; the opening line is a
+# self-announced append, so that check wake is main's only wake for it, and
 # fm_pending_reply_close_escalation closes it once the record resolves. Resolving
 # the record alone would leave the decision open forever, re-surfacing a settled
 # request in every later OPEN DECISIONS fold.
@@ -329,7 +338,7 @@ fm_pending_reply_embed_corr() {  # <message> <corr_id> <result-var>
 # Does not deliver anything. Fails if parent paths cannot be prepared.
 fm_pending_reply_create() {  # <parent-home> <state-dir> <task_id> <request-text>
   local parent_home=$1 state=$2 task_id=$3 request_text=$4
-  local dir rec corr now summary status_path tmp
+  local dir rec corr now summary status_path tmp req_tmp
   [ -n "$parent_home" ] && [ -n "$state" ] && [ -n "$task_id" ] || return 2
   dir=$(fm_pending_reply_dir "$state")
   mkdir -p "$dir" || return 1
@@ -386,7 +395,17 @@ wrong_home_scan_signature=
 grace_secs=$(fm_pending_reply_grace_secs)
 EOF
   chmod 600 "$tmp" 2>/dev/null || true
-  mv -f "$tmp" "$rec" || return 1
+  # The original request text, kept so the recovery re-delivers it byte for byte.
+  req_tmp="$dir/.request-${corr}.tmp.$$"
+  if ! ( umask 077 && printf '%s' "$request_text" > "$req_tmp" ) \
+    || ! mv -f "$req_tmp" "$(fm_pending_reply_request_path "$state" "$corr")"; then
+    rm -f "$tmp" "$req_tmp"
+    return 1
+  fi
+  if ! mv -f "$tmp" "$rec"; then
+    rm -f "$tmp" "$(fm_pending_reply_request_path "$state" "$corr")"
+    return 1
+  fi
   printf '%s' "$corr"
 }
 
@@ -409,6 +428,10 @@ fm_pending_reply_mark_delivered() {  # <state-dir> <corr_id> [confirmed-epoch]
     fm_pending_reply_set "$rec" phase awaiting_report || return 1
   fi
   return 0
+}
+
+fm_pending_reply_request_path() {  # <state-dir> <corr_id>
+  printf '%s/.request-%s' "$(fm_pending_reply_dir "$1")" "$2"
 }
 
 fm_pending_reply_delivery_confirmation_path() {  # <state-dir> <corr_id>
@@ -592,7 +615,7 @@ fm_pending_reply_discard_undelivered() {  # <state-dir> <corr_id>
   delivered=$(fm_pending_reply_get "$rec" delivered_epoch)
   [ -z "$delivered" ] || return 1
   marker=$(fm_pending_reply_delivery_confirmation_path "$state" "$corr")
-  rm -f "$marker" 2>/dev/null || true
+  rm -f "$marker" "$(fm_pending_reply_request_path "$state" "$corr")" 2>/dev/null || true
   rm -f "$rec"
 }
 
@@ -729,6 +752,8 @@ _fm_pending_reply_try_resolve_locked() {  # <state-dir> <corr_id> [status-file-o
     fm_pending_reply_mark_delivered "$state" "$corr" "$now" || return 1
     rm -f "$marker" 2>/dev/null || true
   fi
+  # The kept request text has no reader once the request is answered.
+  rm -f "$(fm_pending_reply_request_path "$state" "$corr")" 2>/dev/null || true
   fm_pending_reply_set "$rec" resolved_epoch "$now" || return 1
   fm_pending_reply_set "$rec" resolved_via "$via" || return 1
   # The record is resolved either way; a failed close stays retryable from the
@@ -888,7 +913,7 @@ fm_pending_reply_mark_turn_completed() {  # <state-dir> <corr_id> [which: reques
 # through the asynchronous mirror in bin/fm-procevent-remote-reply.sh, so the
 # same absence proves nothing until that mirror has actually been read past the
 # turn that should have produced the report. Without this distinction the guard
-# nags a REPOST REQUIRED for a reply the mate did write and the parent simply
+# re-delivers a request whose reply the mate did write and the parent simply
 # had not received yet - the common case, because the mirror's poll window is
 # comparable to the recovery grace.
 #
@@ -948,15 +973,25 @@ fm_pending_reply_missing_report_is_evidence() {  # <state-dir> <task_id> <since-
   [ "$caught" -ge "$since" ]
 }
 
-# Build the one automatic recovery message for a pending record.
-fm_pending_reply_recovery_message() {  # <record-path>
-  local rec=$1 corr summary token msg
-  corr=$(fm_pending_reply_get "$rec" corr_id)
-  summary=$(fm_pending_reply_get "$rec" request_summary)
-  token=$(fm_pending_reply_corr_token "$corr")
-  msg="REPOST REQUIRED: previous marked request had no correlated parent report. Reply on the parent status channel including ${token}. Original request: ${summary}"
-  fm_pending_reply_embed_corr "$msg" "$corr" msg
-  printf '%s' "$msg"
+# Build the one automatic recovery message for a pending record: the original
+# request byte for byte under its corr, so a remote durable enqueue deduplicates
+# onto the original record and re-rings it while unhandled. Without readable
+# kept request text the message is a summary repost. Assigned to
+# <result-var>, never printed, so trailing newlines survive.
+fm_pending_reply_recovery_message() {  # <state-dir> <corr_id> <result-var>
+  local state=$1 corr=$2 result_var=$3 rec request summary token text
+  rec=$(fm_pending_reply_path "$state" "$corr")
+  request=$(fm_pending_reply_request_path "$state" "$corr")
+  text=
+  if [ -f "$request" ]; then
+    IFS= read -r -d '' text < "$request" || true
+  fi
+  if [ -z "$text" ]; then
+    summary=$(fm_pending_reply_get "$rec" request_summary)
+    token=$(fm_pending_reply_corr_token "$corr")
+    text="REPOST REQUIRED: previous marked request had no correlated parent report. Reply on the parent status channel including ${token}. Original request: ${summary}"
+  fi
+  fm_pending_reply_embed_corr "$text" "$corr" "$result_var"
 }
 
 # Deliver the recovery message once. Caller must hold phase awaiting_report with
@@ -999,7 +1034,7 @@ fm_pending_reply_send_recovery() {  # <state-dir> <corr_id>
   fi
   status_file=$(fm_pending_reply_get "$rec" parent_status)
   parent_home=$(fm_pending_reply_get "$rec" parent_home)
-  msg=$(fm_pending_reply_recovery_message "$rec")
+  fm_pending_reply_recovery_message "$state" "$corr" msg || return 1
   sender_pid=${BASHPID:-$$}
   sender_identity=$(fm_pending_reply_pid_identity "$sender_pid") || return 1
   # One fresh, uncached read immediately before firing, under the same
@@ -1240,7 +1275,7 @@ _fm_pending_reply_close_escalation_locked() {  # <state-dir> <corr_id>
       # or tick that already consumed the reply, so it uses the guarded
       # self-announced append (bin/fm-wake-lib.sh, sourced by this function's
       # wrappers) and does not wake the home that wrote it; the escalation
-      # OPEN above stays a plain append because a new blocker must wake.
+      # OPEN is self-announced too, announced by its own queued check wake.
       _task=$(fm_pending_reply_get "$rec" task_id)
       _via=$(fm_pending_reply_get "$rec" resolved_via)
       close_line="resolved [key=${key}]: $(fm_pending_reply_resolved_note "$_task" "$corr" "$_via")"
@@ -1284,7 +1319,7 @@ fm_pending_reply_maybe_escalate() {  # <state-dir> <corr_id>
 _fm_pending_reply_maybe_escalate_locked() {  # <state-dir> <corr_id>
   local state=$1 corr=$2
   local rec phase completed now payload parent_status line kind first display
-  local delivered task_id meta sm_home remote_host grace age key new_episode
+  local delivered task_id meta sm_home remote_host grace age key new_episode lead
   rec=$(fm_pending_reply_path "$state" "$corr")
   [ -f "$rec" ] || return 1
   phase=$(fm_pending_reply_get "$rec" phase)
@@ -1357,8 +1392,29 @@ _fm_pending_reply_maybe_escalate_locked() {  # <state-dir> <corr_id>
       *) new_episode=0 ;;
     esac
   fi
+  # The check row is the one wake that tells main to act. It is queued first
+  # and the blocked line is then appended as this home's own bookkeeping, so
+  # the line still records and presents the decision without a second signal
+  # wake; a foreign write interleaved with it still wakes. The queued-key test
+  # keeps a retry to one row; the per-request lock serializes every escalation
+  # of this key, so the two queue calls need no shared lock.
+  case "$kind" in
+    missed) lead="missed its reply after one automatic re-delivery" ;;
+    recovery-delivery) lead="could not be re-sent its request" ;;
+    *) lead="has an unconfirmed request delivery" ;;
+  esac
+  if ! fm_wake_queued_keys check | grep -Fx -- "$key" >/dev/null; then
+    fm_wake_append check "$key" \
+      "check: secondmate $task_id $lead: $payload - inspect its endpoint, then resend or close decision $key" \
+      || return 1
+  fi
+  # shortcut: a row queued before the record resolves is not retracted, so main
+  # can drain this check with no matching OPEN DECISION; retract it under the
+  # queue lock if stale rows ever cause a needless resend.
   if [ "$new_episode" -eq 0 ] || ! status_event_recorded "$parent_status" "$line"; then
-    printf '%s\n' "$(status_stamp_line "$line")" >> "$parent_status" 2>/dev/null || return 1
+    # An absent log has no size to prove the append owned, so start it empty.
+    [ -e "$parent_status" ] || : >> "$parent_status" || return 1
+    fm_wake_status_append_self_announced "$state" "$parent_status" "$line" || [ $? -eq 1 ] || return 1
   fi
   now=$(fm_pending_reply_now)
   fm_pending_reply_set "$rec" escalated_epoch "$now" || return 1
@@ -1706,7 +1762,7 @@ fm_pending_reply_task_has_open() {  # <state-dir> <task_id>
 # Mate-side reply correlation (bin/fm-secondmate-report.sh).
 #
 # A reply without its request's corr= cannot resolve the parent's record, so
-# the parent re-rings REPOST REQUIRED. The mate side therefore takes the corr
+# the parent re-delivers the request. The mate side therefore takes the corr
 # from the request itself rather than from the model's memory: every marked
 # request lands as a durable record in this mate's steering inbox, so the open
 # requests are the marked records whose corr has no resolving line on the

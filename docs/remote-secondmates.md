@@ -499,7 +499,8 @@ When deduplication finds that the worker already moved the matching record into 
 
 The remote host runs no doorbell re-ring ladder of its own.
 A swallowed doorbell for an ordinary reply-bearing request surfaces through the parent's pending-reply recovery and escalation.
-Its recovery request rings the doorbell again when it is enqueued.
+Its recovery re-delivers the original request under the same correlation, so the enqueue deduplicates onto the original record and rings the doorbell again while that record is still unhandled.
+A worker that already moved that record into `handled/` has read the request, so no ring follows and the parent escalates with one check wake once the recovery turn passes.
 A fire-and-forget record, such as a reconcile ask, gets its single retry ring only on the local plane, and only when `config/wait-no-turns` is present: the remote steer leg owes no re-ring, so a swallowed remote doorbell for one waits for the next ring into that inbox, and a remote-side retry is known follow-up scope.
 
 ### Remote reads

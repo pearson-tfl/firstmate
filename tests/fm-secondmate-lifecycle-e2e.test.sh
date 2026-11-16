@@ -320,6 +320,10 @@ phase_teardown() {
   assert_absent "$HOME_DIR/state/.backlog-handoff-design.wake-pending" \
     "teardown left receiver wake state that could poison a replacement route"
   assert_absent "$rec" "teardown left the retired receiver wake correlation"
+  assert_absent "$HOME_DIR/state/pending-replies/.request-$corr" \
+    "teardown left the retired request's kept text"
+  assert_absent "$HOME_DIR/state/pending-replies/.request-$leftover" \
+    "teardown left a resolved request's kept text"
   assert_absent "$HOME_DIR/state/.secondmate-relaunch-design" \
     "teardown left the relaunch ledger a same-id replacement would inherit"
   assert_absent "$HOME_DIR/state/.secondmate-relaunch-bound-design" \
