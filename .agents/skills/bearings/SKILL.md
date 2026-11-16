@@ -137,7 +137,7 @@ After handling, rebuild the board from a fresh snapshot so acted-on items leave 
 ### The merge-click ruling (captain-decided)
 
 A board "Merge now" answer IS the captain's explicit merge word for that one exact PR; ask no second confirmation.
-The safeguards are mandatory, not optional: resolve the PR from the task's own `state/<task-id>.meta` `pr=` record, never from board bytes; re-verify at wake time that the PR is still open and CI-green; refuse and report a red or changed PR rather than merging it; record the exact `merge` answer through `bin/fm-captain-hold.sh answer <task-id> --decision-file <file> --release` before invoking the merge; proceed only when that release succeeds; merge only through `bin/fm-pr-merge.sh`; and echo every merge in chat with the full PR URL.
+The safeguards are mandatory, not optional: resolve the PR from the task's own `state/<task-id>.meta` `pr=` record, never from board bytes; re-verify at wake time that the PR is still open and CI-green; refuse and report a red or changed PR rather than merging it; record the exact `merge` answer through `bin/fm-captain-hold.sh answer <task-id> --decision-file <file> --release` before invoking the merge; proceed only when that release succeeds; merge only through `bin/fm-pr-merge.sh`; and echo every merge in chat with the full PR URL (on a captain's-board home, the card link or plain words `AGENTS.md` section 9 gives instead).
 Only the exact answer value `merge` authorizes a merge; an answer carrying a freeform note is the captain's instruction text to read and act on with judgment, never an auto-merge.
 
 ## Chat-response contract
@@ -170,7 +170,7 @@ Rules that keep the contract unambiguous:
 - A secondmate's own home-level row is not an Underway unit: `externally_held` belongs in Charted Next, and `unknown` belongs there as an unavailable-state gate unless its reason requires the captain's action.
 - Do not suppress separately projected decisions, landed records, or gates from a `partial-structured` home merely because that secondmate's own row is `unknown` or its `invalidity` reports an inventory mismatch.
 - Include the required direct address to the captain inside one item or empty-state sentence.
-- Every PR appears as the full `https://...` URL; a shorthand `#number` is fine only as a back-reference after the full URL has already appeared in the same digest.
+- Every PR appears as the full `https://...` URL; a shorthand `#number` is fine only as a back-reference after the full URL has already appeared in the same digest; on a captain's-board home, the chat digest gives the card link or plain words `AGENTS.md` section 9 gives instead.
 - The chat follows `AGENTS.md` section 9 and carries one scannable line per item.
 - Detailed decisions, plans, full gate reasons, and evidence stay out of chat; file mode puts them in the report, while lavish mode puts only its payload-backed interactive detail on the board.
 - In file mode, include the report path or link inside the four-section digest without adding another heading.
