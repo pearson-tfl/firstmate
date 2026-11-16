@@ -387,6 +387,15 @@ run_payload_in() {
   return "$rc"
 }
 
+run_payload_noclaude() {
+  local rc=0
+  : > "$OUT"; : > "$ERR"
+  printf '%s' "$1" \
+    | FM_ALLOW_SUBAGENT='' FM_ROOT_OVERRIDE="$PRIMARY" FM_HOME="$PRIMARY" FM_STATE_OVERRIDE="$STATE" \
+      "$CHECK" > "$OUT" 2> "$ERR" || rc=$?
+  return "$rc"
+}
+
 test_seat_subagent_read_only_haiku_is_allowed() {
   # Replay the sanitized Claude Code 2.1.325 capture of a read-only Explore call
   # pinned to Haiku in a primary and a marked secondmate home, with the escape
@@ -397,6 +406,8 @@ test_seat_subagent_read_only_haiku_is_allowed() {
       "$(jq -c . "$fixture")" \
       "$(jq -c '.tool_name = "Task"' "$fixture")" \
       "$(jq -c '.tool_input.model = "claude-haiku-5-5"' "$fixture")" \
+      "$(jq -c '.tool_input.subagent_type = "retrieval"' "$fixture")" \
+      "$(jq -c '.tool_input.subagent_type = "retrieval" | .tool_input.model = "claude-haiku-5-5"' "$fixture")" \
       "$(jq -c '.tool_input |= del(.description, .run_in_background) + {effort:"low",name:"reader"}' "$fixture")"; do
       rc=0
       FM_ALLOW_SUBAGENT='' run_payload_in "$root" "$payload" || rc=$?
@@ -404,7 +415,7 @@ test_seat_subagent_read_only_haiku_is_allowed() {
       [ ! -s "$OUT" ] && [ ! -s "$ERR" ] || fail "seat subagent allow wrote output in $root"
     done
   done
-  pass "a read-only Explore subagent pinned to Haiku passes in primary and secondmate homes with no escape hatch"
+  pass "a read-only Explore or retrieval subagent pinned to Haiku passes in primary and secondmate homes with no escape hatch"
 }
 
 test_seat_subagent_other_shapes_stay_denied() {
@@ -420,6 +431,9 @@ test_seat_subagent_other_shapes_stay_denied() {
       '.tool_input.subagent_type = "general-purpose"' \
       '.tool_input.subagent_type = "Plan"' \
       '.tool_input.subagent_type = "explore"' \
+      '.tool_input.subagent_type = "Retrieval"' \
+      '.tool_input.subagent_type = "retrieval" | .tool_input.model = "sonnet"' \
+      '.tool_input.subagent_type = "retrieval" | .tool_input |= del(.model)' \
       '.tool_input |= del(.subagent_type)' \
       '.tool_input.isolation = "worktree"' \
       '.tool_input.isolation = "remote"' \
@@ -436,12 +450,19 @@ test_seat_subagent_other_shapes_stay_denied() {
       rc=0
       FM_ALLOW_SUBAGENT='' run_payload_in "$root" "$payload" || rc=$?
       [ "$rc" -eq 2 ] || fail "non-qualifying delegation must deny in $root, got exit $rc for $mutation"
-      jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.systemMessage | contains("subagent_type \"Explore\" and model \"haiku\""))' "$ERR" >/dev/null 2>&1 \
+      jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.systemMessage | contains("subagent_type \"Explore\" or \"retrieval\" and model \"haiku\""))' "$ERR" >/dev/null 2>&1 \
         || fail "deny for $mutation must name the qualifying shape: $(cat "$ERR")"
     done
   done
   # The CLI form carries no tool input, so it can never prove a pinned call.
   expect_deny "Agent without tool input" Agent
+  jq -e '.systemMessage | contains("subagent_type") | not' "$ERR" >/dev/null 2>&1 \
+    || fail "input-less deny must not advertise a seat-subagent shape it cannot satisfy: $(cat "$ERR")"
+  rc=0
+  run_payload_noclaude "$(jq -c '.tool_input.model = "opus"' "$fixture")" || rc=$?
+  [ "$rc" -eq 2 ] || fail "non-Claude stdin Agent call must deny, got exit $rc"
+  jq -e '.reason | contains("subagent_type") | not' "$OUT" >/dev/null 2>&1 \
+    || fail "non-Claude deny must not advertise the Claude seat-subagent shape: $(cat "$OUT")"
   pass "other models, unpinned calls, writing or planning agent types, isolation, extra keys, and input-less forms stay denied"
 }
 
