@@ -932,7 +932,8 @@ test_missing_tmux_endpoint_refuses_rather_than_claiming_a_stop() {
   # this process addresses, so a window that is merely on a server this seat
   # cannot reach is indistinguishable from one that was destroyed. exit refuses
   # rather than claim a stop it cannot see, and sends nothing to an address it
-  # cannot trust. Reclaim of a destroyed endpoint is Herdr-only
+  # cannot trust. Reclaim of a destroyed endpoint is Herdr-, Rex-, and
+  # tmux-after-reboot-only
   # (docs/agent-control.md "Reclaiming a task whose endpoint is gone").
   expect_code 1 "$rc" "a tmux endpoint whose absence cannot be proven must refuse"
   assert_not_contains "$out" "endpoint-gone" "exit must not report a stop it could not prove"

@@ -2487,8 +2487,9 @@ strand_endpoint() {  # <case-dir> <id>
   : > "$1/fake/windows"
 }
 
-# Every tmux `missing` refuses on BOTH verbs, whatever produced it. tmux is the
-# one verified backend whose absence cannot be proven from a task record: the
+# Every tmux `missing` refuses on BOTH verbs, whatever produced it, unless the
+# host rebooted since the record was written (tested separately below). Short
+# of that, tmux absence cannot be proven from a task record: the
 # record carries no socket identity for the endpoint, and any inventory
 # describes only the server this process happens to address. So a window that
 # is merely on a server this seat cannot reach is indistinguishable from one
@@ -2548,6 +2549,40 @@ test_tmux_refuses_when_the_server_is_gone() {
   : > "$dir/fake/server-dead"
   assert_tmux_missing_refuses "$dir" rl62 "no tmux server on this socket"
   pass "tmux: a dead server on this socket refuses both verbs rather than proving absence"
+}
+
+# A host reboot ends every tmux server on every socket, so a window whose
+# record predates the last boot is proven gone and the task is reclaimed into
+# one fresh window in its recorded worktree. A record created after the boot
+# still refuses: that window may be alive on a server this seat cannot see.
+test_tmux_reclaims_a_window_that_predates_a_reboot() {
+  local dir out rc
+  dir=$(new_case tmux-reboot rl64)
+  add_ship_task "$dir" rl64 claude
+  printf 'host_boot_id=boot-a\n' >> "$dir/home/state/rl64.meta"
+  : > "$dir/fake/server-dead"
+
+  out=$(FM_TEST_SEAM=1 FM_TEST_HOST_BOOT_ID=boot-a run_control "$dir" rl64 exit); rc=$?
+  expect_code 1 "$rc" "a record created after the boot must still refuse"$'\n'"$out"
+  assert_absent "$dir/fake/created-windows" "a refused exit must not create a window"
+  out=$(FM_TEST_SEAM=1 FM_TEST_HOST_BOOT_ID=boot-a run_control "$dir" rl64 relaunch --note "same boot"); rc=$?
+  expect_code 1 "$rc" "relaunch must refuse a record created in this boot"$'\n'"$out"
+  assert_absent "$dir/fake/created-windows" "a refused relaunch must not create a window"
+
+  out=$(FM_TEST_SEAM=1 FM_TEST_HOST_BOOT_ID=boot-b run_control "$dir" rl64 exit); rc=$?
+  expect_code 0 "$rc" "exit must accept a window that predates the boot"$'\n'"$out"
+  assert_contains "$out" "endpoint-gone" "exit must report the pre-boot window gone"
+
+  rm -f "$dir/fake/server-dead"
+  : > "$dir/fake/windows"
+  out=$(FM_TEST_SEAM=1 FM_TEST_HOST_BOOT_ID=boot-b run_control "$dir" rl64 relaunch --note "the host rebooted"); rc=$?
+  expect_code 0 "$rc" "relaunch must reclaim a window that predates the boot"$'\n'"$out"
+  [ "$(cat "$dir/fake/created-windows")" = fm-rl64 ] \
+    || fail "reclaim must create exactly one window for the task: $(cat "$dir/fake/created-windows")"
+  assert_contains "$(meta_field "$dir" rl64 window)" ":fm-rl64" "the record must rebind to the fresh window"
+  [ "$(meta_field "$dir" rl64 host_boot_id)" = boot-b ] \
+    || fail "the rebound record must carry this boot's id"
+  pass "tmux: a window that predates a host reboot is reclaimed; a newer one still refuses"
 }
 
 test_reclaim_refuses_an_unreadable_endpoint() {
@@ -3493,6 +3528,7 @@ test_spawn_relaunch_refuses_a_pane_outside_the_worktree
 test_tmux_refuses_a_window_missing_from_its_session
 test_tmux_refuses_a_session_that_cannot_be_found
 test_tmux_refuses_when_the_server_is_gone
+test_tmux_reclaims_a_window_that_predates_a_reboot
 test_reclaim_refuses_an_unreadable_endpoint
 test_herdr_relaunch_resumes_only_the_registered_pi_session
 test_herdr_reclaim_adopts_a_pane_that_outlived_its_server
