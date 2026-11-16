@@ -47,7 +47,7 @@ agent  subagent  task  workflow  cron  schedul  worktree
 delegate  spawn  dispatch  handoff  remote  sendmessage  monitor
 ```
 
-Four exclusions keep the shape test from producing false positives.
+Five exclusions keep the shape test from producing false positives.
 
 - A name beginning `mcp__` is never classified.
   An MCP server chooses its own tool names, a task or agent noun there is common, and it has no bearing on fleet dispatch.
@@ -68,12 +68,39 @@ Four exclusions keep the shape test from producing false positives.
   Protocol objects such as shutdown or plan-approval responses and the `--tool` CLI form, which carries no input to inspect, stay denied.
   Messaging an existing peer creates no agent or workspace the fleet would lose.
   The carve-out does not judge message content, which has no tool-shape signal; a message that asks the peer to do project work is the same judgment boundary [Purpose and boundary](#purpose-and-boundary) leaves out of scope.
+- The seat-subagent carve-out: a Claude `Agent` (or legacy `Task`) call that is read-only and pinned to Haiku is allowed in every primary and secondmate home with no launch flag or environment variable.
+  [Seat-subagent carve-out](#seat-subagent-carve-out) owns what it allows, how it is recognised, and why it is safe.
 
 Both name-exclusion lists match the whole normalized name, never a substring, so neither can widen by accident: `TaskCreateAgent`, `RemoteTaskCreate`, and `ListAgentsAndSpawn` stay denied.
 Folding the two lists together would be the drift risk, because the observe-or-stop rationale is not true of a tool that writes.
 
 The shipped guard fires on every delegation-shaped name that reaches it, including future names that no deny list knows about yet.
 That future-name behavior is the reason the tracked matcher must match all tools and let the script filter.
+
+## Seat-subagent carve-out
+
+A firstmate or secondmate seat may use a Claude subagent for reading, finding, quoting, and summarising, on Haiku, without any launch flag.
+Building, writing, deciding, and every other delegation stay denied and go through the fleet.
+
+The guard recognises the call from its stdin `tool_input` alone, and the script's carve-out comment owns the exact rule:
+
+- `subagent_type` is exactly `Explore`, Claude's built-in read-only agent type, whose tool set carries no `Edit`, `Write`, `NotebookEdit`, or `Agent`.
+  Any other type, including `general-purpose`, `Plan`, a custom agent, or an omitted type that defaults to `general-purpose`, is denied.
+- `model` is exactly `haiku` or `claude-haiku-5-5`.
+  An omitted model inherits the seat's own model and is denied, as is any other model.
+- `prompt` is a string, and no key outside `description`, `prompt`, `subagent_type`, `model`, `effort`, `name`, and `run_in_background` is present.
+  `isolation` (worktree or remote), team keys, and any future key therefore deny until reviewed.
+- The `--tool` CLI form carries no input to inspect, so it stays denied, and the carve-out does not apply to other harnesses' delegation tools.
+
+It is safe because such a subagent is not the untracked runnable work [Why this exists](#why-this-exists) describes.
+It allocates no worktree, registers no schedule, cannot spawn a further agent, and cannot edit files through its tools.
+It runs inside the seat's own session and dies with it, so a restart loses only a read that can be repeated, never project work in flight.
+
+Two residuals remain.
+`Explore` still has `Bash`, so read-only is the agent type's tool set and system prompt, not a sandbox on shell commands; the guard does not judge the prompt's content, which is the same judgment boundary [Purpose and boundary](#purpose-and-boundary) leaves out of scope.
+The `haiku` alias resolves to the current Haiku model, which is Haiku 5.5 on Claude Code 2.1.325; the guard cannot see the resolved version.
+
+A home that adopts the recommended local deny list below removes `Agent` from the schema, which also removes this carve-out; such a home drops the `Task` and `Agent` entries to use it.
 
 ## Recommended Local Claude Deny List
 
@@ -161,8 +188,10 @@ The hook scope is the shipped enforcement boundary, and the linked-worktree nega
 
 ## Escape hatch
 
-`FM_ALLOW_SUBAGENT=1` in the session environment allows the call at the shipped hook.
+`FM_ALLOW_SUBAGENT=1` in the session environment allows any delegation-shaped call at the shipped hook.
 This is the only escape hatch and the guard fails closed on every other value, including empty, `0`, `yes`, and `true`.
+The [seat-subagent carve-out](#seat-subagent-carve-out) needs no escape hatch.
+The hatch is kept as the explicit full escape for everything the carve-out does not cover, such as another model, a writing agent type, or another harness's delegation tool, because removing it would leave a deliberate captain-approved exception no path short of editing the guard.
 
 It is an environment variable rather than a flag, a config file, or a state file because that makes it unforgeable in-session.
 The variable must be present when the harness process is launched, so no tool call the agent makes can enable it for the call that follows.
@@ -373,10 +402,23 @@ A Claude deny is honored only when the hook's stdout is empty.
 `tests/fm-subagent-pretool-check.test.sh` asserts stdout is empty on every `--claude` deny and that default mode still emits the Grok object on stdout.
 The live consequence is confirmed by the shipped-guard result above: Claude honored the deny and reported the reason text.
 
+### Seat-subagent carve-out, 2026-11-16
+
+Claude Code 2.1.325 ran in a scratch firstmate-shaped primary home whose `.claude/settings.json` piped every PreToolUse payload to this script with `--claude`, launched with `FM_ALLOW_SUBAGENT` removed from the environment:
+
+```sh
+env -u FM_ALLOW_SUBAGENT claude -p "$PROMPT" --model haiku --dangerously-skip-permissions --output-format text
+```
+
+The prompt asked for two `Agent` calls.
+The call with `subagent_type` `Explore` and `model` `haiku` exited 0 and the subagent listed the directory.
+The call with `subagent_type` `general-purpose` and `model` `sonnet` exited 2 with the `[subagent-dispatch]` deny, and Claude reported it blocked.
+The captured `Explore` payload is the fixture `tests/fixtures/agent-explore-haiku-claude-2.1.325.json`.
+
 ## Automated validation
 
 `tests/fm-subagent-pretool-check.test.sh` owns the acceptance matrix and is registered in the `pure-contract-unit` family in `bin/fm-test-run.sh`.
-It covers the tracked Claude settings boundary that forbids a `permissions` key; the match-all Claude hook registration; denial of every work-creating delegation tool by shape; denial of hypothetical future tool names that appear on no list; the observe-or-stop, plan-only, and MCP exclusions; the `SendMessage` peer-message carve-out, allowing named and legacy `uds:` recipients with either idle notification value while denying multiline recipients, protocol objects, empty or nonstring messages, extra keys, and input-less shapes; exact-name `ListAgents` discovery and delegation-shaped near misses; the primary, marked secondmate, and inert-worker messaging matrix; the exactness of the plan-only exclusion against six near-miss names a substring or shorter-stem widening would release; the scout-present and scout-absent message variants; the escape hatch including its fail-closed values; inertness in a linked task worktree and in a non-firstmate repo; in-scope enforcement for a marked secondmate home; both stdin transports; the empty-stdout requirement; fail-open transport behavior; and the preserved `Bash` seatbelts and `Stop` guard.
+It covers the tracked Claude settings boundary that forbids a `permissions` key; the match-all Claude hook registration; denial of every work-creating delegation tool by shape; denial of hypothetical future tool names that appear on no list; the observe-or-stop, plan-only, and MCP exclusions; the seat-subagent carve-out replaying a captured Claude Code 2.1.325 `Explore` call pinned to Haiku in primary and secondmate homes with no escape hatch, while denying other or omitted models, writing and planning agent types, isolation, extra keys, and the input-less form, and staying inert in a worker worktree; the `SendMessage` peer-message carve-out, allowing named and legacy `uds:` recipients with either idle notification value while denying multiline recipients, protocol objects, empty or nonstring messages, extra keys, and input-less shapes; exact-name `ListAgents` discovery and delegation-shaped near misses; the primary, marked secondmate, and inert-worker messaging matrix; the exactness of the plan-only exclusion against six near-miss names a substring or shorter-stem widening would release; the scout-present and scout-absent message variants; the escape hatch including its fail-closed values; inertness in a linked task worktree and in a non-firstmate repo; in-scope enforcement for a marked secondmate home; both stdin transports; the empty-stdout requirement; fail-open transport behavior; and the preserved `Bash` seatbelts and `Stop` guard.
 
 Run:
 

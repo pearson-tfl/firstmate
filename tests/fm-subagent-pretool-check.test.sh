@@ -378,6 +378,82 @@ test_peer_messaging_scope_is_unchanged() {
   pass "primary and secondmate enforce peer-message safety; worker hook stays inert without changing its status/inbox-only role contract"
 }
 
+run_payload_in() {
+  local root=$1 payload=$2 rc=0
+  : > "$OUT"; : > "$ERR"
+  printf '%s' "$payload" \
+    | FM_ROOT_OVERRIDE="$root" FM_HOME="$root" FM_STATE_OVERRIDE="$root/state" \
+      "$CHECK" --claude > "$OUT" 2> "$ERR" || rc=$?
+  return "$rc"
+}
+
+test_seat_subagent_read_only_haiku_is_allowed() {
+  # Replay the sanitized Claude Code 2.1.325 capture of a read-only Explore call
+  # pinned to Haiku in a primary and a marked secondmate home, with the escape
+  # hatch explicitly absent.
+  local fixture="$ROOT/tests/fixtures/agent-explore-haiku-claude-2.1.325.json" root payload rc
+  for root in "$PRIMARY" "$TMP_ROOT/second"; do
+    for payload in \
+      "$(jq -c . "$fixture")" \
+      "$(jq -c '.tool_name = "Task"' "$fixture")" \
+      "$(jq -c '.tool_input.model = "claude-haiku-5-5"' "$fixture")" \
+      "$(jq -c '.tool_input |= del(.description, .run_in_background) + {effort:"low",name:"reader"}' "$fixture")"; do
+      rc=0
+      FM_ALLOW_SUBAGENT='' run_payload_in "$root" "$payload" || rc=$?
+      [ "$rc" -eq 0 ] || fail "read-only Haiku seat subagent must allow in $root, got exit $rc: $(cat "$ERR")"
+      [ ! -s "$OUT" ] && [ ! -s "$ERR" ] || fail "seat subagent allow wrote output in $root"
+    done
+  done
+  pass "a read-only Explore subagent pinned to Haiku passes in primary and secondmate homes with no escape hatch"
+}
+
+test_seat_subagent_other_shapes_stay_denied() {
+  local fixture="$ROOT/tests/fixtures/agent-explore-haiku-claude-2.1.325.json" root mutation payload rc
+  for root in "$PRIMARY" "$TMP_ROOT/second"; do
+    for mutation in \
+      '.tool_input.model = "sonnet"' \
+      '.tool_input.model = "opus"' \
+      '.tool_input.model = "fable"' \
+      '.tool_input.model = "Haiku"' \
+      '.tool_input.model = null' \
+      '.tool_input |= del(.model)' \
+      '.tool_input.subagent_type = "general-purpose"' \
+      '.tool_input.subagent_type = "Plan"' \
+      '.tool_input.subagent_type = "explore"' \
+      '.tool_input |= del(.subagent_type)' \
+      '.tool_input.isolation = "worktree"' \
+      '.tool_input.isolation = "remote"' \
+      '.tool_input.team_name = "crew"' \
+      '.tool_input.mode = "bypassPermissions"' \
+      '.tool_input.prompt = null' \
+      '.tool_input.prompt = ["go"]' \
+      '.tool_input.name = "a\nb"' \
+      '.tool_input.run_in_background = "true"' \
+      '.tool_input = null' \
+      '.tool_name = "Workflow"' \
+      '.tool_name = "CronCreate"'; do
+      payload=$(jq -c "$mutation" "$fixture") || fail "could not mutate captured payload: $mutation"
+      rc=0
+      FM_ALLOW_SUBAGENT='' run_payload_in "$root" "$payload" || rc=$?
+      [ "$rc" -eq 2 ] || fail "non-qualifying delegation must deny in $root, got exit $rc for $mutation"
+      jq -e '.hookSpecificOutput.permissionDecision == "deny" and (.systemMessage | contains("subagent_type \"Explore\" and model \"haiku\""))' "$ERR" >/dev/null 2>&1 \
+        || fail "deny for $mutation must name the qualifying shape: $(cat "$ERR")"
+    done
+  done
+  # The CLI form carries no tool input, so it can never prove a pinned call.
+  expect_deny "Agent without tool input" Agent
+  pass "other models, unpinned calls, writing or planning agent types, isolation, extra keys, and input-less forms stay denied"
+}
+
+test_seat_subagent_worker_worktree_stays_inert() {
+  local fixture="$ROOT/tests/fixtures/agent-explore-haiku-claude-2.1.325.json" payload rc=0
+  payload=$(jq -c '.tool_input.model = "opus" | .tool_input.subagent_type = "general-purpose"' "$fixture")
+  run_payload_in "$TMP_ROOT/child" "$payload" || rc=$?
+  [ "$rc" -eq 0 ] || fail "a worker task worktree must stay inert for any subagent call, got exit $rc"
+  [ ! -s "$OUT" ] && [ ! -s "$ERR" ] || fail "worker worktree inert path wrote output"
+  pass "a worker task worktree stays inert for unpinned subagent calls"
+}
+
 test_malformed_transport_fails_open() {
   local rc payload
   for payload in '{not-json' '' '{}' '{"tool_name":null}'; do
@@ -424,5 +500,8 @@ test_send_message_captured_live_shape
 test_send_message_peer_message_is_allowed
 test_send_message_other_shapes_stay_denied
 test_peer_messaging_scope_is_unchanged
+test_seat_subagent_read_only_haiku_is_allowed
+test_seat_subagent_other_shapes_stay_denied
+test_seat_subagent_worker_worktree_stays_inert
 test_malformed_transport_fails_open
 test_missing_jq_stdin_transport_fails_open

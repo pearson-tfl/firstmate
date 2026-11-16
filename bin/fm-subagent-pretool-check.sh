@@ -36,7 +36,7 @@
 #
 # Stdin mode extracts .tool_name for Claude and Codex, or .toolName for Grok.
 # Classification is by tool name alone, except the Claude SendMessage
-# peer-message carve-out below, which also reads .tool_input.
+# peer-message and seat-subagent carve-outs below, which also read .tool_input.
 # CLI mode is for adapters that already hold the tool name (OpenCode, Pi).
 #
 # Exit/output contract (identical shape to bin/fm-cd-pretool-check.sh):
@@ -45,7 +45,8 @@
 #          deny object on stdout unless --claude was supplied.
 #   INERT - not a genuine primary home (a crewmate/scout task worktree or a
 #           non-firstmate repo): exit 0 with no output, exactly like ALLOW.
-#   ESCAPE - FM_ALLOW_SUBAGENT=1 in the environment allows deliberately.
+#   ESCAPE - FM_ALLOW_SUBAGENT=1 in the environment allows any delegation
+#            deliberately; the seat-subagent carve-out needs no escape.
 #   FAIL OPEN - malformed or empty stdin, or missing jq for stdin transport.
 #
 # Claude requires stdout to remain empty on deny.
@@ -103,7 +104,9 @@ crewmate/scout task worktree or any non-firstmate repo, where a worker using
 delegation tools is legitimate.
 Exits 0 to allow and 2 to deny, naming the real crewmate dispatch path instead.
 With --agy, exits 0 on deny and emits a JSON decision object on stdout.
-Set FM_ALLOW_SUBAGENT=1 in the session environment to allow deliberately.
+A Claude Agent call pinned to subagent_type Explore and model haiku is allowed
+with no flag (stdin only). Set FM_ALLOW_SUBAGENT=1 in the session environment
+to allow any other delegation deliberately.
 Malformed transport fails open.
 EOF
 }
@@ -201,6 +204,31 @@ if [ "$NORMALIZED" = sendmessage ] && [ "$TOOL_SET" -eq 0 ] && [ "$AGY_MODE" -eq
   ' >/dev/null 2>&1 && exit 0
 fi
 
+# Seat-subagent carve-out: a Claude Agent (or legacy Task) call is allowed only
+# when the stdin tool_input pins subagent_type "Explore", Claude's built-in
+# read-only type that carries no Edit, Write, NotebookEdit, or Agent tool, and
+# pins model "haiku" or "claude-haiku-5-5"; prompt and description are strings,
+# and no key outside description, prompt, subagent_type, model, effort, name, and
+# run_in_background is present, so isolation (worktree or remote) and team keys
+# deny. An unpinned call inherits the seat's model and stays denied, as does the
+# --tool CLI form, which carries no input to inspect. Such a subagent creates no
+# runnable work outside the session and dies with it; docs/subagent-guard.md owns
+# the rationale and residuals.
+if [ "$TOOL_SET" -eq 0 ] && [ "$AGY_MODE" -eq 0 ] && { [ "$NORMALIZED" = agent ] || [ "$NORMALIZED" = task ]; }; then
+  printf '%s' "$PAYLOAD" | jq -e '
+    .tool_input as $i
+    | ($i | type) == "object"
+      and $i.subagent_type == "Explore"
+      and ($i.model == "haiku" or $i.model == "claude-haiku-5-5")
+      and ($i.prompt | type) == "string"
+      and (($i | has("description") | not) or ($i.description | type) == "string")
+      and (($i | has("effort") | not) or ($i.effort | type) == "string")
+      and (($i | has("name") | not) or (($i.name | type) == "string" and ($i.name | test("[\\r\\n]") | not)))
+      and (($i | has("run_in_background") | not) or ($i.run_in_background | type) == "boolean")
+      and ((($i | keys) - ["description", "prompt", "subagent_type", "model", "effort", "name", "run_in_background"]) | length) == 0
+  ' >/dev/null 2>&1 && exit 0
+fi
+
 # The single deliberate escape hatch. It is an environment variable rather than
 # a flag or a state file so it must be set when the session is launched, which
 # makes a genuinely intended use possible and an accidental one impossible: no
@@ -232,7 +260,7 @@ else
   ROUTE='first classify the work under the AGENTS.md intake contract, then use bin/fm-brief.sh followed by bin/fm-spawn.sh for dispatched work'
 fi
 
-REASON="[subagent-dispatch] the firstmate primary dispatches through the fleet, not the harness's own delegation tools: work started that way has no durable fleet record, leaves every firstmate guard inert, and dies with this session. Instead, $ROUTE (blocked tool: $TOOL, delegation-shaped on \"$MATCHED\"). Launch the session with FM_ALLOW_SUBAGENT=1 for a deliberate exception."
+REASON="[subagent-dispatch] the firstmate primary dispatches through the fleet, not the harness's own delegation tools: work started that way has no durable fleet record, leaves every firstmate guard inert, and dies with this session. Instead, $ROUTE (blocked tool: $TOOL, delegation-shaped on \"$MATCHED\"). A read-only seat subagent is allowed only as Agent with subagent_type \"Explore\" and model \"haiku\", for reading, finding, quoting, or summarising. Launch the session with FM_ALLOW_SUBAGENT=1 for a deliberate exception."
 
 json_escape() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr '\n' ' '

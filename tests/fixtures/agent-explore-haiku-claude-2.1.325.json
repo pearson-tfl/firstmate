@@ -1,0 +1,19 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000001",
+  "transcript_path": "/fixture/session.jsonl",
+  "cwd": "/fixture/primary",
+  "prompt_id": "00000000-0000-4000-8000-000000000002",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "description": "list files",
+    "prompt": "List the file names in the current directory and reply with them.",
+    "subagent_type": "Explore",
+    "model": "haiku",
+    "run_in_background": false
+  }
+}
