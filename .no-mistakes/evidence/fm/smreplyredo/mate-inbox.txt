@@ -1,0 +1,28 @@
+== 001.msg
+schema=fm-task-inbox.v1
+at=2026-11-16T15:29:29Z
+body-terminator=1
+--
+[fm-from-firstmate]⁣corr=1e2143b4f6d578bc probe hello
+
+== 002.msg
+schema=fm-task-inbox.v1
+at=2026-11-16T15:30:01Z
+body-terminator=1
+--
+[fm-from-firstmate]⁣corr=1e2143b4f6d578bc REPOST REQUIRED: previous marked request had no correlated parent report. Reply on the parent status channel including corr=1e2143b4f6d578bc. Original request: probe hello
+
+== 003.msg
+schema=fm-task-inbox.v1
+at=2026-11-16T15:30:49Z
+body-terminator=1
+--
+[fm-from-firstmate]⁣corr=9a74e4d0f331c271 second ask: confirm beta rollout
+
+== 004.msg
+schema=fm-task-inbox.v1
+at=2026-11-16T15:30:58Z
+body-terminator=1
+--
+[fm-from-firstmate]⁣corr=9a74e4d0f331c271 REPOST REQUIRED: previous marked request had no correlated parent report. Reply on the parent status channel including corr=9a74e4d0f331c271. Original request: second ask: confirm beta rollout
+

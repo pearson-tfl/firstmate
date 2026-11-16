@@ -1,0 +1,44 @@
+=== watcher run 1 start 15:28:22
+check: secondmate hibit auto-relaunch failed after recorded endpoint confidently missing: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+=== watcher run 1 exit=0 15:28:24
+1794842904	1	check	secondmate-relaunch-failed-hibit-1794842903	check: secondmate hibit auto-relaunch failed after recorded endpoint confidently missing: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+1794842904	1	check	secondmate-relaunch-failed-hibit-1794842903	check: secondmate hibit auto-relaunch failed after recorded endpoint confidently missing: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+WAKE_ACK_REQUIRED: after handling completes run FM_HOME=/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.qUbSXJ {run-worktree}/bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 37324.1794842904.DVPETk
+WARNING: queued wakes pending - drain them with FM_HOME=/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.qUbSXJ {run-worktree}/bin/fm-wake-drain.sh before anything else.
+=== watcher run 2 start 15:28:25
+check: rearm-resurface
+=== watcher run 2 exit=0 15:28:27
+1794842904	1	check	secondmate-relaunch-failed-hibit-1794842903	check: secondmate hibit auto-relaunch failed after recorded endpoint confidently missing: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+1794842906	2	check	pending-reply-5be8a092425d6b6e	check: secondmate hibit could not be re-sent its request: pending-reply-recovery-delivery-failed: task=hibit pending-reply-id=5be8a092425d6b6e request=please confirm the alpha merge plan - inspect its endpoint, then resend or close decision pending-reply-5be8a092425d6b6e
+1794842904	1	check	secondmate-relaunch-failed-hibit-1794842903	check: secondmate hibit auto-relaunch failed after recorded endpoint confidently missing: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+1794842906	2	check	pending-reply-5be8a092425d6b6e	check: secondmate hibit could not be re-sent its request: pending-reply-recovery-delivery-failed: task=hibit pending-reply-id=5be8a092425d6b6e request=please confirm the alpha merge plan - inspect its endpoint, then resend or close decision pending-reply-5be8a092425d6b6e
+WAKE_ACK_REQUIRED: after handling completes run FM_HOME=/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.qUbSXJ {run-worktree}/bin/fm-wake-drain.sh --ack-through 2 --recovery-generation 37324.1794842904.DVPETk
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+hibit [key=pending-reply-5be8a092425d6b6e] blocked: pending-reply-recovery-delivery-failed: task=hibit pending-reply-id=5be8a092425d6b6e request=please confirm the alpha merge plan
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+WARNING: queued wakes pending - drain them with FM_HOME=/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.qUbSXJ {run-worktree}/bin/fm-wake-drain.sh before anything else.
+=== watcher run 3 start 15:28:28
+check: rearm-resurface
+=== watcher run 3 exit=0 15:28:29
+1794842904	1	check	secondmate-relaunch-failed-hibit-1794842903	check: secondmate hibit auto-relaunch failed after recorded endpoint confidently missing: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+1794842906	2	check	pending-reply-5be8a092425d6b6e	check: secondmate hibit could not be re-sent its request: pending-reply-recovery-delivery-failed: task=hibit pending-reply-id=5be8a092425d6b6e request=please confirm the alpha merge plan - inspect its endpoint, then resend or close decision pending-reply-5be8a092425d6b6e
+1794842904	1	check	secondmate-relaunch-failed-hibit-1794842903	check: secondmate hibit auto-relaunch failed after recorded endpoint confidently missing: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+1794842906	2	check	pending-reply-5be8a092425d6b6e	check: secondmate hibit could not be re-sent its request: pending-reply-recovery-delivery-failed: task=hibit pending-reply-id=5be8a092425d6b6e request=please confirm the alpha merge plan - inspect its endpoint, then resend or close decision pending-reply-5be8a092425d6b6e
+WAKE_ACK_REQUIRED: after handling completes run FM_HOME=/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.qUbSXJ {run-worktree}/bin/fm-wake-drain.sh --ack-through 2 --recovery-generation 47498.1794842908.SD6eui
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+hibit [key=pending-reply-5be8a092425d6b6e] blocked: pending-reply-recovery-delivery-failed: task=hibit pending-reply-id=5be8a092425d6b6e request=please confirm the alpha merge plan
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+WARNING: queued wakes pending - drain them with FM_HOME=/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.qUbSXJ {run-worktree}/bin/fm-wake-drain.sh before anything else.
+=== watcher run 4 start 15:28:30
+check: rearm-resurface
+=== watcher run 4 exit=0 15:28:31
+1794842904	1	check	secondmate-relaunch-failed-hibit-1794842903	check: secondmate hibit auto-relaunch failed after recorded endpoint confidently missing: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+1794842906	2	check	pending-reply-5be8a092425d6b6e	check: secondmate hibit could not be re-sent its request: pending-reply-recovery-delivery-failed: task=hibit pending-reply-id=5be8a092425d6b6e request=please confirm the alpha merge plan - inspect its endpoint, then resend or close decision pending-reply-5be8a092425d6b6e
+1794842904	1	check	secondmate-relaunch-failed-hibit-1794842903	check: secondmate hibit auto-relaunch failed after recorded endpoint confidently missing: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+1794842906	2	check	pending-reply-5be8a092425d6b6e	check: secondmate hibit could not be re-sent its request: pending-reply-recovery-delivery-failed: task=hibit pending-reply-id=5be8a092425d6b6e request=please confirm the alpha merge plan - inspect its endpoint, then resend or close decision pending-reply-5be8a092425d6b6e
+WAKE_ACK_REQUIRED: after handling completes run FM_HOME=/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.qUbSXJ {run-worktree}/bin/fm-wake-drain.sh --ack-through 2 --recovery-generation 52479.1794842911.pYo2BE
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+hibit [key=pending-reply-5be8a092425d6b6e] blocked: pending-reply-recovery-delivery-failed: task=hibit pending-reply-id=5be8a092425d6b6e request=please confirm the alpha merge plan
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+WARNING: queued wakes pending - drain them with FM_HOME=/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.qUbSXJ {run-worktree}/bin/fm-wake-drain.sh before anything else.
+DONE

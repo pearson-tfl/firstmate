@@ -1,0 +1,40 @@
+=== watcher run 1 start 15:29:48
+check: rearm-resurface
+=== watcher run 1 exit=0 15:30:10
+--- record phase: phase=escalated
+--- drain (what main reads):
+1794843009	1	check	pending-reply-1e2143b4f6d578bc	check: secondmate hibit missed its reply after one automatic re-delivery: pending-reply-missed: task=hibit pending-reply-id=1e2143b4f6d578bc request=probe hello - inspect its endpoint, then resend or close decision pending-reply-1e2143b4f6d578bc
+WAKE_ACK_REQUIRED: after handling completes run FM_HOME=/private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.nmtest01M7JF {run-worktree}/bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 58343.1794843009.nOwe4j
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+hibit [key=pending-reply-1e2143b4f6d578bc] blocked: pending-reply-missed: task=hibit pending-reply-id=1e2143b4f6d578bc request=probe hello
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+WARNING: queued wakes pending - drain them with FM_HOME=/private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.nmtest01M7JF {run-worktree}/bin/fm-wake-drain.sh before anything else.
+--- acked
+=== watcher run 2 start 15:30:11
+signal: /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.nmtest01M7JF/state/hibit.status
+=== watcher run 2 exit=0 15:30:43
+--- record phase: phase=escalated
+--- drain (what main reads):
+1794843043	3	signal	hibit.status	needs-decision: /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.nmtest01M7JF/state/hibit.status
+WAKE_ACK_REQUIRED: after handling completes run FM_HOME=/private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.nmtest01M7JF {run-worktree}/bin/fm-wake-drain.sh --ack-through 3 --recovery-generation 45241.1794843043.Cnr0uD
+wake annotation: latest wake-EVENT observed at drain, not current state: hibit.status: blocked [key=pending-reply-1e2143b4f6d578bc] [at=1794843010]: pending-reply-missed: task=hibit pending-reply-id=1e2143b4f6d578bc request=probe hello
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+hibit [key=pending-reply-1e2143b4f6d578bc] blocked: pending-reply-missed: task=hibit pending-reply-id=1e2143b4f6d578bc request=probe hello
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+WARNING: queued wakes pending - drain them with FM_HOME=/private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.nmtest01M7JF {run-worktree}/bin/fm-wake-drain.sh before anything else.
+--- acked
+=== watcher run 3 start 15:30:45
+check: rearm-resurface
+=== watcher run 3 exit=0 15:31:09
+--- record phase: /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.nmtest01M7JF/state/pending-replies/9a74e4d0f331c271:phase=escalated
+--- drain (what main reads):
+1794843069	4	check	pending-reply-9a74e4d0f331c271	check: secondmate hibit missed its reply after one automatic re-delivery: pending-reply-missed: task=hibit pending-reply-id=9a74e4d0f331c271 request=second ask: confirm beta rollout - inspect its endpoint, then resend or close decision pending-reply-9a74e4d0f331c271
+WAKE_ACK_REQUIRED: after handling completes run FM_HOME=/private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.nmtest01M7JF {run-worktree}/bin/fm-wake-drain.sh --ack-through 4 --recovery-generation 25723.1794843069.v3ZPid
+OPEN DECISIONS (still open, folded from the durable status logs - not just the latest line):
+hibit [key=pending-reply-1e2143b4f6d578bc] blocked: pending-reply-missed: task=hibit pending-reply-id=1e2143b4f6d578bc request=probe hello
+hibit [key=pending-reply-9a74e4d0f331c271] blocked: pending-reply-missed: task=hibit pending-reply-id=9a74e4d0f331c271 request=second ask: confirm beta rollout
+OPEN DECISIONS: close one by answering it: bin/fm-send.sh <task> --resolve-key <key> '<answer>'
+WARNING: queued wakes pending - drain them with FM_HOME=/private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.nmtest01M7JF {run-worktree}/bin/fm-wake-drain.sh before anything else.
+--- acked
+=== watcher run 4 start 15:31:11
+signal: /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.nmtest01M7JF/state/hibit.status
