@@ -478,23 +478,54 @@ fm_control_absence_recheck_applies() {  # <backend> <raw-state>
 #     on the verified server, while an unreachable server reads `unreadable`.
 #     The proof re-reads the thread, but exit and relaunch refuse before it:
 #     V2 has no session stop and a thread cannot host a replacement.
-#   tmux CANNOT. `list-windows -a` describes only the server the CURRENT
-#     process addresses (its TMUX_TMPDIR/socket), and a task's record does not
-#     carry the endpoint's socket identity - so a different but running server
-#     would answer "not anywhere" about a window it was never able to see.
-#     There is no read available here that closes that gap, so tmux always
-#     returns `unproven` and both verbs refuse. tmux is left exactly as
-#     deadlocked as it was before this change - no worse - but deliberately.
+#   tmux CAN prove it in ONE case: the host rebooted after the task's current
+#     endpoint was created. `list-windows -a` describes only the server the
+#     CURRENT process addresses (its TMUX_TMPDIR/socket), and a task's record
+#     does not carry the endpoint's socket identity - so a different but running
+#     server would answer "not anywhere" about a window it was never able to
+#     see. A reboot closes that gap: it ends every tmux server on every socket.
+#     Every spawn and relaunch records the kernel's per-boot id as
+#     host_boot_id= after the window exists, so a recorded id that differs from
+#     the current one proves the window predates this boot. Boot TIME is not
+#     used: it moves when the wall clock resyncs (WSL2 after a host sleep), which
+#     could make a live window look older than the boot. A record with no
+#     host_boot_id, or a host with no boot id, stays `unproven`, and both verbs
+#     refuse.
 #
 # Both control-plane callers share this one implementation so the proof cannot
 # drift into two answers for the same endpoint.
+# fm_control_host_boot_id: this boot's unique id (Linux boot_id, macOS
+# bootsessionuuid), or nothing. FM_TEST_HOST_BOOT_ID is honoured only under
+# FM_TEST_SEAM=1, the marker tests/lib.sh exports.
+fm_control_host_boot_id() {
+  if [ "${FM_TEST_SEAM:-}" = 1 ] && [ -n "${FM_TEST_HOST_BOOT_ID:-}" ]; then
+    printf '%s' "$FM_TEST_HOST_BOOT_ID"
+  elif [ -r /proc/sys/kernel/random/boot_id ]; then
+    cat /proc/sys/kernel/random/boot_id 2>/dev/null
+  else
+    sysctl -n kern.bootsessionuuid 2>/dev/null
+  fi
+}
+
+fm_control_tmux_endpoint_predates_boot() {  # <meta>
+  local meta=${1-} recorded current
+  [ -n "$meta" ] && [ -f "$meta" ] || return 1
+  recorded=$(fm_meta_get "$meta" host_boot_id)
+  current=$(fm_control_host_boot_id)
+  [ -n "$recorded" ] && [ -n "$current" ] && [ "$recorded" != "$current" ]
+}
+
 fm_control_endpoint_absence_verdict() {  # <backend> <target> [meta]
   local backend=${1-} target=${2-} meta=${3-}
   fm_backend_source "$backend" \
     || { printf 'unproven\tbackend %s could not be loaded to prove anything about that endpoint' "'$backend'"; return 0; }
   case "$backend" in
     tmux)
-      printf 'unproven\ttmux absence cannot be proven from a task record: the record does not carry the endpoint'"'"'s socket identity, and a server-wide window inventory only describes the tmux server this process addresses, so a window absent from it may still be alive on another'
+      if fm_control_tmux_endpoint_predates_boot "$meta"; then
+        printf 'gone\t'
+      else
+        printf 'unproven\ttmux absence cannot be proven from a task record: the record does not carry the endpoint'"'"'s socket identity, and a server-wide window inventory only describes the tmux server this process addresses, so a window absent from it may still be alive on another (the host has not rebooted since the task'"'"'s endpoint was created)'
+      fi
       ;;
     herdr)
       # Start the RECORDED session's server (only the server - nothing is
