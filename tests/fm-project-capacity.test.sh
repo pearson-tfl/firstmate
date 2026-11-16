@@ -29,6 +29,7 @@ command -v tasks-axi >/dev/null 2>&1 && HAVE_TASKS_AXI=1
 write_brief() {  # <home> <id>
   mkdir -p "$1/data/$2"
   cat > "$1/data/$2/brief.md" <<EOF
+/implement
 # Task
 ## Captain's intent
 Run the project's heavy suite for $2.

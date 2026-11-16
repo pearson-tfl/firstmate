@@ -175,7 +175,7 @@ SH
       cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$lab/.pi/extensions/"
       cp "$ROOT/.pi/extensions/lib/fm-operational-input.ts" \
         "$ROOT/.pi/extensions/lib/fm-sessionstart-supervisor.mjs" "$lab/.pi/extensions/lib/"
-      cp "$ROOT/bin/fm-operational-input.sh" "$lab/bin/"
+      cp "$ROOT/bin/fm-operational-input.sh" "$ROOT/bin/fm-skill-opener.sh" "$lab/bin/"
       printf '%s\n' '{"compaction":{"keepRecentTokens":200}}' > "$lab/.pi/settings.json"
       ;;
   esac
@@ -351,7 +351,7 @@ probe_pi_sessionstart_prerequisite() {
   cp "$ROOT/.pi/extensions/fm-primary-turnend-guard.ts" "$project/.pi/extensions/"
   cp "$ROOT/.pi/extensions/lib/fm-operational-input.ts" \
     "$ROOT/.pi/extensions/lib/fm-sessionstart-supervisor.mjs" "$project/.pi/extensions/lib/"
-  cp "$ROOT/bin/fm-operational-input.sh" "$project/bin/"
+  cp "$ROOT/bin/fm-operational-input.sh" "$ROOT/bin/fm-skill-opener.sh" "$project/bin/"
   cat > "$project/bin/fm-turnend-guard.sh" <<'SH'
 #!/usr/bin/env bash
 exit 0

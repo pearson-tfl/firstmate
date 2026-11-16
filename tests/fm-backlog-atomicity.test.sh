@@ -82,6 +82,7 @@ EOF
   for id in "$@"; do
     mkdir -p "$home/data/$id"
     cat > "$home/data/$id/brief.md" <<EOF
+/implement
 # Task
 ## Captain's intent
 Exercise backlog dispatch for $id.

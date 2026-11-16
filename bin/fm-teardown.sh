@@ -390,6 +390,7 @@ for _teardown_source in \
   fm-secondmate-parent-lib.sh \
   fm-pending-reply-lib.sh \
   fm-operational-input.sh \
+  fm-skill-opener.sh \
   fm-marker-lib.sh \
   fm-tmux-lib.sh \
   fm-composer-lib.sh \
