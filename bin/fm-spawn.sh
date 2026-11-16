@@ -4372,6 +4372,19 @@ if [ -n "$SPAWN_PROJECT_CAPACITY" ]; then
     exit "$FM_PROJECT_CAPACITY_DEFER_EXIT"
   fi
 fi
+# Resolve without touching any pool, and refuse unsupported tools before opening
+# an endpoint. Every session-only backend uses this scope, including T3's lease.
+SPAWN_TREEHOUSE_ROOT=
+if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
+  SPAWN_TREEHOUSE_ROOT=$(fm_treehouse_clone_root "$PROJ_ABS") || {
+    echo "error: could not resolve the clone-scoped Treehouse root for $PROJ_ABS" >&2
+    exit 1
+  }
+  if ! treehouse get --root "$SPAWN_TREEHOUSE_ROOT" --help >/dev/null 2>&1; then
+    echo "error: Treehouse must support --root (v2.2.0+); upgrade Treehouse before spawning so independent project clones cannot share a pool" >&2
+    exit 1
+  fi
+fi
 [ -f "$BRIEF" ] || {
   echo "error: task $ID has no brief at inaccessible data path $BRIEF" >&2
   exit 1
@@ -5006,21 +5019,6 @@ herdr_projection_existing_meta_allows_flat() { # <meta>
     ;;
   esac
 }
-
-# Resolve without touching any pool, and refuse unsupported tools before opening
-# an endpoint, after the brief and publication gates so their refusals still win.
-# Every session-only backend uses this scope, including T3's lease.
-SPAWN_TREEHOUSE_ROOT=
-if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
-  SPAWN_TREEHOUSE_ROOT=$(fm_treehouse_clone_root "$PROJ_ABS") || {
-    echo "error: could not resolve the clone-scoped Treehouse root for $PROJ_ABS" >&2
-    exit 1
-  }
-  if ! treehouse get --root "$SPAWN_TREEHOUSE_ROOT" --help >/dev/null 2>&1; then
-    echo "error: Treehouse must support --root (v2.2.0+); upgrade Treehouse before spawning so independent project clones cannot share a pool" >&2
-    exit 1
-  fi
-fi
 
 # Backlog preflight (bin/fm-backlog-transition-lib.sh). This spawn is about to
 # become the sole owner of the row's In-flight transition, so prove the row is
