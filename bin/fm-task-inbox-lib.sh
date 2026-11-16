@@ -433,11 +433,13 @@ fm_task_inbox_squash() {  # <text>
   printf '%s' "$1" | tr -d '[:space:]'
 }
 
-# The composer's selected content, or fail when it cannot be read.
+# The composer's selected content, or fail when it cannot be read or the
+# screen is a blocking dialog whose next Enter would answer it.
 fm_task_inbox_composer_text() {  # <backend> <target> [expected-label]
   local cap
   fm_backend_source "$1" || return 1
   cap=$(fm_backend_capture "$1" "$2" "$FM_COMPOSER_CAPTURE_LINES" "${3:-}" 2>/dev/null) || return 1
+  ! fm_composer_blocking_dialog "$cap" >/dev/null || return 1
   fm_composer_extract_selected_content styled=0 "$cap"
 }
 
