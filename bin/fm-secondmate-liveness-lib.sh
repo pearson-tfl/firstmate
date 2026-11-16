@@ -285,11 +285,12 @@ fm_secondmate_liveness_probe() {  # <meta> <id> <full|poll>
 # FM_SM_LIVE_OUT and the status in FM_SM_LIVE_RC. When the lock wait expires,
 # the ledger cannot be read, or the attempt row cannot be appended, nothing is
 # killed or spawned and no attempt is recorded: the verdict becomes
-# FM_SM_LIVE_STATUS=skipped with FM_SM_LIVE_REASON set and this returns 1.
-# Caller holds the liveness lock and owns reporting.
+# FM_SM_LIVE_STATUS=skipped with FM_SM_LIVE_REASON set and this returns 1;
+# FM_SM_LIVE_BUSY=1 marks the lock-wait expiry, where another relaunch is
+# in flight. Caller holds the liveness lock and owns reporting.
 fm_secondmate_liveness_relaunch() {  # <meta> <id> [timeout-secs]
   local meta=$1 id=$2 timeout=${3:-} relaunch_lock wait_seconds rc=0
-  FM_SM_LIVE_OUT='' FM_SM_LIVE_RC=0
+  FM_SM_LIVE_OUT='' FM_SM_LIVE_RC=0 FM_SM_LIVE_BUSY=0
   if ! fm_secondmate_liveness_recent_attempts "$id" 0 >/dev/null; then
     FM_SM_LIVE_STATUS=skipped
     FM_SM_LIVE_REASON="relaunch ledger $STATE/.secondmate-relaunch-$id is unreadable; endpoint left $FM_SM_LIVE_STATE"
@@ -300,7 +301,7 @@ fm_secondmate_liveness_relaunch() {  # <meta> <id> [timeout-secs]
   relaunch_lock="$STATE/.secondmate-relaunch.lock"
   wait_seconds=${timeout:-600}
   if ! fm_lock_acquire_wait_bounded "$relaunch_lock" "$wait_seconds"; then
-    FM_SM_LIVE_STATUS=skipped
+    FM_SM_LIVE_STATUS=skipped FM_SM_LIVE_BUSY=1
     FM_SM_LIVE_REASON="another secondmate relaunch still owns the per-home relaunch lock after ${wait_seconds}s; endpoint left $FM_SM_LIVE_STATE"
     FM_SM_LIVE_RC=1
     return 1
