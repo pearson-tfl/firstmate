@@ -1930,11 +1930,12 @@ families_for_changed_path() {
       printf '%s\n' pure-contract-unit
       printf '%s\n' live-harness-optin
       ;;
-    .agents/skills/harness-adapters/SKILL.md|.agents/skills/harness-adapters/references/*)
-      # No bin/ script reads this skill (bin/ only cites it in comments), so
-      # its contract coverage is the suites that name it, one script each;
-      # live harness suites drive real agents that load the skill.
+    bin/fm-skill-opener.sh|.agents/skills/harness-adapters/SKILL.md|.agents/skills/harness-adapters/references/*)
+      # The launch renderer consumes the router's invocation map. Keep both
+      # the skill-reference suites and the executable opener/steer coverage.
       scripts_for_test_reference harness-adapters || true
+      scripts_for_test_reference fm-skill-opener || true
+      [ ! -f tests/fm-send-inbox.test.sh ] || printf '%s\n' '__script__:fm-send-inbox.test.sh'
       printf '%s\n' live-harness-optin
       ;;
     .agents/skills/*/SKILL.md)

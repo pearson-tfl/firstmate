@@ -157,6 +157,8 @@ test_orca_fresh_spawn_enters_the_worktree_it_created() {
   fm_git_init_commit "$case_dir/project"
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 Exercise an Orca-backed spawn for $id.
@@ -195,6 +197,8 @@ test_orca_relaunch_is_refused_before_the_worktree_carveout_could_run() {
   fm_git_worktree "$proj" "$wt" "task-$id"
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 Exercise a relaunch attempt against a recorded Orca task.
@@ -253,6 +257,8 @@ test_orca_launch_uses_controlled_tmux_environment() {
     [ "$setting" != missing ] || printf 'FM_TEST_ABSENT\n' >> "$home/config/launch-env-allowlist"
     fm_git_init_commit "$case_dir/project"
     cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 Verify the controlled Orca environment source.
@@ -395,6 +401,8 @@ test_orca_spawn_waits_for_a_slow_pane_before_a_later_failure() {
   "$real_axi" add "$id" "item for $id" --kind ship --file "$home/data/backlog.md" >/dev/null
   fm_git_init_commit "$case_dir/project"
   cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 Exercise a failed Orca spawn after launch delivery.
@@ -443,6 +451,8 @@ test_orca_unrun_launch_file_is_reclaimed() {
   printf 'GH_TOKEN\n' > "$home/config/launch-env-allowlist"
   fm_git_init_commit "$case_dir/project"
   cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 Exercise an Orca pane that never runs the launch command.
@@ -485,6 +495,8 @@ test_orca_pane_wins_launch_file_race_at_deadline() {
   printf 'GH_TOKEN\n' > "$home/config/launch-env-allowlist"
   fm_git_init_commit "$case_dir/project"
   cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 Exercise an Orca pane that unlinks the launch file at the reclaim deadline.
@@ -536,6 +548,8 @@ test_orca_launch_file_delete_failure_keeps_terminal() {
   printf 'GH_TOKEN\n' > "$home/config/launch-env-allowlist"
   fm_git_init_commit "$case_dir/project"
   cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 Exercise an Orca pane that cannot remove the launch file.
@@ -584,6 +598,8 @@ test_orca_interrupted_spawn_reclaims_launch_file() {
       printf 'GH_TOKEN\n' > "$home/config/launch-env-allowlist"
       fm_git_init_commit "$case_dir/project"
       cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 Exercise an interrupted Orca spawn after launch delivery.
@@ -669,6 +685,8 @@ test_orca_interrupted_spawn_before_send_removes_launch_file() {
     printf 'GH_TOKEN\n' > "$home/config/launch-env-allowlist"
     fm_git_init_commit "$case_dir/project"
     cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 Exercise an Orca spawn interrupted before launch delivery.
@@ -767,6 +785,8 @@ test_orca_allowlist_without_source_warns() {
     fi
     fm_git_init_commit "$case_dir/project"
     cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 Exercise an Orca allowlist without a configured source.

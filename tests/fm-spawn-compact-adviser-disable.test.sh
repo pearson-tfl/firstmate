@@ -262,7 +262,7 @@ case "${1:-}" in
       printf '%s\n' "$payload" >> "$D/literal"
       case "$payload" in
         /exit|/quit) printf 'zsh' > "$D/command" ;;
-        *'encode launch-brief'*) printf 'codex' > "$D/command" ;;
+        *'fm-skill-opener.sh'*'encode'*) printf 'codex' > "$D/command" ;;
       esac
     else
       printf '%s\n' "$payload" >> "$D/keys"
@@ -334,7 +334,7 @@ test_relaunch_rebuilds_the_switch() {
 
     grep -qx 'export COMPACT_ADVISER_DISABLE=1' "$dir/fake/keys" \
       || fail "relaunch with allowlist=$setting did not re-export the compact-adviser switch into the pane"
-    launch=$(grep 'encode launch-brief' "$dir/fake/literal" | tail -1)
+    launch=$(grep 'fm-skill-opener.sh' "$dir/fake/literal" | tail -1)
     [ -n "$launch" ] || fail "relaunch with allowlist=$setting sent no replacement launch command"
     install_env_probe "$dir/fakebin" codex
     preamble=$(grep '^export ' "$dir/fake/keys")
@@ -406,7 +406,7 @@ SH
     chmod +x "$FAKEBIN_DIR/codex"
     seen=$(emitted_launch_env "$FAKEBIN_DIR" "$LAUNCH_LOG" "$PANE_LOG") \
       || fail "$name path: the emitted launch failed to run"
-    brief=$("$ROOT/bin/fm-operational-input.sh" encode launch-brief < "$HOME_DIR/data/$id/launch-brief.md")
+    brief=$("$ROOT/bin/fm-skill-opener.sh" codex encode "$HOME_DIR/data/$id/launch-brief.md")
     want="$(cd "$HOME_DIR/state" && pwd -P)/$id.inbox
 $brief"
     assert_equals "$want" "$seen" "$name path: launch changed the home or brief bytes"

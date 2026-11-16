@@ -98,6 +98,8 @@ make_settle_case() {
   fm_git_init_commit "$stale"
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 Exercise settled-worktree detection for $id.

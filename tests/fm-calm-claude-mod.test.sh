@@ -426,7 +426,11 @@ write_parity_corpus() {
   generic_kinds=$(canonical_generic_kinds) || fail "could not read generic kinds from the operational-input owner"
   [ -n "$generic_kinds" ] || fail "the operational-input owner exposes no generic kinds"
   for kind in $generic_kinds; do
-    for body in 'plain body' $'multi\nline\n\nbody' $'trailing newline\n' $'two trailing newlines\n\n' 'colon: inside: body' 'ünïcödé body ✓' ' '; do
+    for body in /implement '$implement' /skill:implement @skill:implement 'ordinary prose'; do
+    index=$((index + 1))
+    { printf '%s\n' "$body"; printf 'task body' | "$OPERATIONAL_INPUT" encode launch-brief; } >"$dir/case-$index.txt"
+  done
+  for body in 'plain body' $'multi\nline\n\nbody' $'trailing newline\n' $'two trailing newlines\n\n' 'colon: inside: body' 'ünïcödé body ✓' ' '; do
       index=$((index + 1))
       printf '%s' "$body" | "$OPERATIONAL_INPUT" encode "$kind" >"$dir/case-$index.txt" \
         || fail "the owner could not encode kind $kind for the parity corpus"
@@ -535,6 +539,10 @@ test_doorbell_parity_with_shell_owner() {
       | tr -d '\n' >"$dir/case-$index.txt" || fail "the owner could not publish a $kind record"
   done
   doorbell=$(cat "$dir/case-1.txt")
+  for out in /implement '$implement' /skill:implement @skill:implement 'ordinary prose'; do
+    index=$((index + 1))
+    printf '%s\n%s' "$out" "$doorbell" >"$dir/case-$index.txt"
+  done
   printf 'FIRSTMATE_OP: v1 watcher: ascii only' >"$inbox/9-ascii.msg"
   printf '\342\201\243FIRSTMATE_OP: v1 bogus: body' >"$inbox/9-bogus.msg"
   printf '\342\201\243FIRSTMATE_OP: legacy untyped' >"$inbox/9-legacy.msg"

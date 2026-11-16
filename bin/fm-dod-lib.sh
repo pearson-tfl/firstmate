@@ -560,6 +560,9 @@ fm_dod_block() {  # <mode> <task-id> [branch] [<forge>] [<base>] [<consent>] [<p
     nm_base="This task's base branch is \`$base\`, not the repository default: pass \`--base-branch $base_q\` on every \`no-mistakes axi run\` that starts a run, so the pipeline rebases onto, opens its PR against, and watches CI for that branch.
 "
   fi
+  if [ "$mode" != local-only ] && [ "$forge" != gerrit ] && [ "$forge" != external ]; then
+    printf '%s\n' 'Before writing or editing a PR title or body, explicitly invoke the pr skill using the harness-adapters form; if native invocation is unavailable, read its complete SKILL.md, or report blocked if unavailable.'
+  fi
   case "$mode:$forge" in
     direct-PR:gerrit)
       cat <<EOF

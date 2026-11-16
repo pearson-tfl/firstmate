@@ -48,7 +48,7 @@ write_brief() {  # <home> <id> [<recorded-mode>]
   local home=$1 id=$2 mode=${3:-}
   mkdir -p "$home/data/$id"
   {
-    printf 'You are a crewmate.\n\n# Task\n## Captain'\''s intent\nExercise the delivery contract.\n\n## Firstmate spec\nVerify the selected delivery behavior.\n\n# Definition of done\n'
+    printf '/implement\n\nYou are a crewmate.\n\n# Task\n## Captain'\''s intent\nExercise the delivery contract.\n\n## Firstmate spec\nVerify the selected delivery behavior.\n\n# Definition of done\n'
     [ -z "$mode" ] || printf 'Delivery contract: mode=%s\n' "$mode"
   } > "$home/data/$id/brief.md"
 }
@@ -366,7 +366,8 @@ test_promotion_delivers_the_real_definition_of_done() {
   cat > "$sendroot/bin/fm-send.sh" <<'STUB'
 #!/usr/bin/env bash
 # Capture the message a promoted worker would receive, instead of steering one.
-printf '%s' "$2" > "$FM_TEST_CAPTURE"
+[ "$2" = --skill ] && [ "$3" = implement ] || exit 2
+printf '%s' "$4" > "$FM_TEST_CAPTURE"
 STUB
   chmod +x "$sendroot/bin/fm-send.sh"
 
@@ -755,7 +756,8 @@ test_promotion_carries_the_pr_text_binding() {
   printf '%s\n' '- proj [no-mistakes pr=manual] - fixture (added 2026-01-01)' > "$home/data/projects.md"
   cat > "$sendroot/bin/fm-send.sh" <<'STUB'
 #!/usr/bin/env bash
-printf '%s' "$2" > "$FM_TEST_CAPTURE"
+[ "$2" = --skill ] && [ "$3" = implement ] || exit 2
+printf '%s' "$4" > "$FM_TEST_CAPTURE"
 STUB
   chmod +x "$sendroot/bin/fm-send.sh"
 
@@ -826,6 +828,8 @@ EOF
   id=delivery-herdr-lifecycle-unguarded
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<'EOF'
+/implement
+
 # Task
 ## Captain's intent
 Run `herdr session stop` to reproduce the lifecycle operation.
@@ -881,6 +885,8 @@ EOF
   id=delivery-legacy-fenced-headings
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<'EOF'
+/implement
+
 You are a crewmate.
 
 # Task
@@ -905,6 +911,8 @@ EOF
   id=delivery-legacy-no-mistakes
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<'EOF'
+/implement
+
 # Task
 [captain] Fix the legacy dispatch boundary.
 Do not copy this Firstmate-authored constraint into intent.
@@ -933,6 +941,8 @@ EOF
   id=delivery-migrated-stale-no-mistakes
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<'EOF'
+/implement
+
 # Task
 ## Captain's intent
 Fix the migrated dispatch boundary.
@@ -965,6 +975,8 @@ EOF
   id=delivery-legacy-unmarked-no-mistakes
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<'EOF'
+/implement
+
 # Task
 Fix the legacy dispatch boundary.
 Do not copy this Firstmate-authored constraint into intent.
@@ -1041,6 +1053,8 @@ EOF
   printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$meta"
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<'EOF'
+/implement
+
 # Task
 Investigate the unmarked legacy failure.
 Keep this Firstmate constraint out of captain intent.
@@ -1090,6 +1104,8 @@ EOF
   printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$meta"
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<'EOF'
+/implement
+
 # Task
 ## Captain's intent
 Ship the parser without losing detailed requirements.
@@ -1129,6 +1145,8 @@ EOF
   printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$meta"
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<'EOF'
+/implement
+
 You are a crewmate.
 
 # Task
@@ -1189,7 +1207,7 @@ EOF
   words=$(printf '%s\n' "Keep the literal example \`Captain, hello\` in the documentation." \
     "Stop composing Captain:, Captain's words:, Captain's ask:, and Captain's intent: into PR bodies.")
   write_brief "$home" intent-literal no-mistakes
-  printf '# Task\n## Captain'"'"'s intent\n%s\n\n## Firstmate spec\nDo not paraphrase.\n\n# Definition of done\nDelivery contract: mode=no-mistakes\n' "$words" > "$home/data/intent-literal/brief.md"
+  printf '/implement\n\n# Task\n## Captain'"'"'s intent\n%s\n\n## Firstmate spec\nDo not paraphrase.\n\n# Definition of done\nDelivery contract: mode=no-mistakes\n' "$words" > "$home/data/intent-literal/brief.md"
   out=$(run_spawn "$home" "$fakebin" intent-literal "$proj" claude --mode no-mistakes --yolo off)
   assert_not_contains "$out" "operator-address line" "labels mentioned mid-line were refused as address"
   authorized=$(awk '$0 == "## Captain intent authorized for --intent" { emit=1; next } emit { print }' "$home/data/intent-literal/launch-brief.md")
@@ -1200,7 +1218,7 @@ EOF
     n=$((n + 1))
     id="intent-addressed-$n"
     write_brief "$home" "$id" no-mistakes
-    printf '# Task\n## Captain'"'"'s intent\nKeep the original request intact.\n  %s preserve its provenance.\n\n## Firstmate spec\nDo not paraphrase.\n\n# Definition of done\nDelivery contract: mode=no-mistakes\n' \
+    printf '/implement\n\n# Task\n## Captain'"'"'s intent\nKeep the original request intact.\n  %s preserve its provenance.\n\n## Firstmate spec\nDo not paraphrase.\n\n# Definition of done\nDelivery contract: mode=no-mistakes\n' \
       "$marker" > "$home/data/$id/brief.md"
     out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
     status=$?
@@ -1217,7 +1235,7 @@ EOF
   id='intent-addressed-promote'
   printf 'window=fm-%s\nkind=scout\nworktree=/tmp/wt\n' "$id" > "$home/state/$id.meta"
   write_brief "$home" "$id"
-  printf '# Task\n## Captain'"'"'s intent\nCaptain: investigate the refusal.\n\n## Firstmate spec\nReproduce it first.\n' > "$home/data/$id/brief.md"
+  printf '/implement\n\n# Task\n## Captain'"'"'s intent\nCaptain: investigate the refusal.\n\n## Firstmate spec\nReproduce it first.\n' > "$home/data/$id/brief.md"
   out=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$PROMOTE" "$id" --mode no-mistakes --yolo off 2>&1)
   status=$?
   [ "$status" -ne 0 ] || fail "promotion of addressed intent should be refused"
@@ -1232,7 +1250,7 @@ EOF
     n=$((n + 1))
     id="intent-marked-$n"
     write_brief "$home" "$id" no-mistakes
-    printf '# Task\n%s %s\nDo not include this build constraint.\n%s %s\n\n# Definition of done\nDelivery contract: mode=no-mistakes\n' \
+    printf '/implement\n\n# Task\n%s %s\nDo not include this build constraint.\n%s %s\n\n# Definition of done\nDelivery contract: mode=no-mistakes\n' \
       "$marker" 'Keep the original request intact.' "$marker" 'Preserve its provenance.' > "$home/data/$id/brief.md"
     out=$(run_spawn "$home" "$fakebin" "$id" "$proj" claude --mode no-mistakes --yolo off)
     assert_present "$home/data/$id/launch-brief.md" "$marker: provenance was not accepted"
@@ -1272,8 +1290,9 @@ EOF
       brief="$home/data/$id/launch-brief.md"
       assert_present "$brief" "$project_kind $kind did not refresh the legacy launch brief"
       first_line=$(sed -n '1p' "$brief")
-      [ "$first_line" = '# Current worker role contract' ] ||
-        fail "$project_kind $kind did not put worker identity first"
+      [ "$first_line" = "\$implement" ] || fail "$project_kind $kind lost the literal skill opener"
+      [ "$(awk '/^#/ { print; exit }' "$brief")" = '# Current worker role contract' ] ||
+        fail "$project_kind $kind did not put worker identity before task content"
       assert_grep 'follow this brief instead of that supervisor contract' "$brief" "$project_kind $kind omitted worker authority"
       assert_grep "$home/state/$id.inbox" "$brief" "$project_kind $kind omitted its exact steering inbox"
       assert_grep 'When this task works on Firstmate itself' "$brief" "$project_kind $kind made the exception unconditional"
@@ -1775,7 +1794,8 @@ test_promotion_carries_the_forge_binding() {
   printf '%s\n' '- proj [no-mistakes forge=gerrit] - fixture (added 2026-01-01)' > "$home/data/projects.md"
   cat > "$sendroot/bin/fm-send.sh" <<'STUB'
 #!/usr/bin/env bash
-printf '%s' "$2" > "$FM_TEST_CAPTURE"
+[ "$2" = --skill ] && [ "$3" = implement ] || exit 2
+printf '%s' "$4" > "$FM_TEST_CAPTURE"
 STUB
   chmod +x "$sendroot/bin/fm-send.sh"
 
@@ -1847,7 +1867,8 @@ EOF
   mkdir -p "$sendroot/bin"
   cat > "$sendroot/bin/fm-send.sh" <<'STUB'
 #!/usr/bin/env bash
-printf '%s' "$2" > "$FM_TEST_CAPTURE"
+[ "$2" = --skill ] && [ "$3" = implement ] || exit 2
+printf '%s' "$4" > "$FM_TEST_CAPTURE"
 STUB
   chmod +x "$sendroot/bin/fm-send.sh"
   id="forge-forgejo-p1"

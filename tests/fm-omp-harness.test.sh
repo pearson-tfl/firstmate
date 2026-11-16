@@ -170,6 +170,8 @@ make_spawn_case() {  # <name> <harness> <id>
   fm_test_spawn_home "$home" "$harness"
   fm_git_worktree "$proj" "$wt" "wt-$name"
   fm_test_spawn_brief "$home" "$id"
+  tail -n +2 "$home/data/$id/brief.md" > "$case_dir/knowledge-brief"
+  mv "$case_dir/knowledge-brief" "$home/data/$id/brief.md"
   : > "$case_dir/launch.log"
   printf '%s\n' "$case_dir|$home|$proj|$wt|$fakebin|$case_dir/launch.log"
 }
@@ -207,7 +209,7 @@ test_spawn_launch_line_and_worker_wiring() {
     "omp launch did not carry the tracked posture overlay, --auto-approve, and the pinned working directory"
   assert_contains "$launch" "--model 'openai-codex/gpt-6-astra' --thinking 'medium' -e '$state/$id.omp-ext.ts'" \
     "omp launch did not pass the model, thinking level, and the state-resident worker extension"
-  assert_contains "$launch" "encode launch-brief < '$HOME_DIR/data/$id/launch-brief.md'" "omp launch lost the canonical typed launch-brief envelope"
+  assert_contains "$launch" "'omp' encode '$HOME_DIR/data/$id/launch-brief.md'" "omp launch lost the canonical typed launch-brief envelope"
   case "$launch" in
     *"-e '$state/$id.omp-ext.ts' \"\$("*) ;;
     *) fail "omp launch must keep exactly one positional brief after the extension flag: $launch" ;;

@@ -388,6 +388,8 @@ fm_test_spawn_brief() {
   local home=$1 id=$2 intent=${3:-brief for $2}
   mkdir -p "$home/data/$id"
   cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 $intent

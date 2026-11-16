@@ -117,7 +117,7 @@ launch=$(cat "$case_dir/launch")
 assert_contains "$launch" '--permission-mode dangerous --respect-workspace-trust false' 'autonomy/trust flags missing'
 assert_contains "$launch" "--config '$home/state/devin-worker.devin-config.json'" 'private config missing'
 assert_contains "$launch" "--model 'fusion-claude-fable-5-1-high-sidekick-swe-2-medium'" 'Fusion model lost'
-assert_contains "$launch" 'encode launch-brief' 'typed launch envelope lost'
+assert_contains "$launch" 'fm-skill-opener.sh' 'typed launch envelope lost'
 case "$launch" in *--effort*|*--thinking*) fail 'independent effort reached Devin argv' ;; esac
 assert_grep 'effort=xhigh' "$home/state/devin-worker.meta" 'effort not recorded'
 assert_present "$home/state/devin-worker.devin-config.json" 'spawn did not wire hooks'

@@ -200,7 +200,7 @@ assert_contains "$launch" '--dangerously-allow-all-tool-calls' 'autonomy flag mi
 assert_contains "$launch" "--plugin-dir '$home/state/cortex-worker.cortex-plugin'" 'private plugin missing'
 assert_contains "$launch" "--model 'claude-sonnet-5-5'" 'model lost'
 assert_contains "$launch" "--effort 'high'" 'effort lost'
-assert_contains "$launch" 'encode launch-brief' 'typed launch envelope lost'
+assert_contains "$launch" 'fm-skill-opener.sh' 'typed launch envelope lost'
 assert_contains "$launch" 'env -u CLAUDECODE' 'CLAUDECODE not cleared before launch'
 case "$launch" in *--sql-read-only*|*--bypass\ *|*--config*) fail 'launch carries an unverified flag' ;; esac
 assert_present "$home/state/cortex-worker.cortex-plugin/hooks/hooks.json" 'spawn did not wire hooks'

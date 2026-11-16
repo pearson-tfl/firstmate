@@ -579,3 +579,22 @@ test_post_enqueue_bookkeeping_failure_is_not_retryable
 test_meta_lock_contention_fails_bounded
 test_unwritable_inbox_fails_loudly
 test_empty_message_refused
+
+test_workflow_skill_steer_uses_inbox() {
+  local harness expected dir body typed
+  for harness in claude codex pi; do
+    dir=$(setup_case "skill-$harness" "$harness")
+    run_send "$dir" "$dir/send.err" -- t1 --skill grilling 'Review this plan' || fail "$harness skill steer failed"
+    body=$(record_body _ "$dir/home/state/t1.inbox/001.msg")
+    case "$harness" in claude) expected=/grilling ;; codex) expected='$grilling' ;; pi) expected=/skill:grilling ;; esac
+    [ "${body%%$'\n'*}" = "$expected" ] || fail "$harness stored invocation missing"
+    assert_contains "$body" 'read its complete SKILL.md before doing this step' "stored step must load the skill"
+    typed=$(cat "$dir/send.log")
+    assert_contains "$typed" 'Firstmate instruction waiting:' "skill step must ring the constant doorbell"
+    case "$typed" in *grilling*|*'Review this plan'*) fail "stored skill payload leaked into typed plane" ;; esac
+  done
+  dir=$(setup_case skill-invalid codex)
+  if run_send "$dir" "$dir/send.err" -- t1 --skill '../bad' text; then fail 'invalid skill steer accepted'; fi
+  pass "fm-send workflow: all three forms remain durable and require loading before the step"
+}
+test_workflow_skill_steer_uses_inbox

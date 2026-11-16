@@ -39,6 +39,8 @@ make_case() {
   git -C "$PROJECT_DIR" fetch --quiet origin
   git -C "$PROJECT_DIR" worktree add --quiet --detach "$POOL_DIR" "$(git -C "$PROJECT_DIR" rev-parse HEAD)"
   cat > "$HOME_DIR/data/$id/brief.md" <<EOF
+/implement
+
 # Task
 ## Captain's intent
 Ship a change through the review tool.

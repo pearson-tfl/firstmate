@@ -36,6 +36,152 @@ set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# FM_WORKFLOW_SKILL_LIVE=1 exercises literal openers and stored workflow
+# steers in real Claude/Pi/Codex print-mode sessions. PI provider/model can be
+# selected with FM_WORKFLOW_PI_PROVIDER and FM_WORKFLOW_PI_MODEL. Proof lives
+# in FM_WORKFLOW_SKILL_PROOF_DIR (otherwise a temporary directory).
+if [ "${FM_WORKFLOW_SKILL_LIVE:-0}" = 1 ]; then
+  fm_live_gate opt-in FM_WORKFLOW_SKILL_LIVE python3
+  PROOF_DIR=${FM_WORKFLOW_SKILL_PROOF_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/fm-workflow-skill.XXXXXX")}
+  python3 - "$ROOT" "$PROOF_DIR" <<'PY'
+"""Live opener + stored-steer proof, called by the existing doorbell live guard.
+
+Uses real print-mode sessions, resuming each for its stored steer. Random
+sentinels occur only in SKILL.md, never in the prompts or skill descriptions.
+The durable writer and constant doorbell are production inbox interfaces.
+"""
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import uuid
+
+root, lab = map(Path, sys.argv[1:3])
+lab.mkdir(parents=True, exist_ok=True)
+checked = 0
+
+
+def run(args, directory, output, env):
+    (directory / (output + ".command.json")).write_text(json.dumps(args))
+    with (directory / output).open("w") as stream:
+        result = subprocess.run(args, cwd=directory, env=env, stdout=stream,
+                                stderr=subprocess.STDOUT, timeout=180, check=False)
+    if result.returncode:
+        raise RuntimeError(f"{args[0]} exited {result.returncode}; see {directory / output}")
+    events = []
+    for line in (directory / output).read_text().splitlines():
+        try:
+            events.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass
+    return events
+
+
+def assistant_text(events):
+    texts = []
+    for event in events:
+        if event.get("type") in ("message_end", "assistant"):
+            message = event.get("message", {})
+            if message.get("stopReason") == "error":
+                raise RuntimeError(message.get("errorMessage", "provider error"))
+            if message.get("role") == "assistant":
+                texts.extend(block.get("text", "") for block in message.get("content", [])
+                             if block.get("type") == "text")
+        if event.get("type") == "item.completed":
+            item = event.get("item", {})
+            if item.get("type") == "agent_message":
+                texts.append(item.get("text", ""))
+    return texts
+
+
+for harness in ("claude", "pi", "codex"):
+    if not shutil.which(harness):
+        print(f"skip: workflow skills: {harness} absent", flush=True)
+        continue
+    version = subprocess.check_output([harness, "--version"], text=True).strip()
+    print(f"# checking {harness} {version}", flush=True)
+    directory = lab / harness
+    directory.mkdir(exist_ok=True)
+    env = os.environ.copy()
+    env["DISABLE_AUTOUPDATER"] = "1"
+    env["FM_STATE_OVERRIDE"] = str(directory / "state")
+    env["FM_TASK_INBOX"] = str(directory / "state/proof.inbox")
+    tokens = {}
+    for name in ("fm-opener-proof", "fm-steer-proof"):
+        skill = directory / ".agents/skills" / name
+        skill.mkdir(parents=True, exist_ok=True)
+        tokens[name] = "SKILL_" + uuid.uuid4().hex
+        body = f"Reply with exactly {tokens[name]} and do nothing else."
+        if name == "fm-steer-proof":
+            body = f"Move the pending inbox record to its handled directory, then {body.lower()}"
+        (skill / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: Live verification fixture.\n"
+            f"disable-model-invocation: true\n---\n{body}\n")
+        claude_skill = directory / ".claude/skills" / name
+        claude_skill.parent.mkdir(parents=True, exist_ok=True)
+        if not claude_skill.exists():
+            claude_skill.symlink_to(skill)
+    brief = directory / "brief.md"
+    brief.write_text("/fm-opener-proof\n\nFollow the invoked skill. Read-only verification.\n")
+    opener = subprocess.check_output(
+        ["bash", str(root / "bin/fm-skill-opener.sh"), harness,
+         "record" if harness == "claude" else "encode", str(brief)], env=env, text=True)
+    (directory / "opener.prompt").write_text(opener)
+    session = str(uuid.uuid4())
+    if harness == "claude":
+        common = ["claude", "-p", "--setting-sources", "project,local",
+                  "--dangerously-skip-permissions", "--output-format", "stream-json", "--verbose"]
+        args = common + ["--session-id", session, opener]
+    elif harness == "pi":
+        common = ["pi", "-p", "--provider", os.environ.get("FM_WORKFLOW_PI_PROVIDER", "openai"),
+                  "--model", os.environ.get("FM_WORKFLOW_PI_MODEL", "openai/gpt-6.1-sol"),
+                  "--session", str(directory / "session.jsonl"), "--no-extensions", "--no-mcp",
+                  "--no-context-files", "--skill", str(directory / ".agents/skills"), "--mode", "json"]
+        args = common + [opener]
+    else:
+        common = ["codex", "exec", "--json", "--skip-git-repo-check", "--disable", "hooks",
+                  "-c", 'sandbox_mode="danger-full-access"']
+        args = common + [opener]
+    events = run(args, directory, "opener.out", env)
+    if tokens["fm-opener-proof"] not in assistant_text(events):
+        raise RuntimeError(f"{harness} {version}: opener did not return skill-only sentinel")
+    if harness == "codex":
+        session = next(event["thread_id"] for event in events if event.get("type") == "thread.started")
+    # Reuse fm-send's production stored-step formatter, then enqueue behind
+    # the constant doorbell. The prompt contains neither the body nor sentinel.
+    script = '. "$1/bin/fm-skill-opener.sh"; . "$1/bin/fm-task-inbox-lib.sh"; '
+    script += 'body=$(fm_skill_steer "$2" fm-steer-proof "Follow this step.") || exit; '
+    script += 'rec=$(fm_task_inbox_write "$3" proof "$body") || exit; fm_task_inbox_doorbell_line "$rec"'
+    doorbell = subprocess.check_output(["bash", "-c", script, "_", str(root), harness,
+                                       str(directory / "state")], env=env, text=True)
+    # The ordinary launch establishes FM_TASK_INBOX. Repeat its exact path
+    # here because print-mode Codex does not preserve arbitrary env on resume.
+    steer = doorbell + "\nYour task inbox is " + env["FM_TASK_INBOX"] + "."
+    (directory / "steer.prompt").write_text(steer)
+    if harness == "claude":
+        args = common + ["--resume", session, steer]
+    elif harness == "pi":
+        args = common + [steer]
+    else:
+        args = ["codex", "exec", "resume", "--json", "--skip-git-repo-check", "--disable", "hooks",
+                "-c", 'sandbox_mode="danger-full-access"', session, steer]
+    events = run(args, directory, "steer.out", env)
+    # The steer fixture lowercases the requested token as part of its rule.
+    if tokens["fm-steer-proof"].lower() not in assistant_text(events):
+        raise RuntimeError(f"{harness} {version}: steer did not return skill-only sentinel")
+    if not (directory / "state/proof.inbox/handled/001.msg").is_file():
+        raise RuntimeError(f"{harness} {version}: steer was not acknowledged")
+    checked += 1
+    print(f"ok - {harness} {version}: opener and stored steer loaded skill-only sentinels; steer acknowledged", flush=True)
+
+if not checked:
+    raise RuntimeError("no installed harness was verified")
+print(f"workflow skills: {checked} real harnesses verified", flush=True)
+PY
+  exit $?
+fi
 fm_live_gate opt-in FM_SEND_INBOX_LIVE_E2E tmux
 
 unset NO_MISTAKES_GATE
