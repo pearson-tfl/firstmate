@@ -187,7 +187,8 @@
 #                          relaunch itself failed; the attempt is ledgered and
 #                          counts toward the bound below. A relaunch skipped
 #                          before spawning (ledger or close-proof error) wakes
-#                          the same way with the skip reason as <detail>
+#                          the same way, once per down episode, with the skip
+#                          reason as <detail>
 #   check: secondmate <id> auto-relaunch paused after <n> attempts in <s>s; ...
 #                          a mate that kept dying exceeded its bounded relaunch
 #                          budget and is parked until a probe reads it live
@@ -1248,7 +1249,7 @@ secondmate_liveness_tick() {
   [ "$(age_of "$tick_marker")" -ge "$SECONDMATE_LIVENESS_SECS" ] || return 0
   touch "$tick_marker" || return 1
   local now=$(( $(date +%s) )) meta id kind
-  local bound_marker attempts notify_key reason queued err first_reason='' failed=0
+  local bound_marker attempts notify_key reason queued err first_reason='' failed=0 noted escalate_once
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || continue
     kind=$(fm_meta_get "$meta" kind 2>/dev/null || true)
@@ -1259,7 +1260,8 @@ secondmate_liveness_tick() {
     fm_secondmate_liveness_lock "$id" || continue
     fm_secondmate_liveness_probe "$meta" "$id" poll
     bound_marker="$STATE/.secondmate-relaunch-bound-$id"
-    reason='' notify_key='' err=''
+    noted="$STATE/.secondmate-down-noted-$id"
+    reason='' notify_key='' err='' escalate_once=0
     case "$FM_SM_LIVE_STATUS" in
       relaunchable)
         if [ -e "$bound_marker" ] || [ -L "$bound_marker" ]; then
@@ -1280,15 +1282,20 @@ secondmate_liveness_tick() {
         elif [ "$FM_SM_LIVE_BUSY" = 1 ]; then
           triage_log "secondmate $id liveness: $FM_SM_LIVE_REASON"
         elif [ "$FM_SM_LIVE_STATUS" = skipped ]; then
-          reason="check: secondmate $id auto-relaunch failed after $FM_SM_LIVE_CAUSE: $FM_SM_LIVE_REASON"
-          notify_key="secondmate-relaunch-failed-$id-$now"
+          if [ "$(cat "$noted" 2>/dev/null || true)" = escalated ]; then
+            triage_log "secondmate $id liveness: $FM_SM_LIVE_REASON (already escalated this down episode)"
+          else
+            reason="check: secondmate $id auto-relaunch failed after $FM_SM_LIVE_CAUSE: $FM_SM_LIVE_REASON"
+            notify_key="secondmate-relaunch-failed-$id-$now"
+            escalate_once=1
+          fi
         else
           reason="check: secondmate $id auto-relaunch failed after $FM_SM_LIVE_CAUSE: $(fm_sm_live_first_line "$FM_SM_LIVE_OUT")"
           notify_key="secondmate-relaunch-failed-$id-$now"
         fi
         ;;
       alive)
-        rm -f "$STATE/.secondmate-down-noted-$id"
+        rm -f "$noted"
         if [ -e "$bound_marker" ] || [ -L "$bound_marker" ]; then
           if ! fm_secondmate_liveness_ledger_add "$id" rearmed; then
             err="relaunch ledger is unwritable; auto-relaunch stays paused"
@@ -1308,6 +1315,8 @@ secondmate_liveness_tick() {
       if printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1 \
         || fm_wake_append check "$notify_key" "$reason"; then
         [ -n "$first_reason" ] || first_reason=$reason
+        [ "$escalate_once" -eq 0 ] || printf 'escalated\n' > "$noted" \
+          || err="down-episode escalation could not be recorded"
       else
         err="check wake row could not be queued: $reason"
       fi

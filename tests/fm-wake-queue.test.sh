@@ -3635,6 +3635,21 @@ test_secondmate_liveness_tick_fails_closed_on_ledger_errors() {
         || fail "the unwritable-ledger failure wake was not queued exactly once: $(cat "$state/.wake-queue")"
       [ "$(grep -rlF 'EMERGENCY: second mate sm1 is down' "$state/inbox" 2>/dev/null | wc -l | tr -d ' ')" -eq 1 ] \
         || fail "the unwritable-ledger detection did not post exactly one emergency note"
+      # The ledger stays unwritable across later ticks: the skip already
+      # escalated this down episode, so no further wake is raised.
+      chmod 444 "$ledger"
+      drain_liveness_wakes "$dir"
+      rm -f "$state/.secondmate-liveness-tick"
+      run_liveness_leg "$dir" ledger-again FM_FAKE_TMUX_CURRENT_COMMAND=zsh; pid=$LIVENESS_PID
+      sleep 4
+      kill_liveness_leg "$pid"
+      chmod 644 "$ledger"
+      ! grep -F 'auto-relaunch failed' "$dir/watch-ledger-again.out" >/dev/null \
+        || fail "a repeated unwritable-ledger skip escalated again: $(cat "$dir/watch-ledger-again.out")"
+      ! grep -F 'secondmate-relaunch-failed-sm1-' "$state/.wake-queue" >/dev/null 2>&1 \
+        || fail "a repeated unwritable-ledger skip queued another failure wake: $(cat "$state/.wake-queue")"
+      [ "$(grep -c 'already escalated this down episode' "$state/.watch-triage.log")" -ge 2 ] \
+        || fail "later skip ticks did not run against the unwritable ledger: $(cat "$state/.watch-triage.log")"
     else
       [ "$rc" -eq 1 ] || fail "an unreadable relaunch ledger did not fail the watcher (rc=$rc): $(cat "$dir/watch-ledger.out" "$dir/watch-ledger.err")"
       grep -F 'secondmate liveness check failed' "$dir/watch-ledger.err" >/dev/null \
