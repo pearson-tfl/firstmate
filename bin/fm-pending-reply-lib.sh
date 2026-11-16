@@ -14,13 +14,15 @@
 # the missing correlated report without scraping that conversation, send exactly
 # one automatic recovery request asking for a repost through the parent channel
 # (held back, when config/wait-no-turns is present, while the mate waits on its
-# own open decision or blocker), and
-# escalate once if the recovery turn also completes without a correlated
-# report. Never loop, never repeatedly inject, never silently expire unresolved
-# records, and never treat wrong-home or structured-home heuristics as
-# acknowledgement. A same-basename restatement-copy of the mate home's
-# state/<task_id>.status onto the parent channel is a repair of the
-# FM_HOME-relative mixup, not acknowledgement of an arbitrary mate-home file.
+# own open decision or blocker), and escalate once
+# if the recovery turn also completes without a correlated report; the
+# escalation queues one check wake for main, so acting on it never depends on
+# main noticing a status line. Never loop, never repeatedly inject, never
+# silently expire unresolved records, and never treat wrong-home or
+# structured-home heuristics as acknowledgement. A same-basename
+# restatement-copy of the mate home's state/<task_id>.status onto the parent
+# channel is a repair of the FM_HOME-relative mixup, not acknowledgement of an
+# arbitrary mate-home file.
 #
 # Record location (parent FM_HOME):
 #   state/pending-replies/<corr_id>
@@ -75,7 +77,10 @@
 # Escalation lifecycle: an escalation is not just a message, it OPENS a durable
 # keyed decision in the parent status log, and bin/fm-classify-lib.sh's fold is
 # the one owner of what closes it. So this library owns both ends of that
-# decision: fm_pending_reply_maybe_escalate opens it under a per-request key, and
+# decision: fm_pending_reply_maybe_escalate opens it under a per-request key and
+# queues one check wake under that same key (bin/fm-wake-lib.sh), deduplicated
+# against the queued check keys so a retry adds none; the opening line stays a
+# plain append, so its signal wake surfaces that check row in the same cycle, and
 # fm_pending_reply_close_escalation closes it once the record resolves. Resolving
 # the record alone would leave the decision open forever, re-surfacing a settled
 # request in every later OPEN DECISIONS fold.
@@ -1284,7 +1289,7 @@ fm_pending_reply_maybe_escalate() {  # <state-dir> <corr_id>
 _fm_pending_reply_maybe_escalate_locked() {  # <state-dir> <corr_id>
   local state=$1 corr=$2
   local rec phase completed now payload parent_status line kind first display
-  local delivered task_id meta sm_home remote_host grace age key new_episode
+  local delivered task_id meta sm_home remote_host grace age key new_episode lead
   rec=$(fm_pending_reply_path "$state" "$corr")
   [ -f "$rec" ] || return 1
   phase=$(fm_pending_reply_get "$rec" phase)
@@ -1357,6 +1362,23 @@ _fm_pending_reply_maybe_escalate_locked() {  # <state-dir> <corr_id>
       *) new_episode=0 ;;
     esac
   fi
+  # The check row tells main to act. It is queued before the blocked line, whose
+  # plain append raises the signal wake that surfaces it. The queued-key test
+  # keeps a retry to one row; the per-request lock serializes every escalation
+  # of this key, so the two queue calls need no shared lock.
+  case "$kind" in
+    missed) lead="missed its reply after one automatic re-delivery" ;;
+    recovery-delivery) lead="could not be re-sent its request" ;;
+    *) lead="has an unconfirmed request delivery" ;;
+  esac
+  if ! fm_wake_queued_keys check | grep -Fx -- "$key" >/dev/null; then
+    fm_wake_append check "$key" \
+      "check: secondmate $task_id $lead: $payload - inspect its endpoint, then resend or close decision $key" \
+      || return 1
+  fi
+  # shortcut: a row queued before the record resolves is not retracted, so main
+  # can drain this check with no matching OPEN DECISION; retract it under the
+  # queue lock if stale rows ever cause a needless resend.
   if [ "$new_episode" -eq 0 ] || ! status_event_recorded "$parent_status" "$line"; then
     printf '%s\n' "$(status_stamp_line "$line")" >> "$parent_status" 2>/dev/null || return 1
   fi
