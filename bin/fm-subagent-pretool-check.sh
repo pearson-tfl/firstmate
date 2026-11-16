@@ -107,8 +107,8 @@ crewmate/scout task worktree or any non-firstmate repo, where a worker using
 delegation tools is legitimate.
 Exits 0 to allow and 2 to deny, naming the real crewmate dispatch path instead.
 With --agy, exits 0 on deny and emits a JSON decision object on stdout.
-A Claude Agent call pinned to subagent_type Explore or retrieval and model haiku
-is allowed with no flag (stdin only). Set FM_ALLOW_SUBAGENT=1 in the session
+A Claude Agent call pinned to subagent_type Explore or retrieval and to model
+sonnet, or to model haiku with effort max, is allowed with no flag (stdin only). Set FM_ALLOW_SUBAGENT=1 in the session
 environment to allow any other delegation deliberately.
 Malformed transport fails open.
 EOF
@@ -211,7 +211,8 @@ fi
 # when the stdin tool_input pins subagent_type "Explore", Claude's built-in
 # read-only type that carries no Edit, Write, NotebookEdit, or Agent tool, or
 # "retrieval", the estate's reader whose definition grants only Read, Grep,
-# Glob, and Bash, and pins model "haiku"; prompt and
+# Glob, and Bash, and pins model "sonnet", or model "haiku" with effort "max"
+# (a Haiku call without effort max is denied); prompt and
 # description are strings, and no key outside description, prompt, subagent_type, model, effort, name, and
 # run_in_background is present, so isolation (worktree or remote) and team keys
 # deny. An unpinned call inherits the seat's model and stays denied, as does the
@@ -223,7 +224,7 @@ if [ "$TOOL_SET" -eq 0 ] && [ "$AGY_MODE" -eq 0 ] && [ "$NORMALIZED" = agent ]; 
     .tool_input as $i
     | ($i | type) == "object"
       and ($i.subagent_type == "Explore" or $i.subagent_type == "retrieval")
-      and $i.model == "haiku"
+      and ($i.model == "sonnet" or ($i.model == "haiku" and $i.effort == "max"))
       and ($i.prompt | type) == "string"
       and (($i | has("description") | not) or ($i.description | type) == "string")
       and (($i | has("effort") | not) or ($i.effort | type) == "string")
@@ -266,7 +267,7 @@ fi
 
 REASON="[subagent-dispatch] the firstmate primary dispatches through the fleet, not the harness's own delegation tools: work started that way has no durable fleet record, leaves every firstmate guard inert, and dies with this session. Instead, $ROUTE (blocked tool: $TOOL, delegation-shaped on \"$MATCHED\")."
 if [ "$CLAUDE_MODE" -eq 1 ] && [ "$TOOL_SET" -eq 0 ]; then
-  REASON="$REASON A read-only seat subagent is allowed only as Agent with subagent_type \"Explore\" or \"retrieval\" and model \"haiku\", for reading, finding, quoting, or summarising."
+  REASON="$REASON A read-only seat subagent is allowed only as Agent with subagent_type \"Explore\" or \"retrieval\" and model \"sonnet\", or model \"haiku\" with effort \"max\", for reading, finding, quoting, or summarising."
 fi
 REASON="$REASON Launch the session with FM_ALLOW_SUBAGENT=1 for a deliberate exception."
 
