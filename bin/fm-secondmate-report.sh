@@ -3,7 +3,7 @@
 # for a secondmate's answer to a marked from-firstmate request.
 #
 # The parent resolves its pending-reply record only from a line carrying the
-# request's corr=<id> token, and re-delivers the request when the reply lacks
+# request's corr=<id> token, and re-rings REPOST REQUIRED when the reply lacks
 # it (bin/fm-pending-reply-lib.sh). So this helper fills the corr in itself:
 # with no corr argument it answers the single open marked request in this
 # mate's steering inbox, and it refuses at write time a reply it cannot

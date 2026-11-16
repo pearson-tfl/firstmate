@@ -871,7 +871,7 @@ handoff_wake_retire() {
     if { [ ! -e "$rec" ] && [ ! -L "$rec" ]; } \
       || { [ -f "$rec" ] && [ ! -L "$rec" ] \
         && [ "$(fm_pending_reply_get "$rec" task_id)" = "$ID" ]; }; then
-      rm -f -- "$confirmation" "$(fm_pending_reply_request_path "$STATE" "$corr")" "$rec" "$marker" || rc=$?
+      rm -f -- "$confirmation" "$rec" "$marker" || rc=$?
     else
       rc=1
     fi
@@ -916,11 +916,6 @@ handoff_wake_retire_stage_commit() {
   retired="$stage.retired.$$"
   [ ! -e "$retired" ] && [ ! -L "$retired" ] || return 1
   mv -- "$stage" "$retired" || return 1
-  # The kept request text stays beside its record while staged so a restore
-  # needs no move; once retired it goes with the record.
-  [ -z "$HANDOFF_WAKE_RETIRE_CORR" ] \
-    || rm -f -- "$(fm_pending_reply_request_path "$STATE" "$HANDOFF_WAKE_RETIRE_CORR")" \
-    || echo "warning: retired request text for $HANDOFF_WAKE_RETIRE_CORR remains" >&2
   HANDOFF_WAKE_RETIRE_STAGE=
   if [ -n "$HANDOFF_WAKE_RETIRE_LOCK" ]; then
     fm_lock_release "$HANDOFF_WAKE_RETIRE_LOCK" || return 1
@@ -1113,7 +1108,7 @@ pending_replies_cleanup_for_task() {
       printf '%s' "$base" | grep -Eq '^[a-f0-9]{16}$' || exit 1
       corr=$(fm_meta_get "$rec" corr_id)
       [ -z "$corr" ] || [ "$corr" = "$base" ] || exit 1
-      rm -f -- "./.delivery-confirmed-$base" "./.request-$base" "$rec" || exit 1
+      rm -f -- "./.delivery-confirmed-$base" "$rec" || exit 1
     done
   )
 }
