@@ -1,0 +1,17 @@
+== S4: no flag; a previous doorbell whose Enter never landed sits unsent in Claude's input box
+❯ : Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 't1.inbox' steering inbox, read and act on each in numeric order, then mv each into its
+  handled/.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+composer_state before: pending
+ring rc=0 (expected 0: own stuck doorbell submitted, not retyped)
+-- pane after ring:
+⏺ Running 1 shell command…
+● Swirling… (2s · ↓ 175 tokens · thinking with high effort)
+  ⎿  Tip: Run tasks in the cloud while you keep coding locally · clau.de/web
+● full  $0.00  0s                                                                                                             Review  Audit  Board  Details [-]
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 ? · 5h – · 7d 78% ↺2d8h · high
+  01M7JFDC53QD0HF2M4MCDE6MP9 · v2.1.325 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 4 agents

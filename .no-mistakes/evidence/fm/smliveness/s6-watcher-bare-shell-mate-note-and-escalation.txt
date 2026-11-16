@@ -1,0 +1,19 @@
+== S6 real tmux pane fm-sm1 at bare zsh prompt; real bin/fm-watch.sh liveness tick in lab home
+== watcher stdout (wake to main):
+check: secondmate sm1 auto-relaunch failed after confirmed agent absence on existing endpoint: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+== state/.wake-queue:
+1794843702	1	check	inbox:1794843702-bl06GJ	check: captain inbox note 1794843702-bl06GJ - EMERGENCY: second mate sm1 is down (confirmed agent absence on existing endpoint; backend=tmux); aut
+1794843703	2	check	secondmate-relaunch-failed-sm1-1794843701	check: secondmate sm1 auto-relaunch failed after confirmed agent absence on existing endpoint: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+== captain inbox note file /var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T//fm-lab.7gOinr/state/inbox/1794843702-bl06GJ.note:
+id=1794843702-bl06GJ
+at=2026-11-16T15:41:42Z
+source=text
+announce_marker=1
+request_id=secondmate-down-sm1-1794843701
+--
+EMERGENCY: second mate sm1 is down (confirmed agent absence on existing endpoint; backend=tmux); automatic relaunch is being attempted now and its outcome follows separately.
+
+== ledger .secondmate-relaunch-sm1:
+1794843702	attempt
+1794843703	failed
+== down-noted marker present: yes

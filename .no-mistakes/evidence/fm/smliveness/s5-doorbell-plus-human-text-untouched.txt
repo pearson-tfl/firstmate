@@ -1,0 +1,17 @@
+== S5 no flag, doorbell line with human text appended: before ring
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ : Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'lab' steering inbox, read and act on each in numeric order, then mv each into its
+  handled/. and also a human note
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 60.0k · 5h – · 7d 78% ↺2d8h · high · cache 59m
+  01M7JFDC53QD0HF2M4MCDE6MP9 · v2.1.325 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
+ring rc=1
+== after ring
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ : Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 'lab' steering inbox, read and act on each in numeric order, then mv each into its
+  handled/. and also a human note
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 60.0k · 5h – · 7d 78% ↺2d8h · high · cache 59m
+  01M7JFDC53QD0HF2M4MCDE6MP9 · v2.1.325 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

@@ -1,0 +1,14 @@
+== S2: no unattended-input flag, automation-style rotation command /clear left unsent
+composer_state: pending
+ring rc=1 (expected 1: without the flag a non-doorbell line is never touched)
+-- pane after ring:
+    /autoresearch:learn                        Scout codebase and auto-generate docs with validation-fix loop (user)
+    /wayfinder                                 Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your
+                                               issue tracker, and resolve them one at a time until the way to the destination is clear. (user)
+● full  $0.00  0s                                                                                                             Review  Audit  Board  Details [-]
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /clear
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 ? · 5h – · 7d 78% ↺2d8h · high
+  01M7JFDC53QD0HF2M4MCDE6MP9 · v2.1.325 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

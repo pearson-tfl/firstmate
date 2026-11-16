@@ -1,0 +1,12 @@
+== S5: flag set; real Claude folder-trust picker open in pane fm-t2
+/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T//fm-lab.mJAJyE/config/unattended-input
+composer_state: pending
+ring rc=1 (expected 1: modal picker never answered)
+-- pane after ring (picker must still be showing, no exit):
+ Claude Code'll be able to read, edit, and execute files here.
+ Security guide
+ ❯ No, exit
+   Yes, I trust this folder
+ Enter to confirm · Esc to cancel
+fm-t1 pid=6868 cmd=2.1.325
+fm-t2 pid=61295 cmd=2.1.325

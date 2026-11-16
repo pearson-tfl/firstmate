@@ -1,0 +1,19 @@
+== S3: lab home declares config/unattended-input; /clear left unsent in Claude's input box
+/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T//fm-lab.mJAJyE/config/unattended-input
+composer_state before: pending
+ring rc=0 (expected 0: stuck line submitted, then doorbell rung)
+-- pane after ring:
+ ▐▛███▛█   Claude Code v2.1.325
+▝▜██████▀  Opus 5.5 with high effort · Claude Ultra
+ ▝▝   ▝▝   ~/.no-mistakes/worktrees/064aff8c4106/01M7JFDC53QD0HF2M4MCDE6MP9 · /rc
+❯ /clear
+❯ : Firstmate instruction waiting: list "$FM_TASK_INBOX"/*.msg in your 't1.inbox' steering inbox, read and act on each in numeric order, then mv each into its
+  handled/.
+● Churning… (running UserPromptSubmit hooks… 5/6 · 3s)
+● full  $0.00  0s                                                                                                             Review  Audit  Board  Details [-]
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 ? · 5h – · 7d 78% ↺2d8h · high
+  01M7JFDC53QD0HF2M4MCDE6MP9 · v2.1.325 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 4 agents

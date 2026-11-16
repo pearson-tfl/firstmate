@@ -1,0 +1,11 @@
+== S6b re-run, mate window now missing; real bin/fm-watch.sh liveness tick
+check: secondmate sm1 auto-relaunch failed after recorded endpoint confidently missing: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+1794843742	1	check	inbox:1794843742-OmruCo	check: captain inbox note 1794843742-OmruCo - EMERGENCY: second mate sm1 is down (recorded endpoint confidently missing; backend=tmux); automatic 
+1794843742	2	check	secondmate-relaunch-failed-sm1-1794843742	check: secondmate sm1 auto-relaunch failed after recorded endpoint confidently missing: error: refusing fleet lifecycle from inside a no-mistakes gate worktree (~/.no-mistakes/repos/064aff8c4106.git)
+id=1794843742-OmruCo
+at=2026-11-16T15:42:22Z
+source=text
+announce_marker=1
+request_id=secondmate-down-sm1-1794843742
+--
+EMERGENCY: second mate sm1 is down (recorded endpoint confidently missing; backend=tmux); automatic relaunch is being attempted now and its outcome follows separately.

@@ -1,0 +1,12 @@
+== S1: no unattended-input flag, human draft in Claude's input box
+composer_state: pending
+ring rc=1 (1 = skipped, human text untouched)
+-- pane after ring:
+ ▝▝   ▝▝   ~/.no-mistakes/worktrees/064aff8c4106/01M7JFDC53QD0HF2M4MCDE6MP9 · /rc
+● full  $0.00  0s                                                                                                             Review  Audit  Board  Details [-]
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ a half-typed human draft, do not send
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 ? · 5h – · 7d 78% ↺2d8h · high
+  01M7JFDC53QD0HF2M4MCDE6MP9 · v2.1.325 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
