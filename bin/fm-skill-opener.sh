@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Render a workflow's literal skill invocation before its launch carrier.
-# Usage: fm-skill-opener.sh <harness> <encode|record|pointer> <brief-path>
+# Usage: fm-skill-opener.sh <harness> <encode|record> <brief-path>
 # A brief's first line may be /name, $name, /skill:name, or @skill:name.
 # fm-brief uses the portable /name spelling; the harness-adapters invocation
 # map owns conversion to the selected harness. Unknown forms fail closed.
 # The remaining launch envelope/record is owned by fm-operational-input.sh.
-# pointer renders the same opener and a file-read instruction as one typed line
-# for adapters with a post-launch prompt. A brief without an opener keeps its old carrier.
+# A brief without an opener keeps its old carrier.
 # Source-safe helpers also let spawn validate ships before allocating work.
 
 _FM_SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -70,8 +69,8 @@ fm_skill_opener_main() {
       return 0
       ;;
   esac
-  [ "$#" -eq 3 ] || { echo 'usage: fm-skill-opener.sh <harness> <encode|record|pointer> <brief-path>' >&2; return 2; }
-  local harness=$1 carrier=$2 brief=$3 name invocation body sep=$'\n'
+  [ "$#" -eq 3 ] || { echo 'usage: fm-skill-opener.sh <harness> <encode|record> <brief-path>' >&2; return 2; }
+  local harness=$1 carrier=$2 brief=$3 name invocation body
   [ -r "$brief" ] || return 1
   name=$(fm_skill_brief_name "$brief") || name=
   invocation=
@@ -82,10 +81,9 @@ fm_skill_opener_main() {
     encode|record)
       body=$("$_FM_SKILL_DIR/fm-operational-input.sh" "$carrier" launch-brief < "$brief") || return 1
       ;;
-    pointer) body="Read the brief at $brief and follow it exactly."; sep=' ' ;;
     *) return 2 ;;
   esac
-  [ -z "$invocation" ] || printf '%s%s' "$invocation" "$sep"
+  [ -z "$invocation" ] || printf '%s\n' "$invocation"
   printf '%s' "$body"
 }
 

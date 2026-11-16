@@ -8205,7 +8205,7 @@ if [ "$HARNESS" = kimi ]; then
     kimi_spawn_fail "$KIMI_READY_FAILURE_DETAIL"
     exit 1
   fi
-  KIMI_POINTER=$("$FM_ROOT/bin/fm-skill-opener.sh" "$HARNESS" pointer "$BRIEF_REAL") || exit 1
+  KIMI_POINTER="Read the brief at $BRIEF_REAL and follow it exactly."
   KIMI_SUBMIT_RETRIES=${FM_KIMI_SUBMIT_RETRIES:-3}
   KIMI_SUBMIT_SLEEP=${FM_KIMI_SUBMIT_SLEEP:-${FM_KIMI_POLL_INTERVAL:-0.5}}
   KIMI_SUBMIT_SETTLE=${FM_KIMI_SUBMIT_SETTLE:-0}
@@ -8229,7 +8229,7 @@ if [ "$HARNESS" = rovo ]; then
     rovo_spawn_fail "rovo did not show a verified ready signal before brief delivery in window $T"
     exit 1
   fi
-  ROVO_POINTER=$("$FM_ROOT/bin/fm-skill-opener.sh" "$HARNESS" pointer "$BRIEF_REAL") || exit 1
+  ROVO_POINTER="Read the brief at $BRIEF_REAL and follow it exactly."
   ROVO_SUBMIT_RETRIES=${FM_ROVO_SUBMIT_RETRIES:-3}
   ROVO_SUBMIT_SLEEP=${FM_ROVO_SUBMIT_SLEEP:-${FM_ROVO_POLL_INTERVAL:-0.5}}
   ROVO_SUBMIT_SETTLE=${FM_ROVO_SUBMIT_SETTLE:-0}
