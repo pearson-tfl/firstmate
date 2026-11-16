@@ -1,0 +1,3 @@
+# linked worktree (crewmate-shaped) {run-worktree}, FM_HOME=/tmp/fm-lab.pufO4J: denied shapes must stay inert
+{"prompt":"p","subagent_type":"Explore","model":"haiku"} exit=0
+{"prompt":"p","subagent_type":"general-purpose","model":"sonnet"} exit=0

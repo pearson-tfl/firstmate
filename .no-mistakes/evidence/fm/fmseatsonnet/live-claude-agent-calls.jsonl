@@ -1,0 +1,4 @@
+{"id":"toolu_01LoynLJByuK5PBSh9nMt1tu","name":"Agent","input":{"description":"s1","subagent_type":"Explore","model":"sonnet","prompt":"Reply with the single word SONNET-OK. Use no tools."}}
+{"id":"toolu_012RVYP4vE7ZXuDy61gCGjtL","name":"Agent","input":{"description":"h1","subagent_type":"Explore","model":"haiku","effort":"max","prompt":"Reply with the single word HAIKU-MAX-OK. Use no tools."}}
+{"id":"toolu_01HdgQtZAnMgtPt4waWMR7x9","name":"Agent","input":{"description":"h2","subagent_type":"Explore","model":"haiku","prompt":"Reply with the single word HAIKU-NOEFFORT-OK. Use no tools."}}
+{"id":"toolu_015bYjCnyqR4rfEBvsyCz9ZL","name":"Agent","input":{"description":"g1","subagent_type":"general-purpose","model":"sonnet","prompt":"Reply with the single word GP-OK. Use no tools."}}

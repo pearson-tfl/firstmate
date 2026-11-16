@@ -1,0 +1,21 @@
+ok - the guard independently denies every work-creating delegation tool by shape
+ok - the guard denies delegation-shaped tools that no deny list knows about yet
+ok - the guard leaves ordinary tools and observe-or-stop operations alone
+ok - the guard leaves the session-local todo list alone
+ok - the plan-only exclusion releases exactly two names and nothing that merely contains them
+ok - MCP tool names are never classified as harness delegation
+ok - deny defers to intake classification and degrades gracefully without fm-scout.sh
+ok - the single documented escape hatch releases the guard only on the exact opt-in value
+ok - the guard is inert in a crewmate task worktree and in a non-firstmate repo
+ok - a marked secondmate home is guarded even though it is a linked worktree
+ok - both stdin transports classify correctly and Claude's deny keeps stdout empty
+ok - captured live SendMessage shape allows in primary scope; invalid alias shapes and unknown keys deny
+ok - plain-text SendMessage to named or legacy uds: peers passes with either idle notification value
+ok - multiline recipients, structured or missing messages, extra keys, and uninspectable SendMessage calls stay denied
+ok - primary and secondmate enforce peer-message safety; worker hook stays inert without changing its status/inbox-only role contract
+ok - a read-only Explore or retrieval subagent pinned to Haiku at effort max, or to Sonnet, passes in primary and secondmate homes with no escape hatch
+ok - Haiku without effort max, other models, unpinned calls, writing or planning agent types, isolation, extra keys, and input-less forms stay denied
+ok - a worker task worktree stays inert for unpinned subagent calls
+ok - malformed, empty, and tool-name-less payloads fail open rather than blocking every tool call
+ok - missing jq for stdin transport fails open rather than denying every tool call
+exit=0

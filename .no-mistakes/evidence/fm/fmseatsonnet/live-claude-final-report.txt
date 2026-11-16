@@ -1,0 +1,10 @@
+1. Ran: the subagent replied "SONNET-OK".
+2. Ran: it launched, but the completion notification hasn't arrived, so I don't have its reply yet.
+3. Blocked by the hook (`fm-subagent-pretool-check.sh`): Haiku without `effort: max` is denied.
+4. Blocked by the hook: `general-purpose` isn't an allowed seat subagent type.
+Update on call 2: it ran, and the subagent replied "HAIKU-MAX-OK".
+
+1. Ran: "SONNET-OK".
+2. Ran: "HAIKU-MAX-OK".
+3. Blocked by the hook: Haiku without `effort: max` is denied.
+4. Blocked by the hook: `general-purpose` isn't an allowed seat subagent type.
