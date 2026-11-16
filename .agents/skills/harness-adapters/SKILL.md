@@ -113,7 +113,7 @@ For a stored steer, the harness parser never sees its body: load the named skill
 ```json harness-skill-invocations-v1
 {
   "claude": "/", "codex": "$", "pi": "/skill:", "pi-signed": "/skill:",
-  "grok": "/", "kimi": "/", "cursor": "/", "gemini": "/",
+  "grok": "/", "kimi": null, "cursor": "/", "gemini": "/",
   "muse": "/", "devin": "/", "commandcode": "/", "cortex": "/",
   "polytoken": "@skill:", "rovo": null, "opencode": null,
   "omp": null, "agy": null, "kiro": null

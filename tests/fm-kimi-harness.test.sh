@@ -354,8 +354,8 @@ test_kimi_launch_then_send_is_verified() {
 
   brief_real="$(cd "$HOME_DIR/data/$id" && pwd -P)/launch-brief.md"
   pointer=$(cat "$CASE_DIR/pointer.log")
-  [ "$pointer" = "/implement Read the brief at $brief_real and follow it exactly." ] \
-    || fail "kimi pointer was not the one-line implement opener plus absolute-path instruction: $pointer"
+  [ "$pointer" = "Read the brief at $brief_real and follow it exactly." ] \
+    || fail "kimi pointer was not the exact absolute-path-only instruction: $pointer"
   meta="$HOME_DIR/state/$id.meta"
   assert_grep 'model=kimi-code/k3' "$meta" "kimi meta lost the requested model"
   assert_grep 'effort=high' "$meta" "kimi meta did not retain the unsupported effort axis"
