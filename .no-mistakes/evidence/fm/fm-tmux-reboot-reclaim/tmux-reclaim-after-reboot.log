@@ -1,0 +1,21 @@
+current boot id: 45A301DD-8826-4F5A-AF39-67EBCC9FC738
+recorded: host_boot_id=00000000-PREVIOUS-BOOT-0000-000000000000
+=== S1: exit on a window that predates this boot
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.hxYc58
+endpoint-gone lt1 harness=claude backend=tmux endpoint=firstmate:fm-lt1 worktree=/private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.hxYc58/wt
+rc=0
+windows: firstmate:zsh 
+=== S1: relaunch reclaims into a fresh window
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.hxYc58
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.hxYc58
+warning: /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.hxYc58/data/lt1/launch-brief.md records no ship branch; defaulting to legacy branch fm/lt1
+warning: /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.hxYc58/data/lt1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+relaunched lt1 harness=claude from=claude model=default effort=default backend=tmux endpoint=firstmate:fm-lt1 worktree=/private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.hxYc58/wt
+rc=0
+windows after: firstmate:zsh /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.hxYc58/wt zsh
+firstmate:fm-lt1 /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.hxYc58/wt 2.1.325
+--- record after reclaim:
+window=firstmate:fm-lt1
+worktree=/private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.hxYc58/wt
+harness=claude
+host_boot_id=45A301DD-8826-4F5A-AF39-67EBCC9FC738

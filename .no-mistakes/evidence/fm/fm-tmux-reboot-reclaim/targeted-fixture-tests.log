@@ -1,0 +1,4 @@
+ok - tmux: a window absent from its session refuses both verbs rather than being assumed gone
+ok - tmux: an unfindable session refuses both verbs, so a live agent is never duplicated
+ok - tmux: a dead server on this socket refuses both verbs rather than proving absence
+ok - tmux: a window that predates a host reboot is reclaimed; a newer one still refuses
