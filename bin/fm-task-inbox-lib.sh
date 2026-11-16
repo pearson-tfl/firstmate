@@ -434,8 +434,9 @@ fm_task_inbox_squash() {  # <text>
 }
 
 # The composer's selected content, or fail when it cannot be read or the
-# screen is a blocking dialog or any modal picker (its last line is Claude's
-# picker footer, e.g. the folder-trust picker) whose next Enter would answer it.
+# screen is a blocking dialog or any modal picker (its last line ends with
+# Claude's picker footer "Esc to cancel": trust, exit, /model) whose next Enter
+# would answer it.
 fm_task_inbox_composer_text() {  # <backend> <target> [expected-label]
   local cap
   fm_backend_source "$1" || return 1
@@ -443,7 +444,7 @@ fm_task_inbox_composer_text() {  # <backend> <target> [expected-label]
   ! fm_composer_blocking_dialog "$cap" >/dev/null || return 1
   ! printf '%s\n' "$cap" | fm_composer_strip_ansi | LC_ALL=C awk '
     /[^ \t\r]/ { last = $0 }
-    END { exit !(last ~ /^[ \t]*Enter to confirm · Esc to cancel[ \t\r]*$/) }' || return 1
+    END { exit !(last ~ /Esc to cancel[ \t\r]*$/) }' || return 1
   fm_composer_extract_selected_content styled=0 "$cap"
 }
 

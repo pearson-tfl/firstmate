@@ -511,6 +511,33 @@ test_ring_never_confirms_trust_picker_in_unattended_home() {
   pass "inbox: an unattended-input home never presses Enter on the folder-trust picker"
 }
 
+test_ring_never_confirms_model_picker_in_unattended_home() {
+  local dir state rec log cfg screen rc
+  dir="$TMP_ROOT/ring-model-picker"
+  state="$dir/state"; cfg="$dir/config"
+  mkdir -p "$state" "$cfg"
+  make_composer_stub "$dir"
+  : > "$cfg/unattended-input"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "please continue")
+  log="$dir/send.log"; : > "$log"
+  screen="$dir/screen"
+  # Claude's /model picker footer differs from the confirm footer; Enter here
+  # would change the default model for new sessions.
+  printf '%s\n' \
+    ' Select model' \
+    ' ❯ 1. Default (recommended)' \
+    '   2. Opus' \
+    ' Enter to set as default · s to use this session only · Esc to cancel' \
+    '' > "$screen"
+  rc=0
+  PATH="$dir/fakebin:$PATH" FM_SEND_LOG="$log" FM_FAKE_COMPOSER="$dir/composer" \
+    FM_FAKE_SCREEN="$screen" FM_CONFIG_OVERRIDE="$cfg" \
+    inbox_lib "$state" fm_task_inbox_ring tmux sess:fm-t1 "$rec" fm-t1 || rc=$?
+  [ "$rc" = 1 ] || fail "the /model picker should skip the ring, got rc $rc"
+  [ ! -s "$log" ] || fail "the ring sent keys to the /model picker:"$'\n'"$(cat "$log")"
+  pass "inbox: an unattended-input home never presses Enter on the /model picker"
+}
+
 test_idempotent_write_dedups_exact_body() {
   local state r1 r2 r3 r4 count text
   state="$TMP_ROOT/idem/state"; mkdir -p "$state"
@@ -1481,6 +1508,7 @@ test_ring_submits_its_own_stuck_doorbell
 test_ring_clears_stuck_automation_input_then_rings
 test_ring_never_confirms_exit_picker_in_unattended_home
 test_ring_never_confirms_trust_picker_in_unattended_home
+test_ring_never_confirms_model_picker_in_unattended_home
 test_idempotent_write_dedups_exact_body
 test_idempotent_write_prefilters_history
 test_idempotent_write_prefilter_preserves_exact_bodies
