@@ -5,7 +5,9 @@
 # A launch never inherits a holder name: an inherited FM_LOCK_HOLDER=pocock
 # reaching a worker would let it claim main under main's own name. A secondmate
 # launch is then given its own name, read from its home's secondmate marker, so
-# it claims its own home as holder:<marker name>.
+# it claims its own home as holder:<marker name>. Neither ever inherits main's
+# launch-claim receipt (FM_LOCK_RECEIPT): a secondmate carrying it would fail
+# its own home's claim, and a worker would take the receipt path.
 #
 # The assertions never read bin/fm-spawn.sh's source. Each case drives the real
 # spawn against a fake pane with FM_LOCK_HOLDER=pocock inherited, then EXECUTES
@@ -22,6 +24,7 @@ set -u
 
 TMP_ROOT=$(fm_test_tmproot fm-spawn-lock-holder)
 INHERITED=pocock
+INHERITED_RECEIPT=v1:0123456789abcdef0123456789abcdef
 
 # make_case <name> <harness> <id> -> echoes the case record.
 make_case() {
@@ -86,7 +89,7 @@ make_secondmate_home() {  # <dir> <id>
 run_case_spawn() {
   : > "$LAUNCH_LOG"
   : > "$PANE_LOG"
-  FM_LOCK_HOLDER=$INHERITED FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" FM_FAKE_PANE_LOG="$PANE_LOG" \
+  FM_LOCK_HOLDER=$INHERITED FM_LOCK_RECEIPT=$INHERITED_RECEIPT FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" FM_FAKE_PANE_LOG="$PANE_LOG" \
     fm_test_run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$@"
 }
 
@@ -100,6 +103,7 @@ install_lock_probe() {  # <fakebin> <exe> [lock-home]
   cat > "$1/$2" <<SH
 #!/bin/sh
 printf 'holder=%s\n' "\${FM_LOCK_HOLDER-unset}"
+printf 'receipt=%s\n' "\${FM_LOCK_RECEIPT-unset}"
 $home_assign '$ROOT/bin/fm-lock.sh' 2>&1
 printf 'lock=%s\n' "\$?"
 SH
@@ -112,7 +116,7 @@ emitted_launch() {
   local preamble
   preamble=$(grep '^export ' "$PANE_LOG")
   env -i HOME="$TMP_ROOT/pane-home" PATH="$FAKEBIN_DIR:$PATH" TERM=xterm \
-    TMUX=synthetic-pane FM_LOCK_HOLDER="$INHERITED" \
+    TMUX=synthetic-pane FM_LOCK_HOLDER="$INHERITED" FM_LOCK_RECEIPT="$INHERITED_RECEIPT" \
     /bin/sh -c "$preamble
 $(cat "$LAUNCH_LOG")"
 }
@@ -132,6 +136,7 @@ check_crewmate() {  # <harness> <exe> [spawn args...]
   seen=$(emitted_launch) || fail "$harness ship: the emitted launch failed to run: $seen"
   assert_contains "$seen" "holder=unset" \
     "a $harness worker launched with FM_LOCK_HOLDER=$INHERITED inherited must carry no holder name"
+  assert_contains "$seen" "receipt=unset" "a $harness worker must not inherit main's launch receipt"
   assert_contains "$seen" "main is held by $INHERITED; read-only" \
     "a $harness worker's claim on main must be refused as read-only"
   assert_not_contains "$seen" "lock=0" "a $harness worker must not claim main"
@@ -157,6 +162,7 @@ check_secondmate() {  # <harness> <exe> [spawn args...]
   seen=$(emitted_launch) || fail "$harness secondmate: the emitted launch failed to run: $seen"
   assert_contains "$seen" "holder=$id" \
     "a $harness secondmate must launch with FM_LOCK_HOLDER set to its marker's name, not the inherited $INHERITED"
+  assert_contains "$seen" "receipt=unset" "a $harness secondmate must not inherit main's launch receipt"
   assert_contains "$seen" "lock=0" "a $harness secondmate must claim its own home: $seen"
   assert_equals "holder:$id" "$(head -n 1 "$sm/state/.lock" 2>/dev/null)" \
     "a $harness secondmate must claim its own home as holder:$id"
@@ -201,6 +207,7 @@ test_raw_launch_command() {
     seen=$(emitted_launch) || fail "raw $raw launch: the emitted launch failed to run: $seen"
     assert_contains "$seen" "holder=unset" \
       "a raw $raw launch with FM_LOCK_HOLDER=$INHERITED inherited must carry no holder name"
+    assert_contains "$seen" "receipt=unset" "a raw $raw launch must not inherit main's launch receipt"
     assert_contains "$seen" "main is held by $INHERITED; read-only" \
       "a raw $raw launch's claim on main must be refused as read-only"
   done

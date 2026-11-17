@@ -342,137 +342,140 @@ test_recheck_sends_one_row_on_a_stale_detector_beat() {
   pass "the named re-check sends one row on a detector beat over 900s and still claims"
 }
 
-receipt_op() {  # <home> <operation> <receipt> [holder]
-  in_home "$1" '"$LOCK_SH" "$OP" "$RECEIPT"; printf "rc=%s\n" "$?"' \
-    FM_LOCK_HOLDER="${4:-pocock}" OP="$2" RECEIPT="$3" 2>&1
+receipt_env_op() {  # <home> <'' or release> <receipt> [holder] -> "rc=N" plus output
+  in_home "$1" 'if [ -n "$OP" ]; then "$LOCK_SH" "$OP"; else "$LOCK_SH"; fi; printf "rc=%s\n" "$?"' \
+    FM_LOCK_HOLDER="${4:-pocock}" FM_LOCK_RECEIPT="$3" OP="$2" 2>&1
 }
 
 reserve() {  # <home> -> receipt only; fail test on unexpected refusal
   local receipt
-  receipt=$(in_home "$1" '"$LOCK_SH" reserve' FM_LOCK_HOLDER=pocock) || fail "reservation failed"
+  receipt=$(in_home "$1" '"$LOCK_SH" reserve --absent-only' FM_LOCK_HOLDER=pocock) || fail "reservation failed"
   [[ "$receipt" =~ ^v1:[0-9a-f]{32}$ ]] || fail "invalid receipt: $receipt"
   printf '%s\n' "$receipt"
 }
 
-test_receipt_matching_adopt_and_release() {
-  local home receipt out before
-  home=$(new_home receipt-match)
-  printf '%s\n' obsolete-session > "$home/state/.lock-session"
-  receipt=$(reserve "$home")
-  [ ! -e "$home/state/.lock-session" ] || fail "reservation retained the launcher's old session"
-  assert_equals "lock: held by pocock" "$(status_of "$home")" "reservation keeps line-one ownership"
-  out=$(in_claude_session "$home" adopted-session '"$LOCK_SH" adopt "$RECEIPT"' \
-    FM_LOCK_HOLDER=pocock RECEIPT="$receipt" 2>&1)
-  assert_contains "$out" "rc=0" "matching receipt must adopt"
-  assert_equals adopted-session "$(cat "$home/state/.lock-session")" "adopter must publish its own session"
-  before=$(snapshot "$home")
-  out=$(receipt_op "$home" release-receipt "$receipt" other)
-  assert_contains "$out" "rc=74" "same receipt with foreign holder must refuse"
-  assert_equals "$before" "$(snapshot "$home")" "foreign release must leave the pair unchanged"
-  out=$(receipt_op "$home" release-receipt "$receipt")
-  assert_contains "$out" "rc=0" "matching receipt must release after adoption"
-  assert_equals "lock=<absent> session=<absent>" "$(snapshot "$home")" "conditional release clears the pair"
-  pass "matching receipt adopts the session and releases only with matching holder"
-}
-
-test_replaced_claim_refuses_stale_adopt_and_release() {
-  local home old fresh out before
-  home=$(new_home receipt-replaced)
-  old=$(reserve "$home")
-  out=$(release "$home" pocock)
-  assert_contains "$out" "rc=0" "ordinary release remains supported"
-  fresh=$(reserve "$home")
-  [ "$old" != "$fresh" ] || fail "new claim reused the receipt"
-  printf '%s\n' replacement-session > "$home/state/.lock-session"
-  before=$(snapshot "$home")
-  out=$(receipt_op "$home" adopt "$old")
-  assert_contains "$out" "rc=74" "old receipt cannot adopt a replacement with the same name"
-  assert_equals "$before" "$(snapshot "$home")" "stale adoption changes nothing"
-  out=$(receipt_op "$home" release-receipt "$old")
-  assert_contains "$out" "rc=74" "old receipt cannot release a replacement"
-  assert_equals "$before" "$(snapshot "$home")" "stale release changes nothing"
-  out=$(claim "$home" pocock)
-  assert_contains "$out" "rc=0" "ordinary same-name claim still succeeds"
-  before=$(snapshot "$home")
-  out=$(receipt_op "$home" adopt "$fresh")
-  assert_contains "$out" "rc=74" "ordinary acquisition invalidates the receipt"
-  assert_equals "$before" "$(snapshot "$home")" "invalidated receipt changes nothing"
-  pass "replacement and ordinary acquisition invalidate receipts, including same-name replacements"
-}
-
-test_reservation_refuses_existing_and_unsafe_claims() {
-  local home receipt before out pid
-  home=$(new_home receipt-occupied)
-  receipt=$(reserve "$home")
-  before=$(snapshot "$home")
-  out=$(in_home "$home" '"$LOCK_SH" reserve; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock 2>&1)
-  assert_contains "$out" "rc=73" "reserve must not replace even its own holder"
-  assert_equals "$before" "$(snapshot "$home")" "occupied refusal changes nothing"
-  out=$(receipt_op "$home" release-receipt "$receipt")
-  assert_contains "$out" "rc=0" "setup release"
-  ln -s "$home/missing" "$home/state/.lock"
-  out=$(in_home "$home" '"$LOCK_SH" reserve; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock 2>&1)
-  assert_contains "$out" "rc=73" "dangling symlink must refuse"
-  [ -L "$home/state/.lock" ] && [ ! -e "$home/missing" ] || fail "reservation changed symlink"
-  rm "$home/state/.lock"
-  pid=$(start_live_claude)
-  printf '%s\n' "$pid" > "$home/state/.lock"
-  before=$(snapshot "$home")
-  out=$(in_home "$home" '"$LOCK_SH" reserve; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock 2>&1)
-  assert_contains "$out" "rc=73" "live legacy owner must refuse reservation"
-  assert_equals "$before" "$(snapshot "$home")" "live owner remains untouched"
-  : > "$home/state/.lock"
-  receipt=$(reserve "$home")
-  out=$(receipt_op "$home" adopt bad-receipt)
-  assert_contains "$out" "rc=64" "malformed receipt has a distinct exit"
-  pass "reservation protects existing and unsafe owners; empty claim is reservable"
-}
-
-test_receipt_mutex_contention_rechecks_after_retry() {
-  local home receipt holder i=0 op out before
-  home=$(new_home receipt-contention)
-  receipt=$(reserve "$home")
+# Hold the claim mutex in the background until <home>/state/release-mutex
+# appears; with <replace>=1, replace the claim inside the mutex before release.
+hold_claim_mutex() {  # <home> <replace: 0|1> -> sets MUTEX_HOLDER
+  local i=0
+  rm -f "$1/state/mutex-ready" "$1/state/release-mutex"
   bash -c '
     FM_HOME=$3 STATE=$2
     . "$1"
     fm_lock_try_acquire "$2/.lock.acquire" || exit 1
     : > "$2/mutex-ready"
     while [ ! -e "$2/release-mutex" ] && [ "$SECONDS" -lt 60 ]; do sleep 0.05; done
-    : > "$2/.lock"
-    rm -f "$2/.lock-receipt"
-    printf "replacement-session\n" > "$2/.lock-session"
+    if [ "$4" = 1 ]; then
+      : > "$2/.lock"
+      rm -f "$2/.lock-receipt"
+      printf "replacement-session\n" > "$2/.lock-session"
+    fi
     fm_lock_release "$2/.lock.acquire"
-  ' _ "$ROOT/bin/fm-wake-lib.sh" "$home/state" "$home" &
-  holder=$!
-  OWNER_PIDS+=("$holder")
-  while [ "$i" -lt 400 ] && [ ! -e "$home/state/mutex-ready" ]; do sleep 0.05; i=$((i + 1)); done
-  [ -e "$home/state/mutex-ready" ] || fail "claim mutex fixture never became ready"
+  ' _ "$ROOT/bin/fm-wake-lib.sh" "$1/state" "$1" "$2" &
+  MUTEX_HOLDER=$!
+  OWNER_PIDS+=("$MUTEX_HOLDER")
+  while [ "$i" -lt 400 ] && [ ! -e "$1/state/mutex-ready" ]; do sleep 0.05; i=$((i + 1)); done
+  [ -e "$1/state/mutex-ready" ] || fail "claim mutex fixture never became ready"
+}
+
+test_ordinary_claim_invalidates_receipt() {
+  local home receipt op out before
+  home=$(new_home receipt-invalidated)
+  receipt=$(reserve "$home")
+  out=$(claim "$home" pocock)
+  assert_contains "$out" "rc=0" "ordinary same-name claim still succeeds"
+  [ ! -e "$home/state/.lock-receipt" ] || fail "ordinary claim retained the receipt"
   before=$(snapshot "$home")
-  for op in adopt release-receipt; do
-    out=$(receipt_op "$home" "$op" "$receipt")
-    assert_contains "$out" "rc=75" "busy mutex must return retry for $op"
-    assert_equals "$before" "$(snapshot "$home")" "busy $op must change nothing"
-  done
-  out=$(in_home "$home" '"$LOCK_SH" reserve; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock 2>&1)
-  assert_contains "$out" "rc=75" "busy reservation must return retry"
-  out=$(in_home "$home" '"$LOCK_SH" reserve --absent-only; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock 2>&1)
-  assert_contains "$out" "rc=75" "busy absent-only reservation must return retry"
   for op in '' release; do
-    out=$(in_home "$home" 'if [ -n "$OP" ]; then "$LOCK_SH" "$OP"; else "$LOCK_SH"; fi; printf "rc=%s\n" "$?"' \
-      FM_LOCK_HOLDER=pocock FM_LOCK_RECEIPT="$receipt" OP="$op" 2>&1)
-    assert_contains "$out" "rc=75" "busy receipt environment operation must return retry"
-    assert_equals "$before" "$(snapshot "$home")" "busy environment operation changes nothing"
+    out=$(receipt_env_op "$home" "$op" "$receipt")
+    assert_contains "$out" "rc=74" "a receipt invalidated by an ordinary claim must refuse ${op:-adoption}"
+    assert_equals "$before" "$(snapshot "$home")" "invalidated receipt changes nothing"
   done
-  : > "$home/state/release-mutex"
-  wait "$holder" || fail "mutex fixture failed"
+  pass "ordinary acquisition invalidates the receipt, even under the same name"
+}
+
+test_reserve_refuses_every_existing_path() {
+  local home kind form out before receipt
+  for kind in empty stale named foreign live directory symlink dangling; do
+    home=$(new_home "reserve-existing-$kind")
+    printf '%s\n' protected-session > "$home/state/.lock-session"
+    case "$kind" in
+      empty) : > "$home/state/.lock" ;;
+      stale) printf '99999999\n' > "$home/state/.lock" ;;
+      named) printf 'holder:pocock\n' > "$home/state/.lock" ;;
+      foreign) printf 'holder:foreign\n' > "$home/state/.lock" ;;
+      live) start_live_claude > "$home/state/.lock" ;;
+      directory) mkdir "$home/state/.lock" ;;
+      symlink) ln -s "$home/state/.lock-session" "$home/state/.lock" ;;
+      dangling) ln -s "$home/missing" "$home/state/.lock" ;;
+    esac
+    before=$(snapshot "$home")
+    for form in '' --absent-only; do
+      out=$(in_home "$home" '"$LOCK_SH" reserve $FORM; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock FORM="$form" 2>&1)
+      assert_contains "$out" "rc=73" "reserve${form:+ $form} must refuse $kind"
+      assert_equals "$before" "$(snapshot "$home")" "reserve${form:+ $form} $kind refusal changes nothing"
+    done
+    case "$kind" in
+      directory) [ -d "$home/state/.lock" ] || fail "directory removed" ;;
+      symlink|dangling) [ -L "$home/state/.lock" ] || fail "symlink removed" ;;
+    esac
+  done
+  home=$(new_home reserve-bad-argument)
+  out=$(in_home "$home" '"$LOCK_SH" reserve --replace; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock 2>&1)
+  assert_contains "$out" "rc=64" "an unknown reserve argument must refuse"
+  [ ! -e "$home/state/.lock" ] || fail "refused reserve argument created a lock"
+  home=$(new_home reserve-plain)
+  receipt=$(in_home "$home" '"$LOCK_SH" reserve' FM_LOCK_HOLDER=pocock) || fail "plain reserve on an absent lock failed"
+  [[ "$receipt" =~ ^v1:[0-9a-f]{32}$ ]] || fail "plain reserve receipt malformed"
+  home=$(new_home reserve-absent-only)
+  receipt=$(reserve "$home")
+  assert_equals "lock: held by pocock" "$(status_of "$home")" "reservation keeps line-one ownership"
+  pass "reserve claims only an absent pathname and refuses every existing one, with or without --absent-only"
+}
+
+test_receipt_mutex_contention_waits_then_checks_current_claim() {
+  local home receipt out before form waiter adopt_waiter release_waiter
+  home=$(new_home receipt-contention)
+  receipt=$(reserve "$home")
+  hold_claim_mutex "$home" 0
   before=$(snapshot "$home")
-  out=$(receipt_op "$home" adopt "$receipt")
-  assert_contains "$out" "rc=74" "retry must check the claim replaced inside mutex"
-  assert_equals "$before" "$(snapshot "$home")" "retry cannot mutate replacement"
+  for form in '' --absent-only; do
+    out=$(in_home "$home" '"$LOCK_SH" reserve $FORM; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock FORM="$form" 2>&1)
+    assert_contains "$out" "rc=75" "busy reservation${form:+ $form} must return retry"
+    assert_equals "$before" "$(snapshot "$home")" "busy reservation changes nothing"
+  done
+  in_claude_session "$home" waited-session '"$LOCK_SH"' \
+    FM_LOCK_HOLDER=pocock FM_LOCK_RECEIPT="$receipt" > "$home/adopt.out" 2>&1 &
+  waiter=$!
+  sleep 0.5
+  assert_not_contains "$(cat "$home/adopt.out")" "rc=" "receipt adoption must wait for the busy claim mutex"
+  assert_equals "$before" "$(snapshot "$home")" "waiting adoption changes nothing before it holds the mutex"
+  : > "$home/state/release-mutex"
+  wait "$MUTEX_HOLDER" || fail "mutex fixture failed"
+  wait "$waiter"
+  out=$(cat "$home/adopt.out")
+  assert_contains "$out" "rc=0" "receipt adoption must succeed once the mutex frees"
+  assert_contains "$out" "lock acquired: holder pocock" "waited adoption reports an ordinary acquisition"
+  assert_equals waited-session "$(cat "$home/state/.lock-session")" "waited adoption publishes its session"
+  assert_equals "$receipt" "$(cat "$home/state/.lock-receipt")" "waited adoption keeps the receipt"
+
+  hold_claim_mutex "$home" 1
+  receipt_env_op "$home" '' "$receipt" > "$home/stale-adopt.out" &
+  adopt_waiter=$!
+  receipt_env_op "$home" release "$receipt" > "$home/stale-release.out" &
+  release_waiter=$!
+  sleep 0.5
+  : > "$home/state/release-mutex"
+  wait "$MUTEX_HOLDER" || fail "mutex fixture failed"
+  wait "$adopt_waiter"
+  wait "$release_waiter"
+  assert_contains "$(cat "$home/stale-adopt.out")" "rc=74" "adoption must check the claim replaced while it waited"
+  assert_contains "$(cat "$home/stale-release.out")" "rc=74" "release must check the claim replaced while it waited"
+  assert_equals "lock= session=replacement-session" "$(snapshot "$home")" "waiters cannot mutate the replacement"
   out=$(in_home "$home" '"$LOCK_SH" reserve --absent-only; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock 2>&1)
-  assert_contains "$out" "rc=73" "absent-only retry must refuse the empty lock published inside mutex"
-  assert_equals "$before" "$(snapshot "$home")" "strict retry cannot mutate replacement"
-  pass "receipt operations refuse busy mutex and retry against current claim, not pre-wait evidence"
+  assert_contains "$out" "rc=73" "reserve must refuse the empty lock published inside the mutex"
+  assert_equals "lock= session=replacement-session" "$(snapshot "$home")" "refused reserve cannot mutate replacement"
+  pass "receipt operations wait for the claim mutex, then check the current claim; reserve returns retry"
 }
 
 test_receipt_sidecar_precedes_lock_publication() {
@@ -488,7 +491,7 @@ test_receipt_sidecar_precedes_lock_publication() {
 if [ "$1" = "$FM_HOME/state/.lock" ]; then
   if [ "$(cat "$FM_HOME/state/.lock-session")" != ordered-session ] ||
      [ "$(cat "$1")" != holder:pocock ] ||
-     [ "$(cat "$FM_HOME/state/.lock-receipt")" != "$RECEIPT" ]; then
+     [ "$(cat "$FM_HOME/state/.lock-receipt")" != "$FM_LOCK_RECEIPT" ]; then
     exit 1
   fi
   : > "$FM_HOME/ordered"
@@ -496,50 +499,23 @@ fi
 exec /bin/cp "$@"
 EOF
   chmod +x "$bin/cp"
-  out=$(in_claude_session "$home" ordered-session '"$LOCK_SH" adopt "$RECEIPT"' \
-    FM_LOCK_HOLDER=pocock RECEIPT="$receipt" PATH="$bin:$PATH" 2>&1)
+  out=$(in_claude_session "$home" ordered-session '"$LOCK_SH"' \
+    FM_LOCK_HOLDER=pocock FM_LOCK_RECEIPT="$receipt" PATH="$bin:$PATH" 2>&1)
   assert_contains "$out" "rc=0" "adoption with ordering observation must succeed"
   [ -e "$home/ordered" ] || fail "sidecar/claim ordering seam was not exercised"
   assert_equals ordered-session "$(cat "$home/state/.lock-session")" "new sidecar survives verified publication"
-  out=$(receipt_op "$home" adopt "$receipt")
+  out=$(receipt_env_op "$home" '' "$receipt")
   assert_contains "$out" "rc=0" "repeat adoption without trusted identity is allowed"
   [ ! -e "$home/state/.lock-session" ] || fail "untrusted adopter retained trusted session"
   pass "adoption publishes the sidecar before the lock and clears it for untrusted callers"
 }
 
-test_absent_only_refuses_every_existing_path() {
-  local home kind out before receipt
-  for kind in empty stale named foreign directory symlink dangling; do
-    home=$(new_home "absent-only-$kind")
-    printf '%s\n' protected-session > "$home/state/.lock-session"
-    case "$kind" in
-      empty) : > "$home/state/.lock" ;;
-      stale) printf '99999999\n' > "$home/state/.lock" ;;
-      named) printf 'holder:pocock\n' > "$home/state/.lock" ;;
-      foreign) printf 'holder:foreign\n' > "$home/state/.lock" ;;
-      directory) mkdir "$home/state/.lock" ;;
-      symlink) ln -s "$home/state/.lock-session" "$home/state/.lock" ;;
-      dangling) ln -s "$home/missing" "$home/state/.lock" ;;
-    esac
-    before=$(snapshot "$home")
-    out=$(in_home "$home" '"$LOCK_SH" reserve --absent-only; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock 2>&1)
-    assert_contains "$out" "rc=73" "absent-only must refuse $kind"
-    assert_equals "$before" "$(snapshot "$home")" "absent-only $kind refusal changes nothing"
-    case "$kind" in
-      directory) [ -d "$home/state/.lock" ] || fail "directory removed" ;;
-      symlink|dangling) [ -L "$home/state/.lock" ] || fail "symlink removed" ;;
-    esac
-  done
-  home=$(new_home absent-only-success)
-  receipt=$(in_home "$home" '"$LOCK_SH" reserve --absent-only' FM_LOCK_HOLDER=pocock) || fail "absent-only claim failed"
-  [[ "$receipt" =~ ^v1:[0-9a-f]{32}$ ]] || fail "absent-only receipt malformed"
-  pass "absent-only reserves absent path and refuses every existing pathname"
-}
-
 test_receipt_environment_preserves_claim_across_startup_and_release() {
   local home receipt out expected before
   home=$(new_home receipt-env)
+  printf '%s\n' obsolete-session > "$home/state/.lock-session"
   receipt=$(reserve "$home")
+  [ ! -e "$home/state/.lock-session" ] || fail "reservation retained the launcher's old session"
   expected=$(cat "$home/state/.lock")
   out=$(in_claude_session "$home" env-session '"$LOCK_SH"' FM_LOCK_HOLDER=pocock FM_LOCK_RECEIPT="$receipt" 2>&1)
   assert_contains "$out" "rc=0" "receipt-aware ordinary startup must succeed"
@@ -551,10 +527,10 @@ test_receipt_environment_preserves_claim_across_startup_and_release() {
   out=$(in_claude_session "$home" env-session '"$LOCK_SH"' FM_LOCK_HOLDER=pocock FM_LOCK_RECEIPT="$receipt" 2>&1)
   assert_contains "$out" "rc=0" "receipt-aware recheck must succeed"
   assert_equals "$before" "$(snapshot "$home")" "same-session recheck preserves pair"
-  out=$(in_home "$home" '"$LOCK_SH" release; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock FM_LOCK_RECEIPT="$receipt" 2>&1)
+  out=$(receipt_env_op "$home" release "$receipt")
   assert_contains "$out" "rc=0" "receipt-aware ordinary release must succeed"
   assert_equals "lock=<absent> session=<absent>" "$(snapshot "$home")" "receipt-aware release clears pair"
-  out=$(in_home "$home" '"$LOCK_SH"; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock FM_LOCK_RECEIPT="$receipt" 2>&1)
+  out=$(receipt_env_op "$home" '' "$receipt")
   assert_contains "$out" "rc=74" "receipt-aware ordinary acquire must not reclaim absent lock"
   assert_equals "lock=<absent> session=<absent>" "$(snapshot "$home")" "missing receipt cannot recreate pair"
   pass "receipt environment preserves claim and trusted session across ordinary startup/rechecks/release"
@@ -567,14 +543,14 @@ test_receipt_environment_refuses_replacement_foreign_and_invalid() {
   out=$(release "$home" pocock)
   assert_contains "$out" "rc=0" "setup release"
   fresh=$(reserve "$home")
+  [ "$old" != "$fresh" ] || fail "new claim reused the receipt"
   printf '%s\n' preserved-session > "$home/state/.lock-session"
   before=$(snapshot "$home")
   for op in '' release; do
     for receipt in "$old" invalid "$fresh"; do
       holder=pocock
       [ "$receipt" != "$fresh" ] || holder=foreign
-      out=$(in_home "$home" 'if [ -n "$OP" ]; then "$LOCK_SH" "$OP"; else "$LOCK_SH"; fi; printf "rc=%s\n" "$?"' \
-        FM_LOCK_HOLDER="$holder" FM_LOCK_RECEIPT="$receipt" OP="$op" 2>&1)
+      out=$(receipt_env_op "$home" "$op" "$receipt" "$holder")
       if [ "$receipt" = invalid ]; then
         assert_contains "$out" "rc=64" "invalid environment receipt must refuse"
       else
@@ -583,25 +559,28 @@ test_receipt_environment_refuses_replacement_foreign_and_invalid() {
       assert_equals "$before" "$(snapshot "$home")" "environment receipt refusal changes nothing"
     done
   done
+  out=$(in_home "$home" '"$LOCK_SH" adopt "$FM_LOCK_RECEIPT"; printf "rc=%s\n" "$?"' \
+    FM_LOCK_HOLDER=pocock FM_LOCK_RECEIPT="$fresh" 2>&1)
+  assert_contains "$out" "rc=64" "receipt-aware operations take no argument but release"
+  assert_equals "$before" "$(snapshot "$home")" "refused argument changes nothing"
   pass "receipt-aware ordinary acquire/release protect replacement and foreign claims"
 }
 
 test_receipt_publication_failure_restores_both_sidecars() {
   local home bin before out
   home=$(new_home receipt-rollback)
-  : > "$home/state/.lock"
   printf '%s\n' previous-session > "$home/state/.lock-session"
   printf '%s\n' previous-receipt > "$home/state/.lock-receipt"
   before=$(snapshot "$home")
   bin=$(fm_fakebin "$home/bin")
-  cat > "$bin/cp" <<'EOF'
+  cat > "$bin/mktemp" <<EOF
 #!/usr/bin/env bash
-[ "$1" != "$FM_HOME/state/.lock" ] || exit 1
-exec /bin/cp "$@"
+case "\$*" in *.lock-receipt.*) exit 1 ;; esac
+exec $(command -v mktemp) "\$@"
 EOF
-  chmod +x "$bin/cp"
+  chmod +x "$bin/mktemp"
   out=$(in_home "$home" '"$LOCK_SH" reserve; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock PATH="$bin:$PATH" 2>&1)
-  assert_contains "$out" "rc=1" "lock publication I/O failure has distinct exit"
+  assert_contains "$out" "rc=1" "receipt publication I/O failure has distinct exit"
   assert_equals "$before" "$(snapshot "$home")" "failed reservation restores trusted and receipt sidecars"
   [ ! -e "$home/state/.lock-session.prev" ] && [ ! -e "$home/state/.lock-receipt.prev" ] || fail "rollback retained backup files"
   out=$(in_claude_session "$home" launcher-session '"$LOCK_SH" reserve' FM_LOCK_HOLDER=pocock 2>&1)
@@ -612,13 +591,11 @@ EOF
 
 fm_test_run \
   test_receipt_publication_failure_restores_both_sidecars \
-  test_absent_only_refuses_every_existing_path \
+  test_reserve_refuses_every_existing_path \
   test_receipt_environment_preserves_claim_across_startup_and_release \
   test_receipt_environment_refuses_replacement_foreign_and_invalid \
-  test_receipt_matching_adopt_and_release \
-  test_replaced_claim_refuses_stale_adopt_and_release \
-  test_reservation_refuses_existing_and_unsafe_claims \
-  test_receipt_mutex_contention_rechecks_after_retry \
+  test_ordinary_claim_invalidates_receipt \
+  test_receipt_mutex_contention_waits_then_checks_current_claim \
   test_receipt_sidecar_precedes_lock_publication \
   test_named_claim_on_a_free_lock_writes_the_holder_and_publishes_the_session \
   test_named_claim_is_refused_while_a_live_claude_pid_holds_the_lock \

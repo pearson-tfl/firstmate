@@ -40,34 +40,28 @@
 #                             state/.lock-session only when line 1 is
 #                             holder:<name>; otherwise exit 1, changing nothing.
 #
-# Additive launch handoff API (all require FM_LOCK_HOLDER=<name>):
-#   fm-lock.sh reserve [--absent-only]
-#     With --absent-only, refuse ANY existing lock pathname under the mutex
-#     (including empty/stale files, directories and dangling symlinks).
-#     Otherwise claim only a free/empty/stale lock, never an existing named
-#     holder (even the same name) or live harness pid. Clear the trusted sidecar.
-#     stdout is exactly one receipt: v1:<32 lowercase hexadecimal digits>.
-#   fm-lock.sh adopt <receipt>
-#     Verify the holder AND receipt under the claim mutex, then publish the
-#     adopting caller's trusted session sidecar with the ordinary ordering.
-#     Keep the receipt; repeat adoption is allowed for this claim.
-#   fm-lock.sh release-receipt <receipt>
-#     Remove the lock and sidecar only if holder AND receipt still match.
-# These commands never wait for the mutex: exit 75 means busy, retry the whole
-# operation. Exit 64 means invalid arguments/holder/receipt; 73 means reserve
-# found an occupied or unsafe lock; 74 means adopt/release-receipt found a
-# missing, changed, unsafe or foreign claim; 1 means publication/I/O failure.
-# Success exits 0. Refusals (64/73/74/75) leave lock and sidecar untouched.
+# Launch handoff (both require FM_LOCK_HOLDER=<name>):
+#   FM_LOCK_HOLDER=<name> fm-lock.sh reserve [--absent-only]
+#     Under the claim mutex, refuse ANY existing lock pathname (including
+#     empty/stale files, directories and dangling symlinks); otherwise claim
+#     line 1 and clear the trusted sidecar. --absent-only names this, the only
+#     behaviour. stdout is exactly one receipt: v1:<32 lowercase hex digits>.
+#     Reserve never waits for the mutex: exit 75 means busy, retry.
+#   FM_LOCK_RECEIPT=<receipt> on ordinary acquisition or release
+#     Wait for the claim mutex exactly as ordinary acquisition does, then, only
+#     while holding it, require the holder AND receipt to match. Acquisition
+#     publishes the adopting caller's trusted sidecar with the ordinary
+#     ordering and keeps the receipt through startup and re-checks; release
+#     removes the claim only on a match. No missing claim is reclaimed.
+# Exit 64 means invalid arguments/holder/receipt; 73 means reserve found an
+# existing lock pathname; 74 means a receipt operation found a missing,
+# changed, unsafe or foreign claim; 1 means publication/I/O failure. Refusals
+# (64/73/74/75) leave lock and sidecar untouched.
 # The receipt is a cooperative claim identity, not authentication or process
 # liveness proof. It is stored in state/.lock-receipt; state/.lock keeps its
 # existing one-line holder format (startup consumers compare the whole file).
-# With nonempty FM_LOCK_RECEIPT=<receipt>, ordinary no-argument acquisition and
-# release use these same receipt checks and exit codes under the mutex.
-# Acquisition publishes the ordinary sidecar and preserves the receipt through
-# startup/re-checks; release is conditional. No missing claim is reclaimed.
-# Without that opt-in, ordinary acquire still rewrites the one-line lock,
+# Without FM_LOCK_RECEIPT, ordinary acquire still rewrites the one-line lock,
 # invalidating any receipt, and ordinary release still checks only name.
-# Explicit receipt subcommands use their arguments, not FM_LOCK_RECEIPT.
 # Consumers must carry FM_LOCK_RECEIPT through session startup/re-checks and
 # independently confirm the launched process; a receipt alone proves no liveness.
 #
@@ -110,36 +104,20 @@ fi
 
 OP=${1:-}
 RECEIPT_API=0
-RECEIPT_ENV=0
-ABSENT_ONLY=0
-RECEIPT=${2:-}
+RECEIPT=
 case "$OP" in
   reserve)
     RECEIPT_API=1
-    if [ "$#" -eq 2 ] && [ "$2" = --absent-only ]; then
-      ABSENT_ONLY=1
-    elif [ "$#" -ne 1 ]; then
+    if [ "$#" -gt 2 ] || { [ "$#" -eq 2 ] && [ "$2" != --absent-only ]; }; then
       echo "error: usage: fm-lock.sh reserve [--absent-only]" >&2
-      exit 64
-    fi
-    ;;
-  adopt|release-receipt)
-    RECEIPT_API=1
-    if [ "$#" -ne 2 ]; then
-      echo "error: usage: fm-lock.sh $OP <receipt>" >&2
       exit 64
     fi
     ;;
   *)
     if [ -n "${FM_LOCK_RECEIPT:-}" ]; then
       RECEIPT_API=1
-      RECEIPT_ENV=1
       RECEIPT=$FM_LOCK_RECEIPT
-      if [ "$#" -eq 0 ]; then
-        OP=adopt
-      elif [ "$#" -eq 1 ] && [ "$OP" = release ]; then
-        OP=release-receipt
-      else
+      if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$OP" != release ]; }; then
         echo "error: receipt-aware ordinary operations take no arguments or release" >&2
         exit 64
       fi
@@ -318,12 +296,12 @@ publish_lock_receipt() {
 
 # Take the claim lock. When the prior session's bounded startup sweep holds it,
 # refuse with exit 75 so that refusal reads as wait-and-retry rather than as
-# another owner.
+# another owner. A reservation never waits: it exits 75 on any contention.
 take_claim_lock() {
   local sweep_pid
   if ! fm_lock_try_acquire "$CLAIM_LOCK"; then
-    if [ "$RECEIPT_API" -eq 1 ]; then
-      echo "error: session claim mutex is busy; retry the receipt operation" >&2
+    if [ "$OP" = reserve ]; then
+      echo "error: session claim mutex is busy; retry the reservation" >&2
       exit 75
     fi
     sweep_pid=$(sed -n 's/^pid=//p' "$STATE/.startup-network.status" 2>/dev/null | tail -1)
@@ -383,24 +361,10 @@ refuse_live_owner() {  # <recorded-pid>
 if [ "$RECEIPT_API" -eq 1 ]; then
   take_claim_lock
   if [ "$OP" = reserve ]; then
-    if [ "$ABSENT_ONLY" -eq 1 ] && { [ -e "$LOCK" ] || [ -L "$LOCK" ]; }; then
+    if [ -e "$LOCK" ] || [ -L "$LOCK" ]; then
       echo "error: session lock pathname already exists; nothing reserved" >&2
       exit 73
     fi
-    if [ -L "$LOCK" ]; then
-      echo "error: session lock is unsafe; nothing reserved" >&2
-      exit 73
-    fi
-    fm_session_lock_inspect "$STATE"
-    if [ -f "$LOCK" ] && [ ! -s "$LOCK" ]; then
-      FM_LOCK_INSPECT_STATE=free
-    fi
-    case "$FM_LOCK_INSPECT_STATE" in
-      free|stale) ;;
-      *)
-        echo "error: session lock is occupied or unsafe; nothing reserved" >&2
-        exit 73 ;;
-    esac
     RECEIPT=$(od -An -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
     if [[ ! "$RECEIPT" =~ ^[0-9a-f]{32}$ ]]; then
       echo "error: cannot generate claim receipt" >&2
@@ -415,7 +379,6 @@ if [ "$RECEIPT_API" -eq 1 ]; then
       echo "error: session claim no longer matches holder and receipt; nothing changed" >&2
       exit 74
     fi
-    [ "$OP" != release-receipt ] || RELEASE=1
   fi
 fi
 
@@ -494,12 +457,8 @@ commit_lock_session
 RECEIPT_PHASE=0
 [ "$RECEIPT_KIND" -eq 0 ] || rm -f "$RECEIPT_PREV" 2>/dev/null || true
 release_claim_lock
-if [ "$RECEIPT_API" -eq 1 ] && [ "$RECEIPT_ENV" -eq 0 ]; then
-  if [ "$OP" = reserve ]; then
-    printf '%s\n' "$RECEIPT"
-  else
-    echo "lock adopted: holder $HOLDER_NAME"
-  fi
+if [ "$OP" = reserve ]; then
+  printf '%s\n' "$RECEIPT"
   exit 0
 fi
 echo "lock acquired: holder $HOLDER_NAME"

@@ -720,7 +720,8 @@
 # --secondmate, like devin.
 # Launch holder: no launch inherits FM_LOCK_HOLDER, the named session-lock
 # holder bin/fm-lock.sh claims under, so a worker can never claim main under
-# main's name. Every launch strips it - the shared env prefix, and the omp,
+# main's name, nor FM_LOCK_RECEIPT, main's launch-claim receipt, which no other
+# home's claim carries. Every launch strips both - the shared env prefix, and the omp,
 # cursor and polytoken templates that carry their own env - and a --secondmate
 # launch is then given its home's .fm-secondmate-home marker name in that same
 # env, after the strip. polytoken's FM_* sweep keeps the name so its env stage
@@ -7737,7 +7738,7 @@ LAUNCH=${LAUNCH//__WORKTREE__/$sq_worktree}
 # Launch-holder contract (header): strip any inherited FM_LOCK_HOLDER, then give
 # a secondmate its marker's name. One env carries both, options before the
 # assignment, so the strip can never undo the set.
-LOCK_HOLDER_ENV='-u FM_LOCK_HOLDER'
+LOCK_HOLDER_ENV='-u FM_LOCK_HOLDER -u FM_LOCK_RECEIPT'
 if [ "$KIND" = secondmate ]; then
   LOCK_HOLDER_ENV="$LOCK_HOLDER_ENV FM_LOCK_HOLDER=$(shell_quote "$SECONDMATE_LOCK_HOLDER")"
 fi
@@ -7900,9 +7901,9 @@ fi
 # Launch-holder backstop (header): the env-level strip and set above reach only
 # templated commands, so a raw or compound launch is covered here, in the shell.
 if [ "$KIND" = secondmate ]; then
-  LAUNCH="export FM_LOCK_HOLDER=$(shell_quote "$SECONDMATE_LOCK_HOLDER"); $LAUNCH"
+  LAUNCH="unset FM_LOCK_RECEIPT; export FM_LOCK_HOLDER=$(shell_quote "$SECONDMATE_LOCK_HOLDER"); $LAUNCH"
 else
-  LAUNCH="unset FM_LOCK_HOLDER; $LAUNCH"
+  LAUNCH="unset FM_LOCK_HOLDER FM_LOCK_RECEIPT; $LAUNCH"
 fi
 # Every launch also exports the absolute path of this task's steering inbox, so
 # the constant doorbell line (bin/fm-task-inbox-lib.sh) can name
@@ -7988,7 +7989,7 @@ if [ "$BACKEND" = t3code ]; then
   # Launch holder (header): this config can only set, so a worker's empty
   # name overrides any name the provider instance inherited; fm-lock and the
   # session-lock library read an empty name as no name.
-  T3CODE_ENV+=("FM_LOCK_HOLDER=$SECONDMATE_LOCK_HOLDER")
+  T3CODE_ENV+=("FM_LOCK_HOLDER=$SECONDMATE_LOCK_HOLDER" FM_LOCK_RECEIPT=)
   if [ -n "$SPAWN_TRACEPARENT" ] && spawn_record_traceparent; then
     T3CODE_ENV+=("TRACEPARENT=$SPAWN_TRACEPARENT")
   fi
