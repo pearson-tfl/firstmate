@@ -1,0 +1,23 @@
+lab primary: real claude CLI, cwd plain clone at a1313dbb, FM_HOME=lab, FM_LOCK_HOLDER=claude, FM_LOCK_RECEIPT=v1:6c5dc380ece06ded71a3cc3b8068580e
+lock=[holder:claude]
+receipt=[v1:6c5dc380ece06ded71a3cc3b8068580e]
+lock-session=[794388fd-5cfc-457d-af7e-7c9021ccea37]
+session-start-complete=[holder:claude]
+--- startup-network.status
+state=done
+pid=9751
+started=1794888067
+finished=1794888069
+rc=0
+locked=1
+phases=probe,sweeps
+generation=1794888067.9097.6990
+lock_pid=holder:claude
+report_published=1
+--- after primary exit: stale-receipt release then matching release
+error: session claim no longer matches holder and receipt; nothing changed
+rc=74
+lock released: holder claude
+rc=0
+no .lock* files remain
+--- in-session re-check (from Claude transcript of session 794388fd): 'lock acquired: holder claude' x6 lines, 'rc=0' x2; receipt and lock unchanged afterwards

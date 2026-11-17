@@ -1,0 +1,21 @@
+1..19
+ok - failed reservation restores both sidecars; trusted launcher is never credited as adopted session
+ok - reserve --absent-only claims only an absent pathname and refuses every existing one; any other spelling is a usage error
+ok - receipt environment preserves claim and trusted session across ordinary startup/rechecks/release
+ok - receipt-aware ordinary acquire/release protect replacement and foreign claims
+ok - ordinary acquisition invalidates the receipt, even under the same name
+ok - receipt operations wait for the claim mutex, then check the current claim; reserve returns retry
+ok - adoption publishes the sidecar before the lock and clears it for untrusted callers
+ok - named claim on a free lock writes holder:pocock and publishes the session file
+ok - named claim refused while a live Claude pid holds the lock
+ok - release clears line 1 and the session file only for the matching name
+ok - a re-check reclaims a hand-cleared lock and refuses another name or a live pid unchanged
+ok - fm-lock status and fm-inbox ready show held by pocock
+ok - inherited-name leak: a hand-run session prefixed FM_LOCK_HOLDER=pocock claims as pocock (accepted risk)
+ok - FM_LOCK_HOLDER=ahr claims holder:ahr with the session published; another session is refused read-only
+ok - FM_LOCK_HOLDER=ahr release clears line 1, a wrong name changes nothing, a fresh claim reclaims
+ok - two runs under one name both pass and status shows the one name
+ok - a refusal from the startup sweep finishing is distinguishable as wait-and-retry
+ok - the library reads the named holder from line 1 and decides ownership by name
+ok - the named re-check sends one row on a detector beat over 900s and still claims
+FM_TEST_COMPLETE

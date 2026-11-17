@@ -1,0 +1,9 @@
+ok - receipt identity survives full session start and startup sweeps, then conditional cleanup succeeds
+ok - test 1: pocock's session start on a free lock claims holder:pocock, no banner, drain and sweeps run
+ok - test 2: a second session while pocock holds main is refused read-only, skips drain, sweeps and bootstrap mutation, and its Stop is allowed as owned by another session
+ok - a pocock start records holder:pocock as its completion marker, so each later rebuild re-emits instead of a full start
+ok - a named holder's Pi compaction compares its AGENTS baseline against .lock line 1, not an ancestry pid
+ok - test 5: the startup sweep and bootstrap's clone refresh are authorised under holder:pocock, and refused once it changes
+ok - test 22: after pocock releases, FM_LOCK_HOLDER=claude claims main with no banner and drains; pocock's re-check refuses, naming claude, unchanged
+ok - fm-inbox ready under holder:pocock: model unknown and can_receive unknown unless FM_SUPERVISION_MODEL is set
+# fm-session-start-holder.test.sh: all assertions passed

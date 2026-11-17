@@ -1,0 +1,4 @@
+ok - shared launch prefix: a worker carries no inherited holder and a secondmate carries its marker's name
+ok - raw launch command: a compound or untemplated launch carries no inherited holder
+ok - cursor launch: a worker carries no inherited holder and a secondmate carries its marker's name
+ok - omp launch: a worker carries no inherited holder and a secondmate carries its marker's name

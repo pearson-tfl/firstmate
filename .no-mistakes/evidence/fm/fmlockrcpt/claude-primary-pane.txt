@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.326
+▝▜██████▀  Opus 5.5 with high effort · Claude Ultra
+ ▝▝   ▝▝   /private/tmp/fm-lab-clone.HlWGTg/fm · /rc
+
+
+❯ Run exactly: FM_HOME=$FM_HOME bin/fm-lock.sh ; echo rc=$? — then reply DONE
+
+  Ran 1 shell command
+
+⏺ DONE
+
+✻ Churned for 8s · done 4:01 AM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+● full  $0.36  last $0.36  8s                                                                                                                                         Review  Audit  Board  Details [-]
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 50.0k · 5h – · 7d 88% ↺1d19h · high · cache 59m
+  fm · v2.1.326 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 4 agents

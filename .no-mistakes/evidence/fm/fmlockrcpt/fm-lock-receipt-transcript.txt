@@ -1,0 +1,154 @@
+### S1 watchdog reserves an absent main lock
+== reserve
+$ FM_LOCK_HOLDER=main bin/fm-lock.sh reserve --absent-only
+exit=0
+v1:99a47dd37f04f53a5f2d548f2eda92d1
+PASS (reserve on empty home)
+PASS (receipt format v1:99a47dd37f04f53a5f2d548f2eda92d1)
+-- state: lock=[holder:main] receipt=[v1:99a47dd37f04f53a5f2d548f2eda92d1] session=[absent]
+PASS (lock line + receipt file)
+### S2 second reserve and bare reserve refused, nothing changed
+== reserve-again
+$ FM_LOCK_HOLDER=main bin/fm-lock.sh reserve --absent-only
+exit=73
+error: session lock pathname already exists; nothing reserved
+PASS (reserve with existing lock)
+== reserve-bare
+$ FM_LOCK_HOLDER=main bin/fm-lock.sh reserve
+exit=64
+error: usage: fm-lock.sh reserve --absent-only
+PASS (bare reserve)
+== reserve-noholder
+$ bin/fm-lock.sh reserve --absent-only
+exit=64
+error: receipt operations need a valid FM_LOCK_HOLDER
+PASS (reserve without holder)
+-- state: lock=[holder:main] receipt=[v1:99a47dd37f04f53a5f2d548f2eda92d1] session=[absent]
+PASS (receipt untouched)
+### S3 adversarial: stand-in with wrong / malformed / foreign-holder receipt cannot adopt
+== wrong-receipt
+$ FM_LOCK_HOLDER=main FM_LOCK_RECEIPT=v1:00000000000000000000000000000000 bin/fm-lock.sh
+exit=74
+error: session claim no longer matches holder and receipt; nothing changed
+PASS (wrong receipt)
+== malformed
+$ FM_LOCK_HOLDER=main FM_LOCK_RECEIPT=garbage bin/fm-lock.sh
+exit=64
+error: receipt must be v1: followed by 32 lowercase hexadecimal digits
+PASS (malformed receipt)
+== foreign-holder
+$ FM_LOCK_HOLDER=intruder FM_LOCK_RECEIPT=v1:99a47dd37f04f53a5f2d548f2eda92d1 bin/fm-lock.sh
+exit=74
+error: session claim no longer matches holder and receipt; nothing changed
+PASS (right receipt, wrong holder)
+== receipt-with-arg
+$ FM_LOCK_HOLDER=main FM_LOCK_RECEIPT=v1:99a47dd37f04f53a5f2d548f2eda92d1 bin/fm-lock.sh status2
+exit=64
+error: receipt-aware ordinary operations take no arguments or release
+PASS (receipt with stray arg)
+-- state: lock=[holder:main] receipt=[v1:99a47dd37f04f53a5f2d548f2eda92d1] session=[absent]
+PASS (receipt untouched after refusals)
+### S4 recovered main adopts with its receipt (acquire + re-check)
+== adopt
+$ FM_LOCK_HOLDER=main FM_LOCK_RECEIPT=v1:99a47dd37f04f53a5f2d548f2eda92d1 bin/fm-lock.sh
+exit=0
+lock acquired: holder main
+PASS (adopt)
+== recheck
+$ FM_LOCK_HOLDER=main FM_LOCK_RECEIPT=v1:99a47dd37f04f53a5f2d548f2eda92d1 bin/fm-lock.sh
+exit=0
+lock acquired: holder main
+PASS (re-check keeps receipt)
+-- state: lock=[holder:main] receipt=[v1:99a47dd37f04f53a5f2d548f2eda92d1] session=[present]
+PASS (receipt kept through re-check)
+### S5 same-name ordinary acquisition (stand-in at handoff) invalidates the receipt
+== ordinary-same-name
+$ FM_LOCK_HOLDER=main bin/fm-lock.sh
+exit=0
+lock acquired: holder main
+PASS (ordinary same-name acquire still passes (compat))
+-- state: lock=[holder:main] receipt=[ABSENT] session=[present]
+PASS (receipt file removed)
+== adopt-after-standin
+$ FM_LOCK_HOLDER=main FM_LOCK_RECEIPT=v1:99a47dd37f04f53a5f2d548f2eda92d1 bin/fm-lock.sh
+exit=74
+error: session claim no longer matches holder and receipt; nothing changed
+PASS (old receipt no longer adopts)
+== release-after-standin
+$ FM_LOCK_HOLDER=main FM_LOCK_RECEIPT=v1:99a47dd37f04f53a5f2d548f2eda92d1 bin/fm-lock.sh release
+exit=74
+error: session claim no longer matches holder and receipt; nothing changed
+PASS (old receipt cannot release)
+-- state: lock=[holder:main] receipt=[ABSENT] session=[present]
+### S6 conditional release: mismatch refused, match clears; no reclaim of missing claim
+== ordinary-release
+$ FM_LOCK_HOLDER=main bin/fm-lock.sh release
+exit=0
+lock released: holder main
+PASS (ordinary release (compat))
+== reserve2
+$ FM_LOCK_HOLDER=main bin/fm-lock.sh reserve --absent-only
+exit=0
+v1:5021d9add77187a33be63880561a1dd4
+PASS (reserve2)
+== release-wrong
+$ FM_LOCK_HOLDER=main FM_LOCK_RECEIPT=v1:99a47dd37f04f53a5f2d548f2eda92d1 bin/fm-lock.sh release
+exit=74
+error: session claim no longer matches holder and receipt; nothing changed
+PASS (release with stale receipt)
+-- state: lock=[holder:main] receipt=[v1:5021d9add77187a33be63880561a1dd4] session=[absent]
+== release-right
+$ FM_LOCK_HOLDER=main FM_LOCK_RECEIPT=v1:5021d9add77187a33be63880561a1dd4 bin/fm-lock.sh release
+exit=0
+lock released: holder main
+PASS (release with matching receipt)
+-- state: lock=[ABSENT] receipt=[ABSENT] session=[absent]
+PASS (lock + receipt cleared)
+== adopt-missing
+$ FM_LOCK_HOLDER=main FM_LOCK_RECEIPT=v1:5021d9add77187a33be63880561a1dd4 bin/fm-lock.sh
+exit=74
+error: session claim no longer matches holder and receipt; nothing changed
+PASS (missing claim not reclaimed)
+-- state: lock=[ABSENT] receipt=[ABSENT] session=[absent]
+PASS (no lock created)
+### S7 reserve refuses empty file, directory and dangling symlink
+== reserve-empty
+$ FM_LOCK_HOLDER=main bin/fm-lock.sh reserve --absent-only
+exit=73
+error: session lock pathname already exists; nothing reserved
+PASS (reserve over empty)
+PASS (no receipt written)
+== reserve-dir
+$ FM_LOCK_HOLDER=main bin/fm-lock.sh reserve --absent-only
+exit=73
+error: session lock pathname already exists; nothing reserved
+PASS (reserve over dir)
+PASS (no receipt written)
+== reserve-symlink
+$ FM_LOCK_HOLDER=main bin/fm-lock.sh reserve --absent-only
+exit=73
+error: session lock pathname already exists; nothing reserved
+PASS (reserve over symlink)
+PASS (no receipt written)
+### S8 mutex contention: receipt acquisition WAITS, reserve fails fast with 75
+== reserve3
+$ FM_LOCK_HOLDER=main bin/fm-lock.sh reserve --absent-only
+exit=0
+v1:a392a1ac9f755448fe3af8d263590499
+PASS (reserve3)
+mutex held by pid 61939
+== reserve-busy
+$ FM_LOCK_HOLDER=other bin/fm-lock.sh reserve --absent-only
+exit=75
+error: session claim mutex is busy; retry the reservation
+PASS (reserve fails fast on busy mutex)
+== adopt-waits
+$ FM_LOCK_HOLDER=main FM_LOCK_RECEIPT=v1:a392a1ac9f755448fe3af8d263590499 bin/fm-lock.sh
+exit=0
+lock acquired: holder main
+PASS (receipt adopt waited for mutex)
+adopt took 3s (mutex held ~3s)
+holder exit=0
+PASS (adopt blocked then succeeded)
+-- state: lock=[holder:main] receipt=[v1:a392a1ac9f755448fe3af8d263590499] session=[present]
+TOTAL FAILS=0
