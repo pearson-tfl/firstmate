@@ -36,9 +36,10 @@
 #                             wakes. Machine-readable lock fields live on
 #                             fm-inbox.sh ready, from the same inspect helper.
 #        FM_LOCK_HOLDER=<name> fm-lock.sh release
-#                             under the claim lock, remove state/.lock and
-#                             state/.lock-session only when line 1 is
-#                             holder:<name>; otherwise exit 1, changing nothing.
+#                             under the claim lock, remove state/.lock,
+#                             state/.lock-session and state/.lock-receipt only
+#                             when line 1 is holder:<name>; otherwise exit 1,
+#                             changing nothing.
 #
 # Launch handoff (both require FM_LOCK_HOLDER=<name>):
 #   FM_LOCK_HOLDER=<name> fm-lock.sh reserve --absent-only
