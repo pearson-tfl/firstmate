@@ -410,40 +410,35 @@ test_reserve_refuses_every_existing_path() {
       dangling) ln -s "$home/missing" "$home/state/.lock" ;;
     esac
     before=$(snapshot "$home")
-    for form in '' --absent-only; do
-      out=$(in_home "$home" '"$LOCK_SH" reserve $FORM; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock FORM="$form" 2>&1)
-      assert_contains "$out" "rc=73" "reserve${form:+ $form} must refuse $kind"
-      assert_equals "$before" "$(snapshot "$home")" "reserve${form:+ $form} $kind refusal changes nothing"
-    done
+    out=$(in_home "$home" '"$LOCK_SH" reserve --absent-only; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock 2>&1)
+    assert_contains "$out" "rc=73" "reserve must refuse $kind"
+    assert_equals "$before" "$(snapshot "$home")" "reserve $kind refusal changes nothing"
     case "$kind" in
       directory) [ -d "$home/state/.lock" ] || fail "directory removed" ;;
       symlink|dangling) [ -L "$home/state/.lock" ] || fail "symlink removed" ;;
     esac
   done
   home=$(new_home reserve-bad-argument)
-  out=$(in_home "$home" '"$LOCK_SH" reserve --replace; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock 2>&1)
-  assert_contains "$out" "rc=64" "an unknown reserve argument must refuse"
-  [ ! -e "$home/state/.lock" ] || fail "refused reserve argument created a lock"
-  home=$(new_home reserve-plain)
-  receipt=$(in_home "$home" '"$LOCK_SH" reserve' FM_LOCK_HOLDER=pocock) || fail "plain reserve on an absent lock failed"
-  [[ "$receipt" =~ ^v1:[0-9a-f]{32}$ ]] || fail "plain reserve receipt malformed"
+  for form in --replace '' '--absent-only --absent-only'; do
+    out=$(in_home "$home" '"$LOCK_SH" reserve $FORM; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock FORM="$form" 2>&1)
+    assert_contains "$out" "rc=64" "reserve${form:+ $form} must refuse with a usage error"
+    [ ! -e "$home/state/.lock" ] || fail "refused reserve${form:+ $form} created a lock"
+  done
   home=$(new_home reserve-absent-only)
   receipt=$(reserve "$home")
   assert_equals "lock: held by pocock" "$(status_of "$home")" "reservation keeps line-one ownership"
-  pass "reserve claims only an absent pathname and refuses every existing one, with or without --absent-only"
+  pass "reserve --absent-only claims only an absent pathname and refuses every existing one; any other spelling is a usage error"
 }
 
 test_receipt_mutex_contention_waits_then_checks_current_claim() {
-  local home receipt out before form waiter adopt_waiter release_waiter
+  local home receipt out before waiter adopt_waiter release_waiter
   home=$(new_home receipt-contention)
   receipt=$(reserve "$home")
   hold_claim_mutex "$home" 0
   before=$(snapshot "$home")
-  for form in '' --absent-only; do
-    out=$(in_home "$home" '"$LOCK_SH" reserve $FORM; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock FORM="$form" 2>&1)
-    assert_contains "$out" "rc=75" "busy reservation${form:+ $form} must return retry"
-    assert_equals "$before" "$(snapshot "$home")" "busy reservation changes nothing"
-  done
+  out=$(in_home "$home" '"$LOCK_SH" reserve --absent-only; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock 2>&1)
+  assert_contains "$out" "rc=75" "busy reservation must return retry"
+  assert_equals "$before" "$(snapshot "$home")" "busy reservation changes nothing"
   in_claude_session "$home" waited-session '"$LOCK_SH"' \
     FM_LOCK_HOLDER=pocock FM_LOCK_RECEIPT="$receipt" > "$home/adopt.out" 2>&1 &
   waiter=$!
@@ -579,11 +574,11 @@ case "\$*" in *.lock-receipt.*) exit 1 ;; esac
 exec $(command -v mktemp) "\$@"
 EOF
   chmod +x "$bin/mktemp"
-  out=$(in_home "$home" '"$LOCK_SH" reserve; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock PATH="$bin:$PATH" 2>&1)
+  out=$(in_home "$home" '"$LOCK_SH" reserve --absent-only; printf "rc=%s\n" "$?"' FM_LOCK_HOLDER=pocock PATH="$bin:$PATH" 2>&1)
   assert_contains "$out" "rc=1" "receipt publication I/O failure has distinct exit"
   assert_equals "$before" "$(snapshot "$home")" "failed reservation restores trusted and receipt sidecars"
   [ ! -e "$home/state/.lock-session.prev" ] && [ ! -e "$home/state/.lock-receipt.prev" ] || fail "rollback retained backup files"
-  out=$(in_claude_session "$home" launcher-session '"$LOCK_SH" reserve' FM_LOCK_HOLDER=pocock 2>&1)
+  out=$(in_claude_session "$home" launcher-session '"$LOCK_SH" reserve --absent-only' FM_LOCK_HOLDER=pocock 2>&1)
   assert_contains "$out" "rc=0" "retry reservation under trusted launcher succeeds"
   [ ! -e "$home/state/.lock-session" ] || fail "reservation published launcher identity instead of clearing it"
   pass "failed reservation restores both sidecars; trusted launcher is never credited as adopted session"

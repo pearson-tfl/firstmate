@@ -41,11 +41,11 @@
 #                             holder:<name>; otherwise exit 1, changing nothing.
 #
 # Launch handoff (both require FM_LOCK_HOLDER=<name>):
-#   FM_LOCK_HOLDER=<name> fm-lock.sh reserve [--absent-only]
+#   FM_LOCK_HOLDER=<name> fm-lock.sh reserve --absent-only
 #     Under the claim mutex, refuse ANY existing lock pathname (including
 #     empty/stale files, directories and dangling symlinks); otherwise claim
-#     line 1 and clear the trusted sidecar. --absent-only names this, the only
-#     behaviour. stdout is exactly one receipt: v1:<32 lowercase hex digits>.
+#     line 1 and clear the trusted sidecar. stdout is exactly one receipt:
+#     v1:<32 lowercase hex digits>.
 #     Reserve never waits for the mutex: exit 75 means busy, retry.
 #   FM_LOCK_RECEIPT=<receipt> on ordinary acquisition or release
 #     Wait for the claim mutex exactly as ordinary acquisition does, then, only
@@ -108,8 +108,8 @@ RECEIPT=
 case "$OP" in
   reserve)
     RECEIPT_API=1
-    if [ "$#" -gt 2 ] || { [ "$#" -eq 2 ] && [ "$2" != --absent-only ]; }; then
-      echo "error: usage: fm-lock.sh reserve [--absent-only]" >&2
+    if [ "$#" -ne 2 ] || [ "$2" != --absent-only ]; then
+      echo "error: usage: fm-lock.sh reserve --absent-only" >&2
       exit 64
     fi
     ;;

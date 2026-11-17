@@ -2912,7 +2912,7 @@ else
       export TMPDIR="$work/tmp"
       export TMP="$work/tmp"
       unset FM_HOME FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_ROOT_OVERRIDE \
-        FM_PROJECTS_OVERRIDE FM_CONFIG_OVERRIDE FM_BACKEND 2>/dev/null || true
+        FM_PROJECTS_OVERRIDE FM_CONFIG_OVERRIDE FM_BACKEND FM_LOCK_RECEIPT 2>/dev/null || true
       cd "$ROOT" || exit 1
       begin_ms=$(now_ms)
       set +e

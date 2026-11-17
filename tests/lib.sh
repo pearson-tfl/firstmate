@@ -59,6 +59,11 @@ export FM_TEST_SEAM=1
 # under the marker. A case that verifies the refusal sets FM_TASK_ID itself.
 unset FM_TASK_ID
 
+# Clear main's launch-claim receipt (bin/fm-lock.sh). A suite run from a
+# recovered main inherits it, and every named-holder case in a temp home would
+# then take the receipt path instead of ordinary acquisition.
+unset FM_LOCK_RECEIPT
+
 # Clear the tasks-axi env overrides. An operator shell exports TASKS_AXI_FILE
 # (and may export TASKS_AXI_BACKEND) at its real home's backlog, and tasks-axi
 # resolves that env AHEAD of the .tasks.toml a fixture copies, so a suite that
