@@ -40,6 +40,37 @@
 #                             state/.lock-session only when line 1 is
 #                             holder:<name>; otherwise exit 1, changing nothing.
 #
+# Additive launch handoff API (all require FM_LOCK_HOLDER=<name>):
+#   fm-lock.sh reserve [--absent-only]
+#     With --absent-only, refuse ANY existing lock pathname under the mutex
+#     (including empty/stale files, directories and dangling symlinks).
+#     Otherwise claim only a free/empty/stale lock, never an existing named
+#     holder (even the same name) or live harness pid. Clear the trusted sidecar.
+#     stdout is exactly one receipt: v1:<32 lowercase hexadecimal digits>.
+#   fm-lock.sh adopt <receipt>
+#     Verify the holder AND receipt under the claim mutex, then publish the
+#     adopting caller's trusted session sidecar with the ordinary ordering.
+#     Keep the receipt; repeat adoption is allowed for this claim.
+#   fm-lock.sh release-receipt <receipt>
+#     Remove the lock and sidecar only if holder AND receipt still match.
+# These commands never wait for the mutex: exit 75 means busy, retry the whole
+# operation. Exit 64 means invalid arguments/holder/receipt; 73 means reserve
+# found an occupied or unsafe lock; 74 means adopt/release-receipt found a
+# missing, changed, unsafe or foreign claim; 1 means publication/I/O failure.
+# Success exits 0. Refusals (64/73/74/75) leave lock and sidecar untouched.
+# The receipt is a cooperative claim identity, not authentication or process
+# liveness proof. It is stored in state/.lock-receipt; state/.lock keeps its
+# existing one-line holder format (startup consumers compare the whole file).
+# With nonempty FM_LOCK_RECEIPT=<receipt>, ordinary no-argument acquisition and
+# release use these same receipt checks and exit codes under the mutex.
+# Acquisition publishes the ordinary sidecar and preserves the receipt through
+# startup/re-checks; release is conditional. No missing claim is reclaimed.
+# Without that opt-in, ordinary acquire still rewrites the one-line lock,
+# invalidating any receipt, and ordinary release still checks only name.
+# Explicit receipt subcommands use their arguments, not FM_LOCK_RECEIPT.
+# Consumers must carry FM_LOCK_RECEIPT through session startup/re-checks and
+# independently confirm the launched process; a receipt alone proves no liveness.
+#
 # After a verified acquisition (the re-check a named holder runs before each
 # drain, spawn or merge), a home with config/detector-notify (one argument per
 # line) gets one row through that command when the hung-forwarder detector's
@@ -52,6 +83,7 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 LOCK="$STATE/.lock"
 LOCK_SESSION="$STATE/.lock-session"
+LOCK_RECEIPT="$STATE/.lock-receipt"
 
 # Harness identity (FM_HARNESS_RE, holder liveness, trusted session id) is owned
 # by the shared session-lock lib so the Claude Stop auto-arm applies the exact
@@ -74,6 +106,56 @@ if [ "${1:-}" = "status" ]; then
     *) echo "lock: stale (pid $FM_LOCK_INSPECT_PID dead or not a harness)" ;;
   esac
   exit 0
+fi
+
+OP=${1:-}
+RECEIPT_API=0
+RECEIPT_ENV=0
+ABSENT_ONLY=0
+RECEIPT=${2:-}
+case "$OP" in
+  reserve)
+    RECEIPT_API=1
+    if [ "$#" -eq 2 ] && [ "$2" = --absent-only ]; then
+      ABSENT_ONLY=1
+    elif [ "$#" -ne 1 ]; then
+      echo "error: usage: fm-lock.sh reserve [--absent-only]" >&2
+      exit 64
+    fi
+    ;;
+  adopt|release-receipt)
+    RECEIPT_API=1
+    if [ "$#" -ne 2 ]; then
+      echo "error: usage: fm-lock.sh $OP <receipt>" >&2
+      exit 64
+    fi
+    ;;
+  *)
+    if [ -n "${FM_LOCK_RECEIPT:-}" ]; then
+      RECEIPT_API=1
+      RECEIPT_ENV=1
+      RECEIPT=$FM_LOCK_RECEIPT
+      if [ "$#" -eq 0 ]; then
+        OP=adopt
+      elif [ "$#" -eq 1 ] && [ "$OP" = release ]; then
+        OP=release-receipt
+      else
+        echo "error: receipt-aware ordinary operations take no arguments or release" >&2
+        exit 64
+      fi
+    fi
+    ;;
+esac
+if [ "$RECEIPT_API" -eq 1 ]; then
+  if [ "$OP" != reserve ] && [[ ! "$RECEIPT" =~ ^v1:[0-9a-f]{32}$ ]]; then
+    echo "error: receipt must be v1: followed by 32 lowercase hexadecimal digits" >&2
+    exit 64
+  fi
+  case "${FM_LOCK_HOLDER:-}" in
+    ''|*[!A-Za-z0-9._-]*)
+      echo "error: receipt operations need a valid FM_LOCK_HOLDER" >&2
+      exit 64 ;;
+  esac
 fi
 
 HOLDER_NAME=${FM_LOCK_HOLDER:-}
@@ -119,6 +201,9 @@ LOCK_SESSION_PHASE=0
 LOCK_SESSION_KIND=0
 LOCK_SESSION_PREV="$STATE/.lock-session.prev"
 LOCK_LINE_PRE=
+RECEIPT_PHASE=0
+RECEIPT_KIND=0
+RECEIPT_PREV="$STATE/.lock-receipt.prev"
 release_claim_lock() {
   if [ "$CLAIM_LOCK_HELD" -eq 1 ]; then
     fm_lock_release "$CLAIM_LOCK"
@@ -143,7 +228,19 @@ commit_lock_session() {
   LOCK_SESSION_KIND=0
   rm -f "$LOCK_SESSION_PREV" 2>/dev/null || true
 }
+restore_uncommitted_receipt() {
+  case "$RECEIPT_PHASE" in
+    1)
+      case "$RECEIPT_KIND" in
+        1) mv -f "$RECEIPT_PREV" "$LOCK_RECEIPT" 2>/dev/null || true ;;
+        2) rm -f "$LOCK_RECEIPT" "$RECEIPT_PREV" 2>/dev/null || true ;;
+      esac
+      ;;
+    2) rm -f "$LOCK_RECEIPT" "$RECEIPT_PREV" 2>/dev/null || true ;;
+  esac
+}
 on_lock_exit() {
+  restore_uncommitted_receipt
   restore_uncommitted_lock_session
   [ -n "$LOCK_LINE_PRE" ] && rm -f "$LOCK_LINE_PRE"
   release_claim_lock
@@ -169,7 +266,7 @@ remember_lock_session() {
 # byte-identical.
 publish_lock_session() {
   local trusted recorded tmp
-  if trusted=$(fm_session_lock_trusted_session_id); then
+  if [ "$OP" != reserve ] && trusted=$(fm_session_lock_trusted_session_id); then
     if recorded=$(fm_session_lock_recorded_session_id "$STATE") && [ "$recorded" = "$trusted" ]; then
       return 0
     fi
@@ -194,12 +291,41 @@ publish_lock_session_or_die() {
   exit 1
 }
 
+# Ordinary claims invalidate prior receipts, including same-name acquisitions.
+# Conditional adoption keeps its receipt untouched. Reserve publishes a fresh
+# receipt before line 1, with the same rollback boundary as the trusted sidecar.
+publish_lock_receipt() {
+  local tmp
+  [ "$OP" = reserve ] || [ "$RECEIPT_API" -eq 0 ] || return 0
+  if [ -e "$LOCK_RECEIPT" ] || [ -L "$LOCK_RECEIPT" ]; then
+    cp -P "$LOCK_RECEIPT" "$RECEIPT_PREV" 2>/dev/null || return 1
+    RECEIPT_KIND=1
+  else
+    [ "$OP" = reserve ] || return 0
+    RECEIPT_KIND=2
+  fi
+  RECEIPT_PHASE=1
+  if [ "$OP" = reserve ]; then
+    tmp=$(mktemp "$STATE/.lock-receipt.XXXXXX" 2>/dev/null) || return 1
+    if ! { printf '%s\n' "$RECEIPT" > "$tmp" && mv -f "$tmp" "$LOCK_RECEIPT"; } 2>/dev/null; then
+      rm -f "$tmp" 2>/dev/null || true
+      return 1
+    fi
+  else
+    rm -f "$LOCK_RECEIPT" 2>/dev/null || return 1
+  fi
+}
+
 # Take the claim lock. When the prior session's bounded startup sweep holds it,
 # refuse with exit 75 so that refusal reads as wait-and-retry rather than as
 # another owner.
 take_claim_lock() {
   local sweep_pid
   if ! fm_lock_try_acquire "$CLAIM_LOCK"; then
+    if [ "$RECEIPT_API" -eq 1 ]; then
+      echo "error: session claim mutex is busy; retry the receipt operation" >&2
+      exit 75
+    fi
     sweep_pid=$(sed -n 's/^pid=//p' "$STATE/.startup-network.status" 2>/dev/null | tail -1)
     if [ -n "${FM_LOCK_HELD_PID:-}" ] && [ "$FM_LOCK_HELD_PID" = "$sweep_pid" ]; then
       echo "error: the prior session's bounded startup sweep is finishing; wait and retry once it releases the fleet lock" >&2
@@ -252,15 +378,57 @@ refuse_live_owner() {  # <recorded-pid>
   exit 1
 }
 
+# Receipt checks belong inside the same mutex as ordinary claims. In
+# particular, never check a receipt before a potentially waiting acquisition.
+if [ "$RECEIPT_API" -eq 1 ]; then
+  take_claim_lock
+  if [ "$OP" = reserve ]; then
+    if [ "$ABSENT_ONLY" -eq 1 ] && { [ -e "$LOCK" ] || [ -L "$LOCK" ]; }; then
+      echo "error: session lock pathname already exists; nothing reserved" >&2
+      exit 73
+    fi
+    if [ -L "$LOCK" ]; then
+      echo "error: session lock is unsafe; nothing reserved" >&2
+      exit 73
+    fi
+    fm_session_lock_inspect "$STATE"
+    if [ -f "$LOCK" ] && [ ! -s "$LOCK" ]; then
+      FM_LOCK_INSPECT_STATE=free
+    fi
+    case "$FM_LOCK_INSPECT_STATE" in
+      free|stale) ;;
+      *)
+        echo "error: session lock is occupied or unsafe; nothing reserved" >&2
+        exit 73 ;;
+    esac
+    RECEIPT=$(od -An -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
+    if [[ ! "$RECEIPT" =~ ^[0-9a-f]{32}$ ]]; then
+      echo "error: cannot generate claim receipt" >&2
+      exit 1
+    fi
+    RECEIPT="v1:$RECEIPT"
+  else
+    if [ ! -f "$LOCK" ] || [ -L "$LOCK" ] ||
+       ! recorded=$(cat "$LOCK" 2>/dev/null) || [ "$recorded" != "$me" ] ||
+       [ ! -f "$LOCK_RECEIPT" ] || [ -L "$LOCK_RECEIPT" ] ||
+       ! recorded=$(cat "$LOCK_RECEIPT" 2>/dev/null) || [ "$recorded" != "$RECEIPT" ]; then
+      echo "error: session claim no longer matches holder and receipt; nothing changed" >&2
+      exit 74
+    fi
+    [ "$OP" != release-receipt ] || RELEASE=1
+  fi
+fi
+
 # Release, under the claim lock: only the named holder recorded on line 1 may
 # clear the lock and its sidecar; anything else exits 1 and changes nothing.
 if [ "$RELEASE" -eq 1 ]; then
-  take_claim_lock
+  [ "$CLAIM_LOCK_HELD" -eq 1 ] || take_claim_lock
   if ! held=$(fm_session_lock_recorded_holder "$STATE") || [ "$held" != "$HOLDER_NAME" ]; then
     echo "error: the session lock is not held by $HOLDER_NAME; nothing released" >&2
     exit 1
   fi
-  if ! rm -f "$LOCK_SESSION" 2>/dev/null || ! rm -f "$LOCK" 2>/dev/null; then
+  if ! rm -f "$LOCK_RECEIPT" 2>/dev/null ||
+     ! rm -f "$LOCK_SESSION" 2>/dev/null || ! rm -f "$LOCK" 2>/dev/null; then
     echo "error: cannot clear the session lock; operate read-only until resolved" >&2
     exit 1
   fi
@@ -269,8 +437,10 @@ if [ "$RELEASE" -eq 1 ]; then
   exit 0
 fi
 
-take_claim_lock
-named_claim_check_or_refuse
+if [ "$RECEIPT_API" -eq 0 ]; then
+  take_claim_lock
+  named_claim_check_or_refuse
+fi
 
 # The sidecar goes first: this holder beside a previous session's id would let
 # that session's resume own this lock. If the sidecar changes before line 1 is
@@ -278,6 +448,10 @@ named_claim_check_or_refuse
 # not yet verified, a failure removes the sidecar. After line 1 verifies as
 # this holder, a later signal leaves the published pair in place.
 publish_lock_session_or_die
+if ! publish_lock_receipt; then
+  echo "error: cannot publish or invalidate the claim receipt" >&2
+  exit 1
+fi
 if [ -f "$LOCK" ]; then
   LOCK_LINE_PRE=$(mktemp "$STATE/.lock.pre.XXXXXX") || {
     echo "error: cannot write session lock; operate read-only until resolved" >&2
@@ -289,6 +463,7 @@ if [ -f "$LOCK" ]; then
   fi
 fi
 LOCK_SESSION_PHASE=2
+[ "$RECEIPT_KIND" -eq 0 ] || RECEIPT_PHASE=2
 if ! { printf '%s\n' "$me" > "$LOCK"; } 2>/dev/null; then
   lock_unchanged=0
   if [ -n "$LOCK_LINE_PRE" ] && cmp -s "$LOCK_LINE_PRE" "$LOCK"; then
@@ -297,6 +472,7 @@ if ! { printf '%s\n' "$me" > "$LOCK"; } 2>/dev/null; then
     lock_unchanged=1
   fi
   if [ "$lock_unchanged" -eq 1 ]; then
+    [ "$RECEIPT_KIND" -eq 0 ] || RECEIPT_PHASE=1
     if [ "$LOCK_SESSION_KIND" -ne 0 ]; then
       LOCK_SESSION_PHASE=1
     else
@@ -315,7 +491,17 @@ if [ ! -f "$LOCK" ] || [ -L "$LOCK" ] || [ "$written" != "$me" ]; then
   exit 1
 fi
 commit_lock_session
+RECEIPT_PHASE=0
+[ "$RECEIPT_KIND" -eq 0 ] || rm -f "$RECEIPT_PREV" 2>/dev/null || true
 release_claim_lock
+if [ "$RECEIPT_API" -eq 1 ] && [ "$RECEIPT_ENV" -eq 0 ]; then
+  if [ "$OP" = reserve ]; then
+    printf '%s\n' "$RECEIPT"
+  else
+    echo "lock adopted: holder $HOLDER_NAME"
+  fi
+  exit 0
+fi
 echo "lock acquired: holder $HOLDER_NAME"
 # The re-check also watches the hung-forwarder detector: one row per stale
 # detector beat to the command in config/detector-notify, if the home has one.

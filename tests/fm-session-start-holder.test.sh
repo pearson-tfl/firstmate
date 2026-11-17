@@ -264,6 +264,32 @@ test_inbox_ready_under_a_named_holder_pins_the_supervision_model() {
   pass "fm-inbox ready under holder:pocock: model unknown and can_receive unknown unless FM_SUPERVISION_MODEL is set"
 }
 
+test_receipt_survives_full_session_start_and_sweeps() {
+  local rec root home fakebin receipt out before
+  rec=$(new_world receipt-start); IFS='|' read -r root home fakebin <<<"$rec"
+  receipt=$(env -u FM_LOCK_RECEIPT FM_LOCK_HOLDER=claude FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    "$LOCK_SH" reserve --absent-only) || fail "reservation failed"
+  before=$(cat "$home/state/.lock")
+  append_wake "$home/state" signal receipt-task "done: receipt startup drained this" || fail "seed wake failed"
+  out=$(in_claude "$root" "$home" "$fakebin" '"$SESSION_START"' \
+    FM_LOCK_HOLDER=claude FM_LOCK_RECEIPT="$receipt" FM_STATE_OVERRIDE="$home/state" \
+    CLAUDE_CODE_SESSION_ID=receipt-start-session 2>&1)
+  wait_network "$root" "$home"
+  assert_not_contains "$out" "READ-ONLY SESSION" "receipt-aware full session start must be authorized"
+  assert_contains "$out" "receipt startup drained this" "receipt-aware startup must drain the queue"
+  assert_equals "$before" "$(cat "$home/state/.lock")" "full startup and sweeps must retain one-line holder"
+  assert_equals "$receipt" "$(cat "$home/state/.lock-receipt")" "full startup and sweeps must retain receipt"
+  assert_equals receipt-start-session "$(cat "$home/state/.lock-session")" "full startup publishes adopter identity"
+  assert_contains "$(cat "$home/state/.startup-network.status")" "locked=1" "receipt-aware startup runs authorized sweeps"
+  out=$(env FM_LOCK_HOLDER=claude FM_LOCK_RECEIPT="$receipt" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+    "$LOCK_SH" release 2>&1)
+  assert_contains "$out" "lock released: holder claude" "conditional cleanup remains authorized after startup"
+  [ ! -e "$home/state/.lock" ] && [ ! -e "$home/state/.lock-session" ] &&
+    [ ! -e "$home/state/.lock-receipt" ] || fail "conditional cleanup retained claim files"
+  pass "receipt identity survives full session start and startup sweeps, then conditional cleanup succeeds"
+}
+
+test_receipt_survives_full_session_start_and_sweeps
 test_named_holder_session_start_on_a_free_lock
 test_second_session_while_pocock_holds_main_stays_read_only
 test_named_holder_completion_marker_routes_a_rebuild_to_reemit
