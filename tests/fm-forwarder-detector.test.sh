@@ -138,23 +138,53 @@ test_only_one_stale_beat_is_not_hung() {
   pass "detector: only one of the two beats over 960s is not a hang"
 }
 
-# Test 13, cycle-exit form: the forwarder's own arm ended over 60s after the
-# beat and the forwarder never re-armed.
-test_cycle_end_of_the_forwarders_arm_past_60s_is_hung() {
+# Only the forwarder's terminal record is evidence of an exited arm. A long
+# runtime, attached-successor row, or reused numeric pid is not that evidence.
+test_terminal_arm_age_and_incarnation() {
   local dir state now
-  dir=$(make_detector_case cycle-exit)
+  dir=$(make_detector_case terminal-age)
   state="$dir/state"
   now=$(date +%s)
-  write_beat "$state" 4242 200
-  set_age "$state/.last-watcher-beat" 5
-  cycle_row "$state" 4242 $(( now - 200 + 30 ))
-  run_detector "$dir" || fail "run exited nonzero"
-  [ "$(kickstarts "$dir")" -eq 0 ] || fail "a cycle end 30s after the beat triggered a restart"
-  cycle_row "$state" 4242 $(( now - 200 + 90 ))
-  run_detector "$dir" || fail "run exited nonzero"
-  [ "$(kickstarts "$dir")" -eq 1 ] || fail "the forwarder's arm ended 90s after the beat with no restart: $(cat "$dir/launchctl.log")"
-  [ "$(row_count "$dir/inbox")" -eq 1 ] || fail "cycle-exit hang gave $(row_count "$dir/inbox") rows"
-  pass "detector: the forwarder's own arm ending over 60s after the beat is a hang"
+  write_beat "$state" 4242 400
+  set_age "$state/.last-watcher-beat" 1
+  cycle_row "$state" 4242 $((now - 100))
+  printf 'arm_pid=4242\tended_at=%s\tsuccessor=attached:79256\n' "$((now - 20))" >> "$state/.watch-cycle-exits.log"
+  run_detector "$dir" || fail "attached run failed"
+  [ "$(kickstarts "$dir")" -eq 0 ] || fail "interim/old same-pid cycle caused restart"
+  printf 'run_id=1-new\narm_sequence=2\nstarted_at=%s\ncompleted_at=%s\nphase=notify-begin\n' \
+    "$((now - 400))" "$((now - 1))" >> "$state/.forwarder-beat"
+  run_detector "$dir" || fail "fresh long run failed"
+  [ "$(kickstarts "$dir")" -eq 0 ] || fail "fresh long arm exit caused restart"
+  write_beat "$state" 4242 125
+  printf 'run_id=1-new\narm_sequence=3\nstarted_at=%s\ncompleted_at=%s\nphase=notify-begin\n' \
+    "$((now - 125))" "$((now - 120))" >> "$state/.forwarder-beat"
+  run_detector "$dir" || fail "overdue short run failed"
+  [ "$(kickstarts "$dir")" -eq 1 ] || fail "overdue short arm exit did not restart"
+  grep -q 'exited .*s ago with no re-arm' "$dir/inbox" || fail "restart did not report age since exit"
+  pass "detector: ignores interim and reused-pid rows, allows fresh long exit, detects overdue short exit"
+}
+
+test_concurrent_rearm_prevents_restart() {
+  local dir state real_cat
+  dir=$(make_detector_case concurrent-rearm)
+  state="$dir/state"
+  write_beat "$state" 4242 1000
+  set_age "$state/.last-watcher-beat" 1000
+  real_cat=$(command -v cat)
+  cat > "$dir/fakebin/cat" <<SH
+#!/usr/bin/env bash
+if [ "\${1:-}" = '$state/.forwarder-beat' ]; then
+  if [ -e '$dir/read-once' ]; then
+    printf 'arm_pid=4242\nforwarder_pid=1\nrun_id=new\narm_sequence=2\ncompleted_at=0\n' > '$state/.forwarder-beat'
+  fi
+  : > '$dir/read-once'
+fi
+exec '$real_cat' "\$@"
+SH
+  chmod +x "$dir/fakebin/cat"
+  run_detector "$dir" || fail "concurrent run failed"
+  [ "$(kickstarts "$dir")" -eq 0 ] || fail "a concurrent re-arm was restarted"
+  pass "detector: re-reading the same-pid beat prevents a concurrent re-arm restart"
 }
 
 # Test 18b: with the forwarder healthy, a hand-run arm writes a real cycle end
@@ -182,8 +212,8 @@ test_hand_run_arm_cycle_triggers_nothing() {
 
   write_beat "$state" "$hand_pid" 200
   run_detector "$dir" || fail "run exited nonzero"
-  [ "$(kickstarts "$dir")" -eq 1 ] || fail "divergence: the same cycle end under the beat's arm pid did not count"
-  pass "detector: the same cycle end counts once its arm pid is the beat's"
+  [ "$(kickstarts "$dir")" -eq 0 ] || fail "a reused arm pid made an old cycle count"
+  pass "detector: matching a hand-run arm pid does not invent terminal proof"
 }
 
 test_doorbell_down_is_logged() {
@@ -264,7 +294,8 @@ test_refuses_without_home_or_label() {
 fm_test_run \
   test_hung_restarts_once_then_escalates_then_stays_silent \
   test_only_one_stale_beat_is_not_hung \
-  test_cycle_end_of_the_forwarders_arm_past_60s_is_hung \
+  test_terminal_arm_age_and_incarnation \
+  test_concurrent_rearm_prevents_restart \
   test_hand_run_arm_cycle_triggers_nothing \
   test_doorbell_down_is_logged \
   test_each_run_touches_the_detector_beat \

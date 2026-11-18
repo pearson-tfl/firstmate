@@ -19,10 +19,11 @@
 #   4. Decides whether the forwarder is hung. Hung means either
 #      state/.forwarder-beat and state/.last-watcher-beat are both older than
 #      the watcher stall bound (fm_watcher_stall_bound, 900s at the default
-#      poll) plus 60s, so 960s, or a
-#      state/.watch-cycle-exits.log row whose arm_pid is the beat's arm_pid
-#      ended over 60s after the beat was written. A cycle end under any other
-#      arm pid, such as a hand-run arm, does not count. With no
+#      poll) plus 60s, so 960s, or the current beat records a terminal arm
+#      completion more than 60s ago without re-arming. The forwarder writes
+#      that completion after wait returns, bound to its run and arm sequence;
+#      watcher cycle rows cannot prove an arm exit. Legacy beats use only the
+#      stale-beat check. The beat is re-read before taking action. With no
 #      state/.forwarder-beat, the home runs no forwarder: logged, nothing done.
 #   5. When hung and state/.forwarder-restart-at is absent or over 3600s old:
 #      runs `launchctl kickstart -k gui/<uid>/<forwarder-label>`, writes the
@@ -88,7 +89,6 @@ CYCLE_SLACK_SECONDS=60
 RESTART_WINDOW_SECONDS=3600
 FORWARDER_BEAT="$STATE/.forwarder-beat"
 WATCHER_BEAT="$STATE/.last-watcher-beat"
-CYCLE_LOG="$STATE/.watch-cycle-exits.log"
 RESTART_AT="$STATE/.forwarder-restart-at"
 ESCALATED="$STATE/.forwarder-escalated"
 DOMAIN="gui/$(id -u)"
@@ -121,28 +121,36 @@ if [ ! -e "$FORWARDER_BEAT" ]; then
   exit 0
 fi
 
+beat_snapshot=$(cat "$FORWARDER_BEAT" 2>/dev/null) || exit 0
 beat_mtime=$(fm_path_mtime "$FORWARDER_BEAT")
 beat_age=$(fm_path_age "$FORWARDER_BEAT")
 watcher_age=$(fm_path_age "$WATCHER_BEAT")
-arm_pid=$(sed -n 's/^arm_pid=//p' "$FORWARDER_BEAT" 2>/dev/null | head -n 1)
+arm_pid=$(printf '%s\n' "$beat_snapshot" | sed -n 's/^arm_pid=//p' | head -n 1)
+completed_at=$(printf '%s\n' "$beat_snapshot" | sed -n 's/^completed_at=//p' | head -n 1)
+case "$completed_at" in ''|*[!0-9]*) completed_at=0 ;; esac
 
 why=
 if [ "$beat_age" -gt "$HUNG_SECONDS" ] && [ "$watcher_age" -gt "$HUNG_SECONDS" ]; then
   why="forwarder beat ${beat_age}s and watcher beat ${watcher_age}s old, both over ${HUNG_SECONDS}s"
-elif [ -n "$arm_pid" ] && [ -f "$CYCLE_LOG" ]; then
-  ended=$(awk -F '\t' -v pid="arm_pid=$arm_pid" '
-    $1 == pid { for (i = 2; i <= NF; i++) if ($i ~ /^ended_at=[0-9]+$/) { v = substr($i, 10); if (v + 0 > max + 0) max = v } }
-    END { if (max != "") print max }
-  ' "$CYCLE_LOG")
-  if [ -n "$ended" ] && [ "$ended" -gt $(( beat_mtime + CYCLE_SLACK_SECONDS )) ]; then
-    why="the forwarder's arm $arm_pid ended $(( ended - beat_mtime ))s after its beat with no re-arm"
-  fi
+elif [ -n "$arm_pid" ] && [ "$completed_at" -gt 0 ] \
+  && [ "$(( $(date +%s) - completed_at ))" -gt "$CYCLE_SLACK_SECONDS" ]; then
+  why="the forwarder's arm $arm_pid exited $(( $(date +%s) - completed_at ))s ago with no re-arm"
 fi
 
 if [ -z "$why" ]; then
   exit 0
 fi
 
+# Do not restart an incarnation that advanced while this check was reading it.
+# Compare content as well as mtime: multiple re-arms can occur in one second.
+if [ "$(cat "$FORWARDER_BEAT" 2>/dev/null)" != "$beat_snapshot" ] \
+  || [ "$(fm_path_mtime "$FORWARDER_BEAT")" != "$beat_mtime" ]; then
+  log "forwarder advanced during inspection; no action"
+  exit 0
+fi
+if [ "$completed_at" -eq 0 ] && [ "$(fm_path_age "$WATCHER_BEAT")" -le "$HUNG_SECONDS" ]; then
+  exit 0
+fi
 restart_age=$(fm_path_age "$RESTART_AT")
 if [ ! -e "$RESTART_AT" ] || [ "$restart_age" -gt "$RESTART_WINDOW_SECONDS" ]; then
   if launchctl kickstart -k "$DOMAIN/$label"; then

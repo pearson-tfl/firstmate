@@ -2286,6 +2286,9 @@ ep_damage
 ep_reconcile "failed=1" 1 "a launch that never proved its claim was not reported failed"
 [ "$(launch_failed_wake_count "$HEP" episode-src)" = 1 ] \
   || fail "a launch that could not confirm was not announced: $ep_out"
+grep -q 'phase=refused' "$HEP/state/procevent/.episode-src.launch-diagnostics" || fail "detached refusal lost"
+grep -q 'registration argv is unreadable' "$HEP/state/procevent/.episode-src.launch-diagnostics" || fail "startup reason lost"
+[ "$(wc -c < "$HEP/state/procevent/.episode-src.launch-diagnostics")" -lt 2048 ] || fail "startup evidence unbounded"
 ep_key=$(launch_failed_wake_keys "$HEP" episode-src)
 # <registration identity>-<per-episode nonce>: the watcher remembers every key
 # it has surfaced for good, so the identity alone would announce only the first
@@ -2326,6 +2329,8 @@ for _ in $(seq 1 100); do
 done
 [ ! -e "$FM_PROCEVENT_CLAIM_ROOT/episode-src.claim" ] \
   || fail "the confirmed episode runner never released its claim"
+grep -q 'state=claim-confirmed' "$HEP/state/procevent/.episode-src.launch-resolved" || fail "claim recovery not retained"
+grep -Eq '^first_successful_read_at=[1-9][0-9]+$' "$HEP/state/procevent/.episode-src.launch-diagnostics" || fail "successful read not distinguished from claim"
 ep_damage
 ep_reconcile "failed=1" 1 "a source that failed again after recovering was not reported failed"
 [ "$(launch_failed_wake_count "$HEP" episode-src)" = 2 ] \
@@ -2344,6 +2349,43 @@ esac
 ep_repair
 pe "$HEP" retire episode-src >/dev/null 2>&1 || true
 pass "a launch that cannot confirm is announced once per failure episode"
+
+# A real detached runner delayed before claim must resolve the alert on its
+# own. The source stays blocked afterwards, proving claim != successful read.
+HLC="$TMP_ROOT/hlc"; new_home "$HLC"
+LC_RELEASE="$TMP_ROOT/late-claim-release"
+LC_TRIGGER="$TMP_ROOT/late-read-trigger"
+LC_STARTED="$TMP_ROOT/late-source-started"
+mkdir "$TMP_ROOT/late-bin"
+LC_REAL_PS=$(command -v ps)
+cat > "$TMP_ROOT/late-bin/ps" <<'SH'
+#!/usr/bin/env bash
+if [ -n "${FM_PROCEVENT_RUNNER_GROUP:-}" ]; then
+  while [ ! -e "$LC_RELEASE" ] && [ "$SECONDS" -lt 15 ]; do sleep 0.05; done
+fi
+exec "$LC_REAL_PS" "$@"
+SH
+chmod +x "$TMP_ROOT/late-bin/ps"
+pe_register "$HLC" lavish late-claim-src -- "$STARTED_BLOCKER" "$LC_STARTED" "$BLOCKER" "$LC_TRIGGER" late >/dev/null
+lc_out=$(PATH="$TMP_ROOT/late-bin:$PATH" LC_RELEASE="$LC_RELEASE" LC_REAL_PS="$LC_REAL_PS" \
+  FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=1 pe "$HLC" reconcile) || true
+assert_contains "$lc_out" 'failed=1' "delayed claim was not reported unconfirmed"
+[ "$(launch_failed_wake_count "$HLC" late-claim-src)" = 1 ] || fail "late claim alert absent"
+: > "$LC_RELEASE"
+wait_for "$HLC/state/procevent/.late-claim-src.launch-resolved" || fail "late claim did not resolve itself"
+wait_for "$LC_STARTED" || fail "late source did not start"
+grep -q '^first_successful_read_at=0$' "$HLC/state/procevent/.late-claim-src.launch-diagnostics" || fail "claim was called a successful read"
+lc_out=$(pe "$HLC" reconcile)
+assert_contains "$lc_out" 'started=0' "late owner was duplicated"
+[ "$(launch_failed_wake_count "$HLC" late-claim-src)" = 1 ] || fail "late recovery emitted another failure"
+: > "$LC_TRIGGER"
+for _ in $(seq 1 100); do
+  first_result "$HLC" late-claim-src >/dev/null 2>&1 && break
+  sleep 0.1
+done
+grep -Eq '^first_successful_read_at=[1-9][0-9]+$' "$HLC/state/procevent/.late-claim-src.launch-diagnostics" || fail "successful late read not retained"
+pe "$HLC" retire late-claim-src >/dev/null 2>&1 || true
+pass "late claim resolves quietly without duplicate collector or premature read confirmation"
 
 # --- the launch-failed key fits the watcher's seen marker at the id limit ----
 # bin/fm-watch.sh names the marker for a surfaced key `.seen-procevent-<hex>`,
@@ -5057,7 +5099,7 @@ done
 [ ! -e "$drain_claim" ] || fail "the first generation of the draining fixture never exited"
 # Stand the first generation's claim back up on a live process so the re-arm
 # meets it still held, then release it partway through the confirm window.
-setsid sleep 60 &
+perl -MPOSIX=setsid -e 'setsid() >= 0 or exit 1; exec @ARGV' sleep 60 &
 drain_holder=$!
 # Read the identity only once the holder has exec'd sleep: mid-exec its cmdline
 # can read empty, and a pre-exec identity would never match the live holder.
@@ -5138,5 +5180,24 @@ touch "$READY_RELEASE"
 PATH="$UNDISP/bin:$PATH" FM_HOME="$UNDISP/home" \
   "$ROOT/bin/fm-procevent-lavish.sh" retire "$undisp_art" >/dev/null 2>&1 || true
 pass "arm does not launch beside a stale claim whose process group is alive"
+
+
+# A replacement registration closes the old alert as superseded, not as proof
+# that the original generation claimed. The diagnostic must name the new one.
+HSUP="$TMP_ROOT/hsup"; new_home "$HSUP"
+pe_register "$HSUP" lavish superseded-src -- "$EP_SOURCE_CMD" >/dev/null
+SUP_SOURCE="$HSUP/state/procevent/superseded-src.source"
+cp "$SUP_SOURCE" "$TMP_ROOT/superseded-good.source"
+awk '/^argv:$/ { print; exit } { print }' "$SUP_SOURCE" > "$SUP_SOURCE.bad"
+mv "$SUP_SOURCE.bad" "$SUP_SOURCE"
+sup_out=$(FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS=1 pe "$HSUP" reconcile) || true
+assert_contains "$sup_out" 'failed=1' "superseded fixture did not fail"
+mv "$TMP_ROOT/superseded-good.source" "$SUP_SOURCE"
+sup_out=$(pe "$HSUP" reconcile)
+assert_contains "$sup_out" 'started=1' "replacement registration did not start"
+grep -q '^state=registration-replaced$' "$HSUP/state/procevent/.superseded-src.launch-resolved" || fail "replacement falsely confirmed the failed generation"
+[ ! -e "$HSUP/state/procevent/.superseded-src.launch-failed" ] || fail "replacement left an active old failure"
+pe "$HSUP" retire superseded-src >/dev/null 2>&1 || true
+pass "registration replacement records supersession rather than a false old-generation claim"
 
 printf '\nall procevent tests passed\n'

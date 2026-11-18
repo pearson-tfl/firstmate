@@ -85,6 +85,13 @@
 #            identity it ran under and ended by a later launch of that source
 #            confirming - because the supervision cycle discards the `failed=`
 #            count. The launch itself is retried every cycle exactly as before.
+#            Private state/procevent/.<id>.launch-diagnostics retains one atomic
+#            snapshot of the latest runner's start, claim and first exit-0 poll
+#            times, phase and refusal detail (at most 512 characters, no argv or
+#            source output). Exit 75 is not successful-read evidence because it
+#            can also mean preemption. .<id>.launch-resolved retains claim
+#            recovery or registration replacement without emitting another wake.
+#            These records are diagnostics, never ownership or delivery proof.
 #            A source whose claim nothing may automatically displace is not
 #            relaunched at all; it is counted `uncertain` and announced once per
 #            stranded claim generation as a durable `check` wake, because the
@@ -260,7 +267,13 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 # shellcheck source=bin/fm-backend.sh
 . "$SCRIPT_DIR/fm-backend.sh"
 
-die() { printf 'error: %s\n' "$1" >&2; exit 1; }
+die() {
+  if [ -n "${RUNNER_SOURCE_ID:-}" ]; then
+    runner_diagnostic refused "$1" || true
+  fi
+  printf 'error: %s\n' "$1" >&2
+  exit 1
+}
 usage() { sed -n '2,/^set -u$/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 2; }
 
 case "${1-}" in ''|-h|--help|help) usage ;; esac
@@ -431,6 +444,39 @@ runner_file()  { printf '%s/%s.runner\n' "$REG" "$1"; }
 staging_file() { printf '%s/.%s.%s.output\n' "$REG" "$1" "$2"; }
 stranded_file() { printf '%s/.%s.stranded\n' "$REG" "$1"; }
 launch_failed_file() { printf '%s/.%s.launch-failed\n' "$REG" "$1"; }
+
+# Write the private diagnostic snapshot described in the command header.
+runner_diagnostic() {  # <phase> [detail]
+  local path now detail
+  [ -n "${RUNNER_SOURCE_ID:-}" ] || return 0
+  path="$REG/.$RUNNER_SOURCE_ID.launch-diagnostics"
+  now=$(date +%s)
+  detail=$(printf '%s' "${2:-}" | tr '\n\r\t' '   ' | cut -c1-512)
+  (umask 077
+    printf 'runner_pid=%s\nregistration=%s\nstarted_at=%s\nclaimed_at=%s\nfirst_successful_read_at=%s\nat=%s\nphase=%s\ndetail=%s\n' \
+      "$$" "${RUNNER_REG_IDENTITY:-unknown}" "$RUNNER_STARTED_AT" "${RUNNER_CLAIMED_AT:-0}" \
+      "${RUNNER_FIRST_READ_AT:-0}" "$now" "$1" "$detail" > "$path.$$" \
+      && mv -f -- "$path.$$" "$path")
+}
+
+# Keep the resolution after removing the active episode marker. No new wake
+# is needed: this is evidence for the original alert, not a second alert.
+# A changed registration supersedes the episode; it does not confirm a claim
+# for the previous generation.
+resolve_launch_failure() {  # <source-id>
+  local id=$1 marker episode identity expected resolution=claim-confirmed
+  marker=$(launch_failed_file "$id")
+  [ -f "$marker" ] || return 0
+  episode=$(cat -- "$marker" 2>/dev/null) || return 1
+  identity=$(fm_pr_file_identity "$(source_file "$id")" 2>/dev/null) || return 1
+  expected=${identity//:/-}
+  [ "${episode%% *}" = "$expected" ] || resolution="registration-replaced"
+  (umask 077
+    printf 'at=%s\nregistration=%s\nepisode=%s\nstate=%s\nread_confirmed=no\n' \
+      "$(date +%s)" "$identity" "$episode" "$resolution" > "$REG/.$id.launch-resolved.$$" \
+      && mv -f -- "$REG/.$id.launch-resolved.$$" "$REG/.$id.launch-resolved") || return 1
+  rm -f -- "$marker"
+}
 
 # Let the source's own adapter apply and acknowledge one captured result. See
 # the header for why this exists and what each exit means. An already
@@ -1002,6 +1048,10 @@ cmd_start() {
   local id=${1-} adapter out rc claimed bound_rc published_capture=0 handled_capture=0 self_announcing=0 task_owner='' task_pending
   local extension_owner=0 extension_load_state extension_sequence='' extension_request_id=''
   fm_procevent_source_id_valid "$id" || die "source id must be path-safe: $id"
+  RUNNER_SOURCE_ID=$id
+  RUNNER_STARTED_AT=$(date +%s)
+  RUNNER_REG_IDENTITY=$(fm_pr_file_identity "$(source_file "$id")" 2>/dev/null) || RUNNER_REG_IDENTITY=unknown
+  runner_diagnostic starting || true
   require_runner_group
   fm_procevent_source_lock_acquire "$id" || die "cannot lock source: $id"
   if [ ! -f "$(source_file "$id")" ] || [ -L "$(source_file "$id")" ]; then
@@ -1070,6 +1120,10 @@ cmd_start() {
   fm_procevent_claim_acquire_locked "$id" "$FM_HOME" "$$" "$(source_file "$id")" "$STATE"
   claimed=$?
   if [ "$claimed" -eq 0 ]; then
+    RUNNER_REG_IDENTITY=$FM_PROCEVENT_CLAIM_REG_IDENTITY
+    RUNNER_CLAIMED_AT=$(date +%s)
+    runner_diagnostic claimed || true
+    resolve_launch_failure "$id" || true
     rm -f -- "$REG/.$id.cleanup-failed"
   fi
   fm_procevent_source_lock_release "$id"
@@ -1154,6 +1208,8 @@ cmd_start() {
         return 1
       fi
       CLAIM_REG_IDENTITY=$current
+      RUNNER_REG_IDENTITY=$current
+      RUNNER_FIRST_READ_AT=0
     fi
     fm_procevent_source_lock_release "$id" || return 1
     exec 7<"$registration" || return 1
@@ -1228,6 +1284,7 @@ cmd_start() {
     *) die "cannot enforce the source launch floor: $id" ;;
   esac
   exec 7<&-
+  runner_diagnostic polling || true
   if [ "$extension_owner" -eq 1 ]; then
     launch_ready=".$id.$CLAIM_TOKEN.launch-ready"
     launch_reply="$REG/.$id.$CLAIM_TOKEN.launch-reply"
@@ -1336,6 +1393,10 @@ EOF
     esac
   fi
 
+  if [ "$rc" -eq 0 ] && [ "${RUNNER_FIRST_READ_AT:-0}" -eq 0 ]; then
+    RUNNER_FIRST_READ_AT=$(date +%s)
+  fi
+  runner_diagnostic poll-complete "exit=$rc" || true
   if [ "$capture_state" = no-result ] || { [ "$extension_owner" -eq 0 ] && [ "$rc" -ne 0 ] && [ ! -s "$out" ]; }; then
     # No usable result. Leave the registration armed; only a clean empty
     # wait may continue under this owner. Failed reads await reconciliation.
@@ -1638,8 +1699,8 @@ report_stranded_source() {  # <source-id> <claim-token> <why-and-recovery>
 # keyed by the registration identity the launch ran under and ends when a later
 # cycle finds the source owned or a launch confirms, so a second failure inside
 # one episode announces nothing, a slow runner that arms later closes its own
-# episode without a retraction, and a source that recovers and then fails again
-# announces a new one. Nothing here changes what reconcile does about the launch
+# episode with a private .<id>.launch-resolved record. A source that recovers
+# and then fails again announces a new one. Nothing here changes what reconcile does about the launch
 # itself: it keeps relaunching exactly as before, and this only says so once.
 #
 # The queue key carries a nonce beyond the episode: the watcher remembers every
@@ -1654,7 +1715,7 @@ report_launch_failure() {  # <source-id> <registration-identity>
   nonce="$RANDOM$RANDOM"
   announce_source_once "$(launch_failed_file "$id")" "$episode" \
     "procevent:$id:launch-failed:$episode-$nonce" \
-    "check: process-event source $id is registered but its launch did not prove it took the source's claim within FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS, so nothing is confirmed to be collecting from it; reconcile reports that as failed= and keeps launching it every supervision cycle. If it stays that way, check the source command and the adapter binary the registration names, and run an attached bin/fm-procevent.sh start $id to reproduce a refusal on its stderr - the detached launch discards it, and a hand-run reconcile only counts it as failed=. A later cycle that finds the source owned ends this episode on its own, so a runner that was merely slow to claim needs nothing from you." \
+    "check: process-event source $id is registered but its launch did not prove it took the source's claim within FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS, so nothing is confirmed to be collecting from it; reconcile reports that as failed= and keeps launching it every supervision cycle. If it stays that way, check the source command and the adapter binary the registration names, and run an attached bin/fm-procevent.sh start $id to reproduce a refusal on its stderr - the private $REG/.$id.launch-diagnostics snapshot retains bounded startup/refusal and poll evidence. Claim confirmation is not a successful read; first_successful_read_at stays zero until an exit-0 poll, and exit 75 alone does not prove a read. The private $REG/.$id.launch-resolved record retains later claim recovery. A later cycle that finds the source owned ends this episode on its own, so a runner that was merely slow to claim needs nothing from you." \
     "$episode $nonce"
 }
 
@@ -1840,7 +1901,7 @@ cmd_reconcile() {
         elif [ "$claim_state" -eq 0 ]; then
           # A live owner is the same evidence confirmation reads, however the
           # runner was started, so it ends any launch-failure episode here.
-          rm -f -- "$(launch_failed_file "$id")"
+          resolve_launch_failure "$id" || true
           rm -f -- "$REG/.$id.cleanup-failed"
         fi
       fi
@@ -1859,7 +1920,7 @@ cmd_reconcile() {
         report_launch_failure "$id" "$launch_identity" || true
       else
         started=$((started + 1))
-        rm -f -- "$(launch_failed_file "$id")"
+        resolve_launch_failure "$id" || true
       fi
     done
   fi
