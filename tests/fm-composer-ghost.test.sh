@@ -47,7 +47,12 @@ make_fake_tmux() {  # <dir>
 set -u
 case "${1:-}" in
   display-message)
-    for a in "$@"; do case "$a" in *cursor_y*) printf '%s\n' "${FM_FAKE_CY:-0}"; exit 0 ;; esac; done
+    for a in "$@"; do
+      case "$a" in
+        *cursor_y*) printf '%s\n' "${FM_FAKE_CY:-0}"; exit 0 ;;
+        *cursor_x*) printf '%s\n' "${FM_FAKE_CX:-}"; exit 0 ;;
+      esac
+    done
     printf 'fakepane\n'; exit 0 ;;
   capture-pane)
     has_e=0
@@ -79,6 +84,40 @@ exit 1
 SH
   chmod +x "$fb/tmux"
   printf '%s\n' "$fb"
+}
+
+# Raw `tmux capture-pane -e -p` fixtures from real Claude Code 2.1.325 on
+# Linux, 2026-11-19: colour at 60 columns; NO_COLOR=1 FORCE_COLOR=0 at 160.
+# Both suggestions have cursor (2,42); typing "fix the bug" moves it to (13,42).
+# Keep captures unmodified, including their transcript and ANSI/OSC sequences.
+# Colour suggestions use SGR 2, already stripped; monochrome uses the existing
+# cursor-column read. No production classifier change was needed.
+test_claude_2_1_325_real_prompt_suggestion_fixtures() {
+  local dir fb style state capture want cx locale out screen
+  dir="$TMP_ROOT/claude-2.1.325"; mkdir -p "$dir"
+  fb=$(make_fake_tmux "$dir")
+  for style in colour monochrome; do
+    for state in suggestion typed; do
+      capture="$ROOT/tests/fixtures/claude-2.1.325-composer/$style-$state.ansi"
+      case "$state" in
+        suggestion) want=empty; cx=2 ;;
+        typed) want=pending; cx=13 ;;
+      esac
+      for locale in "${LC_ALL:-${LANG:-C}}" C; do
+        out=$(PATH="$fb:$PATH" LC_ALL="$locale" FM_FAKE_STYLED="$capture" \
+          FM_FAKE_CY=42 FM_FAKE_CX="$cx" fm_tmux_composer_state fakepane)
+        [ "$out" = "$want" ] \
+          || fail "Claude 2.1.325 $style $state ($locale): expected $want, got '$out'"
+      done
+    done
+  done
+  # Prove the monochrome fixture needs the cursor-column signal: without it,
+  # its unstyled suggestion is indistinguishable from real pending input.
+  screen=$(< "$ROOT/tests/fixtures/claude-2.1.325-composer/monochrome-suggestion.ansi")
+  out=$(fm_composer_classify_screen "$(fm_tmux_composer_caps)" "$screen" 42 probe-absent)
+  [ "$out" = pending ] \
+    || fail "monochrome suggestion must need cursor-column evidence, got '$out'"
+  pass "Claude 2.1.325 real colour/monochrome suggestions read empty; real typing stays pending in both locales"
 }
 
 # --- fm_tmux_strip_ghost (pure) ---------------------------------------------
@@ -681,6 +720,7 @@ test_peek_output_is_escape_free() {
   pass "fm-peek output is escape-free (no raw -e bytes reach firstmate context)"
 }
 
+test_claude_2_1_325_real_prompt_suggestion_fixtures
 test_strip_ghost_drops_dim_keeps_normal
 test_strip_ghost_handles_combined_and_boundary_codes
 test_strip_ghost_keeps_colored_text_with_2_payloads
