@@ -1,0 +1,45 @@
+
+ ▐▛███▛█   Claude Code v2.1.325
+▝▜██████▀  Sonnet 5.5 · Claude Ultra
+ ▝▝   ▝▝   /tmp/promptghost.SAdGEL/wt
+
+  Fable 5.2 is here for your longest and toughest coding tasks. It draws down usage faster than Opus 5.5. Switch with /model.
+  1 more notice hidden
+
+❯ Read notes.txt and say which item I should start with. One sentence.
+
+  Read 1 file
+
+● Start with item 1, setting up argparse with a main() entry point and --help text, since the core command and tests both build on that skeleton.
+
+✻ Cogitated for 1s · done 8:15 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                                                        ✔ Update installed · Restart to update
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ set up the argparse skeleton
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)

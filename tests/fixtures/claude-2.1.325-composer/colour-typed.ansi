@@ -1,0 +1,45 @@
+
+[38;2;215;119;87m ▐[48;2;0;0;0m▛███▛█[39m[49m   [1mClaude Code[0m [38;2;153;153;153mv2.1.325[39m
+[38;2;215;119;87m▝▜[48;2;0;0;0m█████[49m█▀[39m  [38;2;153;153;153mSonnet 5.5 · Claude Ultra[39m
+[38;2;215;119;87m ▝▝   ▝▝ [39m  [38;2;153;153;153m/tmp/promptghost.SAdGEL/wt[39m
+
+  Fable 5.2 is here for your longest and toughest coding
+  tasks. It draws down usage faster than Opus 5.5. Switch
+  with [38;2;177;185;249m/model[39m.
+  [38;2;153;153;153m1 more notice hidden[39m
+
+[38;2;153;153;153m[48;2;55;55;55m❯ [38;2;255;255;255mWrite notes.txt holding a three-item todo list for a tiny[39m
+  [38;2;255;255;255mPython CLI, then stop.[39m
+
+[38;2;78;186;101m[49m●[39m [1mWrite[0m(]8;id=wh8bjw;file:///tmp/promptghost.SAdGEL/wt/notes.txt\notes.txt]8;;\)
+[38;2;153;153;153m  ⎿  [39mWrote [1m5[0m lines to [1m]8;id=wh8bjw;file:///tmp/promptghost.SAdGEL/wt/notes.txt\notes.txt[0m]8;;\
+     [2m[38;2;248;248;242m 1 [0m[38;2;248;248;242mTODO - tiny Python CLI[39m
+     [2m[38;2;248;248;242m 2 [0m
+     [2m[38;2;248;248;242m 3 [0m[38;2;248;248;242m1. Set up argparse with a main() entry point [39m
+     [2m[38;2;248;248;242m   [0m[38;2;248;248;242mand --help text.[39m
+     [2m[38;2;248;248;242m 4 [0m[38;2;248;248;242m2. Implement the core command (read input, pr[39m
+     [2m[38;2;248;248;242m   [0m[38;2;248;248;242mocess, print result).[39m
+     [2m[38;2;248;248;242m 5 [0m[38;2;248;248;242m3. Add a few pytest tests and a short README [39m
+     [2m[38;2;248;248;242m   [0m[38;2;248;248;242musage example.[39m
+
+[38;2;255;255;255m●[39m I wrote [38;2;177;185;249m/tmp/promptghost.SAdGEL/wt/notes.txt[39m with three
+  todo items:
+
+  1. Set up argparse with a [38;2;177;185;249mmain()[39m entry point and [38;2;177;185;249m--help[39m
+     text.
+  2. Implement the core command (read input, process, print
+     result).
+  3. Add a few pytest tests and a short README usage
+     example.
+
+[38;2;153;153;153m✻[39m [38;2;153;153;153mCrunched for 3s · done 8:14 PM[39m
+
+
+
+
+
+                    [38;2;78;186;101m✔ Update installed · Restart to update[39m
+[38;2;136;136;136m────────────────────────────────────────────────────────────
+[39m❯ fix the bug
+[38;2;136;136;136m────────────────────────────────────────────────────────────
+[39m  [38;2;255;193;7m⏵⏵ auto mode on[38;2;153;153;153m (shift+tab to cycle)[39m
