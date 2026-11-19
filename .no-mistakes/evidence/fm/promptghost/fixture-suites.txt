@@ -1,0 +1,95 @@
+FM_TEST_BEGIN 2026-11-19T20:29:23Z tests/fm-composer-ghost.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-19T20:29:23Z tests/fm-composer-lib.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - Claude 2.1.325 real colour/monochrome suggestions read empty; real typing stays pending in both locales
+ok - fm_tmux_strip_ghost drops dim/faint runs, keeps normal and bold text
+ok - fm_tmux_strip_ghost handles combined SGR, ESC[22m, and reset-then-dim
+ok - fm_tmux_strip_ghost keeps bright colored text with 2 payloads
+ok - fm_tmux_strip_ghost drops a dark/muted truecolor foreground (grok placeholder)
+ok - fm_tmux_strip_ghost keeps muse's near-threshold glyph and its typed text
+ok - fm_pane_input_pending: a dim ghost-only composer is NOT pending
+ok - fm_pane_input_pending: dim ghost inside a bordered composer is NOT pending
+ok - fm_pane_input_pending: normal-intensity typed text is still pending
+ok - fm_pane_input_pending: bright colored text with 2 payloads is still pending
+ok - fm_pane_input_pending: a dark truecolor ghost-only composer (grok placeholder) is NOT pending
+ok - fm_tmux_composer_state: dark truecolor shell prompts read unknown
+ok - fm_pane_input_pending: real text plus a trailing ghost run is still pending
+ok - fm_tmux_composer_state: text above an empty cursor row is pending
+ok - fm_tmux_composer_state: a message wrapped across three rows is pending
+ok - fm_tmux_composer_state: a proven titled box tolerates a bottom-border cursor
+ok - fm_tmux_composer_identity: unknown busy state cannot become idle identity
+ok - fm_tmux_composer_state: typed Pi and Grok busy signatures inside a box are pending
+ok - fm_tmux_composer_state: a bare busy-footer row reads unknown (strict container-proof rule)
+ok - fm_tmux_composer_state: an unbounded bordered box fails closed as unknown
+ok - fm_tmux_composer_state: clipped and asymmetric composer edges fail closed
+ok - fm_tmux_composer_state: inconsistent box geometry fails closed
+ok - fm_tmux_composer_state: misaligned box bounds fail closed
+ok - fm_tmux_composer_state: unproved ghost and malformed geometry stay unknown while styled placeholder-like text stays pending-unproven
+ok - fm_tmux_composer_state: differing widths prefer pending or unknown, never empty
+ok - fm_tmux_composer_state: emoji and CJK text remain pending under the C locale
+ok - fm_tmux_composer_state: all tmux harnesses share empty and pending classification
+ok - fm_pane_input_pending: unrecognized states defer by default
+ok - fm_tmux_composer_state: one capture feeds the classifier; no band-capture race remains
+ok - fm_tmux_composer_state: absent Pi identity preserves Claude's enclosed bare verdict
+ok - fm_tmux_composer_state: only proven structural and non-bordered empty routes stay empty
+ok - fm_tmux_composer_state: panes without bordered structure retain compatibility fallback
+ok - fm_tmux_composer_state: interior edge glyphs retain non-bordered fallback
+ok - fm-peek output is escape-free (no raw -e bytes reach firstmate context)
+FM_TEST_END 2026-11-19T20:29:28Z tests/fm-composer-ghost.test.sh exit=0 duration_ms=4795 gate_skip=false
+ok - fm_composer_classify_content: a bare shell prompt glyph (>/$/%/#) reads unknown, never empty
+ok - fm_composer_classify_content: stripped unbordered content is unknown except verified agent glyphs
+ok - fm_composer_classify_content: a bare shell prompt carrying a command is not empty
+ok - fm_composer_classify_content: a bare prompt glyph inside a bordered composer box reads empty (claude's own idle composer)
+ok - fm_composer_classify_content: agent prompt glyphs (❯ claude, › codex, ⟩ muse) read empty bordered or bare
+ok - fm_composer_classify_content: an empty composer reads empty
+ok - fm_composer_classify_content: idle matching is limited to proven placeholder positions
+ok - fm_composer_classify_content: idle matching preserves the caller's case mode
+ok - fm_composer_classify_content: real unsubmitted text reads pending (including a popup argument-hint fill)
+ok - matrix: claude's ❯+NBSP row reads empty on every profile in both locales (#1988)
+ok - matrix: a named claude session's titled top rule proves its composer; pi stays unchanged
+ok - matrix: claude's arrow statusline is footer furniture, not a composer holding text
+ok - fm_composer_classify_screen: footer demotion needs a contiguous, glyph-proven pair
+ok - fm_composer_classify_screen: the footer zone holds for boxes, not only separator pairs
+ok - fm_composer_classify_screen: the footer zone only ever refuses, never allows
+ok - matrix: codex's dim hint is empty when styling proves it, unknown (never pending) when it cannot
+ok - matrix: muse's ⟩ reads empty everywhere and survives losing the styled-glyph signal
+ok - matrix: cursor's reverse-video placeholder remnant reads empty; real typed text stays pending
+ok - matrix: cursor's fully dim placeholder reads empty; typed text stays pending
+ok - matrix: herdr half-block rules bound a bare composer's wrap region
+ok - matrix: omp's status row bounds the bare composer's wrap region
+ok - matrix: codex 0.154's starfield rows are furniture; typed, mixed, and unanchored rows keep their verdicts
+ok - matrix: pi's separated composer needs identity + structure; the blank row alone never proves it
+ok - matrix: a dollar-first pi status footer reads empty; dead shells still refuse
+ok - matrix: opencode's left-bar composer reads empty everywhere and scans the full active run
+ok - matrix: opencode 1.18.31's right-aligned cwd:branch furniture reads empty; left-edge text stays pending
+ok - matrix: opencode's absolute cwd rail on a wide pane reads empty busy and idle; typed text stays pending
+ok - matrix: grok's real oversized titled bottom is empty while typed and unproved panes stay safe
+ok - matrix: claude's titled top rule proves an idle composer empty and a draft pending (#5601, #5558)
+ok - matrix: grok 1.0.44's approval-titled equal-width bottom is empty while typed and unknown titles stay safe
+ok - matrix: kimi's bordered shell-glyph box reads empty through the shared owner (spawn's fourth copy retired)
+ok - matrix: the real claude-in-zellij --ansi dump reads empty in both locales
+ok - strict posture: blank and unidentified rows are unknown, never injectable empty
+ok - fm_composer_classify_screen: the bare composer's wrap region stays identified; structure breaks it
+ok - fm_composer_classify_screen: a row-leading agent glyph reanchors the live composer
+ok - fm_composer_classify_screen: a lower dead shell invalidates only cursorless stale composers
+ok - fm_composer_classify_screen: cursorless bare wrap regions participate in verdicts
+ok - fm_composer_classify_screen: cursorless containers reject only contiguous unclaimed activity
+ok - fm_composer_classify_screen: the bottom-most candidate wins; stale banners cannot
+ok - fm_composer_classify_screen: incomplete lower structure invalidates stale boxes
+ok - fm_composer_classify_screen: titled bottoms retain full box geometry
+ok - fm_composer_classify_screen: a proven box tolerates a bottom-border cursor
+ok - fm_composer_extract_selected_content: scopes user content and excludes furniture
+ok - fm_composer_queued_enter_verdict: pending + busy returns empty (queued Enter)
+ok - fm_composer_queued_enter_verdict: pending + idle/unknown stays pending
+ok - fm_composer_queued_enter_verdict: only proven pending is converted
+ok - the Claude background-task exit picker stays pending and receives no confirming Enter
+ok - a buried heading or a different last line is not the exit picker
+ok - a dialog note without a sink skips the match, and release leaves a caller RETURN trap
+ok - picker text quoted above a normal composer is not read as a live picker
+ok - fm_composer_strip_ghost: on kiro, near-gray ghost strips while near-gray real text and a chromatic glyph survive
+ok - fm_composer_strip_ghost: on kiro, palette greys strip while bright, chromatic and theme-remapped indexes survive
+ok - composer widening: the near-gray ceiling, palette greys, and hinted idle row apply on kiro only
+FM_TEST_END 2026-11-19T20:29:51Z tests/fm-composer-lib.test.sh exit=0 duration_ms=28266 gate_skip=false
+FM_TEST_SUMMARY total=2 failed=0 skipped_gate=0 duration_ms=28402
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=2 duration_ms=33061 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-composer-lib.test.sh duration_ms=28266
+FM_TEST_SLOWEST rank=2 script=tests/fm-composer-ghost.test.sh duration_ms=4795

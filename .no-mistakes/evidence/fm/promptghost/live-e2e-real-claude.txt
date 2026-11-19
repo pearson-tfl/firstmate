@@ -1,0 +1,5 @@
+ok - claude 2.1.328 (Claude Code): mono: a real prompt suggestion reads empty
+ok - claude 2.1.328 (Claude Code): mono: real typed text reads pending
+ok - claude 2.1.328 (Claude Code): colour: a real prompt suggestion reads empty
+ok - claude 2.1.328 (Claude Code): colour: real typed text reads pending
+exit=0
