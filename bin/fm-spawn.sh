@@ -694,11 +694,11 @@
 # claude is the one harness whose pre-launch setup can REFUSE the spawn: before
 # any per-task state exists, and before its busy hooks are written, every
 # claude launch pre-registers its launch directory -
-# the task worktree, or the secondmate home for a --secondmate spawn -
-# in the launching user's own Claude trust store through bin/fm-claude-trust.sh,
+# the task worktree, or the secondmate home and its --add-dir steering inbox
+# for a --secondmate spawn - in the launching user's own Claude trust store through bin/fm-claude-trust.sh,
 # because Claude's interactive workspace-trust dialog gates a folder it has never
 # seen and firstmate cannot answer it. That helper's header owns the structural
-# scope test for both shapes and every refusal; a failed registration stops this
+# scope test for every shape and every refusal; a failed registration stops this
 # spawn rather than launching a worker that would wedge on the dialog.
 # polytoken (the captain-approved TUI-pane-plus-REST hybrid) is the one harness
 # whose worker's unattended permission posture cannot ride a launch flag: a
@@ -6340,9 +6340,9 @@ fi
 # included: its home is just as unseen by Claude as a fresh worktree, and
 # skipping the step for that kind left a standalone-clone secondmate home with
 # nothing registered and a pane wedged on a dialog firstmate cannot answer.
-# bin/fm-claude-trust.sh owns the structural scope test for both shapes and
+# bin/fm-claude-trust.sh owns the structural scope test for every shape and
 # refuses anything that is neither this project's own isolated worktree nor a
-# seeded secondmate home marked for this id; a refusal blocks the spawn rather
+# seeded secondmate home marked for this id and its steering inbox; a refusal blocks the spawn rather
 # than launching a worker that would wedge. Refusing here rather than beside the
 # arm keeps this in the same class as the two worktree refusals just above: no
 # temp root, no retired relaunch wiring and no busy record exists yet to strand,

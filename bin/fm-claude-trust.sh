@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Pre-register Claude Code's workspace trust for the directory a claude spawn is
 # about to launch into - the isolated task worktree of a ship or scout crewmate,
-# or the seeded home of a secondmate - so the agent reaches its brief or charter
+# or the seeded home of a secondmate - and for the steering inbox a secondmate
+# launch grants with --add-dir, so the agent reaches its brief or charter
 # instead of wedging on the trust dialog. In worktree mode it also carries
 # forward the external-CLAUDE.md-import approval, but only when the primary
 # checkout already holds standing consent for it - see the consent-gating
@@ -20,7 +21,9 @@
 #               primary in
 #   <inbox>     the parent home's state/<id>.inbox steering channel a Claude
 #               secondmate launch grants with --add-dir; a stable entry point
-#               for any relauncher that carries that grant onto another profile
+#               for any relauncher that carries that grant onto another profile,
+#               run with CLAUDE_CONFIG_DIR naming the profile the launch will
+#               use, after the inbox and its handled/ directory exist
 # Prints one line naming what it registered; refuses loudly on anything else.
 #
 # WHY THIS EXISTS. Claude Code gates a folder it has never seen behind an
@@ -166,10 +169,10 @@
 # gates an --add-dir path the profile has never trusted behind its own
 # "Adding a new directory" dialog - same cursor-on-"No, exit" shape as the
 # trust dialog, and its "Yes, add it" answer holds for one session only, so a
-# relaunch onto any profile without a record meets it again. Verified
-# 2026-11-20 on Claude Code 2.1.329 in an isolated tmux launch: a projects
-# entry with hasTrustDialogAccepted for the exact inbox path (or any ancestor)
-# suppresses it, and nothing else in the profile does. Only the exact inbox is
+# relaunch onto any profile without a record meets it again. A projects entry
+# with hasTrustDialogAccepted for the exact inbox path (or any ancestor)
+# suppresses it (docs/verification/runtime-backends.md, "Secondmate steering
+# inbox"). Only the exact inbox is
 # registered, never its state/ or home ancestor, so no wider tree is trusted.
 # The scope test is the channel's own shape: the directory's name is exactly
 # <id>.inbox, it is a directory this user owns holding the handled/ directory
@@ -182,9 +185,9 @@
 # projects entries for the worktree path and the resolved canonical project
 # path in ${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json, which must be a regular
 # file this uid owns; every unrelated key and project entry is preserved, and
-# both entries land in one atomic replacement. In secondmate-home, lab-home and
-# secondmate-inbox mode: the single projects entry for the registered home path, same store,
-# same atomic replacement. fm-spawn.sh forwards CLAUDE_CONFIG_DIR onto the
+# both entries land in one atomic replacement. In every other mode: the single
+# projects entry for the registered directory, same store, same atomic
+# replacement. fm-spawn.sh forwards CLAUDE_CONFIG_DIR onto the
 # claude launch verbatim rather than resolving it, and the pane starts in the
 # registered directory, so only an absolute value names the same store on both sides; a
 # relative one is refused below rather than guessed at.

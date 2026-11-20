@@ -897,11 +897,41 @@ test_secondmate_inbox_trust_refuses_everything_but_the_channel() {
   assert_contains "$out" ".claude" "the refusal did not name the Claude configuration"
   assert_not_trusted "$config/.claude.json" "$target" "an inbox carrying Claude configuration was trusted"
 
+  target="$state/memo-n1.inbox"
+  mkdir -p "$target/handled"
+  printf 'memory\n' > "$target/CLAUDE.md"
+  out=$(run_inbox_trust "$config" "$target" memo-n1)
+  expect_code 1 $? "an inbox carrying a CLAUDE.md must be refused: $out"
+  assert_contains "$out" "CLAUDE.md" "the refusal did not name the CLAUDE.md"
+  assert_not_trusted "$config/.claude.json" "$target" "an inbox carrying a CLAUDE.md was trusted"
+
+  target="$state/link-n1.inbox"
+  mkdir -p "$target" "$case_dir/elsewhere"
+  ln -s "$case_dir/elsewhere" "$target/handled"
+  out=$(run_inbox_trust "$config" "$target" link-n1)
+  expect_code 1 $? "an inbox whose handled/ is a symlink must be refused: $out"
+  assert_not_trusted "$config/.claude.json" "$target" "an inbox whose handled/ is a symlink was trusted"
+
   out=$(run_inbox_trust "$config" "$state" state)
   expect_code 1 $? "the state directory itself must be refused: $out"
   assert_not_trusted "$config/.claude.json" "$state" "the state directory was trusted"
 
   pass "fm-claude-trust.sh: inbox trust is refused for everything but this secondmate's steering inbox"
+}
+
+# The fail-closed half for the inbox: a spawn whose inbox registration is
+# refused must not launch a pane that would wedge on the add-directory dialog.
+test_secondmate_spawn_fails_closed_when_inbox_trust_is_refused() {
+  local case_dir home out
+  case_dir="$TMP_ROOT/sm-inbox-failclosed"
+  home="$case_dir/fm-homes/inboxfail-n1"
+  seed_secondmate_home "$home" inboxfail-n1 clone
+  mkdir -p "$case_dir/primary/state/inboxfail-n1.inbox/.claude"
+  out=$(spawn_secondmate_claude "$case_dir" "$home" inboxfail-n1)
+  expect_code 1 $? "a secondmate spawn whose inbox trust is refused must fail: $out"
+  assert_contains "$out" "steering inbox" "the spawn did not report the inbox trust refusal"
+  assert_absent "$case_dir/launch.log" "a secondmate was launched although its inbox trust was refused"
+  pass "fm-spawn.sh: a claude secondmate spawn refuses when its steering inbox trust is refused"
 }
 
 test_fresh_worktree_is_trusted
@@ -937,3 +967,4 @@ test_worktree_mode_still_refuses_a_secondmate_home
 test_secondmate_spawn_fails_closed_when_home_trust_cannot_be_recorded
 test_secondmate_spawn_pretrusts_its_steering_inbox
 test_secondmate_inbox_trust_refuses_everything_but_the_channel
+test_secondmate_spawn_fails_closed_when_inbox_trust_is_refused
