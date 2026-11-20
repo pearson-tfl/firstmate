@@ -694,11 +694,11 @@
 # claude is the one harness whose pre-launch setup can REFUSE the spawn: before
 # any per-task state exists, and before its busy hooks are written, every
 # claude launch pre-registers its launch directory -
-# the task worktree, or the secondmate home for a --secondmate spawn -
-# in the launching user's own Claude trust store through bin/fm-claude-trust.sh,
+# the task worktree, or the secondmate home and its --add-dir steering inbox
+# for a --secondmate spawn - in the launching user's own Claude trust store through bin/fm-claude-trust.sh,
 # because Claude's interactive workspace-trust dialog gates a folder it has never
 # seen and firstmate cannot answer it. That helper's header owns the structural
-# scope test for both shapes and every refusal; a failed registration stops this
+# scope test for every shape and every refusal; a failed registration stops this
 # spawn rather than launching a worker that would wedge on the dialog.
 # polytoken (the captain-approved TUI-pane-plus-REST hybrid) is the one harness
 # whose worker's unattended permission posture cannot ride a launch flag: a
@@ -6340,9 +6340,9 @@ fi
 # included: its home is just as unseen by Claude as a fresh worktree, and
 # skipping the step for that kind left a standalone-clone secondmate home with
 # nothing registered and a pane wedged on a dialog firstmate cannot answer.
-# bin/fm-claude-trust.sh owns the structural scope test for both shapes and
+# bin/fm-claude-trust.sh owns the structural scope test for every shape and
 # refuses anything that is neither this project's own isolated worktree nor a
-# seeded secondmate home marked for this id; a refusal blocks the spawn rather
+# seeded secondmate home marked for this id and its steering inbox; a refusal blocks the spawn rather
 # than launching a worker that would wedge. Refusing here rather than beside the
 # arm keeps this in the same class as the two worktree refusals just above: no
 # temp root, no retired relaunch wiring and no busy record exists yet to strand,
@@ -6366,6 +6366,19 @@ claude*)
   if ! "$FM_ROOT/bin/fm-claude-trust.sh" "${spawn_trust_args[@]}" >/dev/null; then
     echo "error: could not pre-register Claude workspace trust for $WT; refusing to launch a claude worker that would wedge on the trust dialog; $(spawn_endpoint_hint)" >&2
     exit 1
+  fi
+  # A secondmate's --add-dir steering channel (claude_add_dirs_flag) meets
+  # Claude's separate "Adding a new directory" dialog on a profile that never
+  # trusted it, so it is registered in the same store; the directory is made
+  # here exactly as claude_add_dirs_flag makes it.
+  if [ "$KIND" = secondmate ]; then
+    sm_state=$(cd "$STATE" && pwd -P) || sm_state=
+    sm_inbox="$sm_state/$ID.inbox"
+    if [ -z "$sm_state" ] || ! mkdir -p "$sm_inbox/handled" \
+      || ! "$FM_ROOT/bin/fm-claude-trust.sh" --secondmate-inbox "$sm_inbox" "$ID" >/dev/null; then
+      echo "error: could not pre-register Claude trust for $ID's steering inbox; refusing to launch a claude secondmate that would wedge on the add-directory dialog; $(spawn_endpoint_hint)" >&2
+      exit 1
+    fi
   fi
   ;;
 agy)
