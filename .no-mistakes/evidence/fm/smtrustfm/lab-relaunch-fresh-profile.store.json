@@ -1,0 +1,109 @@
+{
+  "numStartups": 1,
+  "tipsHistory": {
+    "new-user-warmup": 1,
+    "plan-mode-for-complex-tasks": 1
+  },
+  "hasCompletedOnboarding": true,
+  "projects": {
+    "/private/tmp/fmsmtrust-test.8OS8fi/lab-after/mate": {
+      "hasTrustDialogAccepted": true,
+      "lastGracefulShutdown": true,
+      "lastVersionBase": "2.1.329",
+      "exampleFiles": [
+        "fm-spawn.sh",
+        "fm-control-relaunch.test.sh",
+        "herdr.sh",
+        "session-start-ordinary.digest",
+        "fm-primary-pi-watch.ts"
+      ],
+      "exampleFilesGeneratedAt": 1795191320758,
+      "lastCost": 0,
+      "lastAPIDuration": 0,
+      "lastAPIDurationWithoutRetries": 0,
+      "lastToolDuration": 0,
+      "lastDuration": 24856,
+      "lastStartTime": 1795191320367,
+      "lastLinesAdded": 0,
+      "lastLinesRemoved": 0,
+      "lastTotalInputTokens": 0,
+      "lastTotalOutputTokens": 0,
+      "lastTotalCacheCreationInputTokens": 0,
+      "lastTotalCacheReadInputTokens": 0,
+      "lastTotalWebSearchRequests": 0,
+      "lastFpsAverage": 1.72,
+      "lastFpsLow1Pct": 419.51,
+      "lastModelUsage": {},
+      "lastSessionId": "aa2f7bc0-3eb3-4fa2-8e10-c0c7a7b02ffa",
+      "lastSessionMetrics": {
+        "frame_duration_ms_count": 41,
+        "frame_duration_ms_min": 0.066541999999572,
+        "frame_duration_ms_max": 2.383749999999992,
+        "frame_duration_ms_avg": 0.476530536585432,
+        "frame_duration_ms_p50": 0.40525000000002365,
+        "frame_duration_ms_p95": 0.8977919999997539,
+        "frame_duration_ms_p99": 2.2074999999999996,
+        "hook_duration_ms_count": 2,
+        "hook_duration_ms_min": 173,
+        "hook_duration_ms_max": 2414,
+        "hook_duration_ms_avg": 1293.5,
+        "hook_duration_ms_p50": 1293.5,
+        "hook_duration_ms_p95": 2301.95,
+        "hook_duration_ms_p99": 2391.59
+      }
+    },
+    "/private/tmp/fmsmtrust-test.8OS8fi/lab-after/home/state/labf5044bbf636d-mate.inbox": {
+      "hasTrustDialogAccepted": true
+    }
+  },
+  "firstStartTime": "2026-11-20T16:15:20.422Z",
+  "firstStartVersion": "2.1.329",
+  "machineID": "c9517f70916494cd28cd3b1791e2c67bb76b254466dc1b3c860ac68bdf8d97a7",
+  "opusProMigrationComplete": true,
+  "seenNotifications": {},
+  "hasResetAutoModeOptInForDefaultOffer": true,
+  "migrationVersion": 15,
+  "userID": "0e006aa69e407e0469b061fd375b8a3a66174c2db57adaa1f848a4f20485b86c",
+  "lastReleaseNotesSeen": "2.1.329",
+  "pluginUsage": {
+    "fm@skills-dir": {
+      "usageCount": 0,
+      "lastUsedAt": 1795191320664,
+      "lastUsedNumStartups": 1
+    },
+    "cc-plugin-agents-md@builtin": {
+      "usageCount": 0,
+      "lastUsedAt": 1795191320664,
+      "lastUsedNumStartups": 1
+    },
+    "cc-plugin-telemetry@builtin": {
+      "usageCount": 0,
+      "lastUsedAt": 1795191320664,
+      "lastUsedNumStartups": 1
+    },
+    "cc-plugin-privacy@builtin": {
+      "usageCount": 0,
+      "lastUsedAt": 1795191320664,
+      "lastUsedNumStartups": 1
+    },
+    "cc-plugin-plugin-authoring@builtin": {
+      "usageCount": 0,
+      "lastUsedAt": 1795191320664,
+      "lastUsedNumStartups": 1
+    },
+    "cc-plugin-diff@builtin": {
+      "usageCount": 0,
+      "lastUsedAt": 1795191320664,
+      "lastUsedNumStartups": 1
+    }
+  },
+  "changelogLastFetched": 1795191320800,
+  "closedIssuesLastChecked": 1795191320612,
+  "hasSeenAutoModeEntryWarning": true,
+  "officialMarketplaceAutoInstallAttempted": true,
+  "officialMarketplaceAutoInstalled": true,
+  "tipLifetimeShownCounts": {
+    "new-user-warmup": 1,
+    "plan-mode-for-complex-tasks": 1
+  }
+}

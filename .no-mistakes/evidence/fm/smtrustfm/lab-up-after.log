@@ -1,0 +1,6 @@
+lab: /private/tmp/fmsmtrust-test.8OS8fi/lab-after (tear down with: bin/fm-live-lab.sh down /private/tmp/fmsmtrust-test.8OS8fi/lab-after)
+tree: 060379ffe7511e005a54718c6eda1c449793d50c from {run-worktree}
+scaffolded: /private/tmp/fmsmtrust-test.8OS8fi/lab-after/home/data/labf5044bbf636d-mate/brief.md (secondmate charter)
+home=/private/tmp/fmsmtrust-test.8OS8fi/lab-after/mate
+spawned labf5044bbf636d-mate harness=claude kind=secondmate mode=secondmate yolo=off window=firstmate:fm-labf5044bbf636d-mate worktree=/private/tmp/fmsmtrust-test.8OS8fi/lab-after/mate
+exit 143

@@ -1,0 +1,12 @@
+➜  mate git:(main) . '/tmp/fm-labf5044bbf636d-mate+fd5222fa0e042d4d20c60a3e596efd315ec3cf5c0029a91d750186ca9addd03e/launch.s1795191350.19400.22743.sh'
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Adding a new directory:
+ /private/tmp/fmsmtrust-test.8OS8fi/lab-after/home/state/labf5044bbf636d-mate.inbox
+ This directory is part of the repository at /private/tmp/fmsmtrust-test.8OS8fi/lab-after/home. Trusting it trusts that whole repository, including its other worktrees and subdirectories.
+ This session hasn't worked here before. Is this a directory you created or one you trust?
+ Claude Code'll be able to read, edit, and execute files here. Its skills, commands, and agents load and can run commands, and so can the git settings of its repository. Your answer holds for this session. Starting
+ Claude Code in this directory and trusting it there lasts, and covers its whole repository or everything below it.
+ Security guide
+ ❯ No, exit
+   Yes, add it
+ Enter to confirm · Esc to cancel

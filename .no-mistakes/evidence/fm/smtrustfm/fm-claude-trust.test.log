@@ -1,0 +1,34 @@
+ok - fm-claude-trust.sh: a fresh task worktree is trusted
+ok - fm-claude-trust.sh: a fresh registration trusts the project root without manufacturing import consent
+ok - fm-claude-trust.sh: carries forward a project's already-granted import consent to the worktree entry
+ok - fm-claude-trust.sh: preserves unrelated keys on the project-root entry
+ok - fm-claude-trust.sh: refuses to override a project's declined external-imports consent
+ok - fm-claude-trust.sh: a never-asked default external-imports pair is not treated as a decline
+ok - fm-claude-trust.sh: repeat registration is idempotent
+ok - fm-claude-trust.sh: refuses the primary checkout
+ok - fm-claude-trust.sh: an exported CDPATH cannot defeat the scope refusal
+ok - fm-claude-trust.sh: inherited git environment overrides cannot defeat the scope refusal
+ok - fm-claude-trust.sh: refuses a home directory the git checks would accept
+ok - fm-claude-trust.sh: refuses the Claude config directory
+ok - fm-claude-trust.sh: refuses a relative CLAUDE_CONFIG_DIR
+ok - fm-claude-trust.sh: refuses a directory that is not a git worktree
+ok - fm-claude-trust.sh: refuses a path that does not exist
+ok - fm-claude-trust.sh: refuses a worktree belonging to another project
+ok - fm-claude-trust.sh: refuses a subdirectory of the worktree
+ok - fm-claude-trust.sh: a project argument that is itself a linked worktree resolves to the primary checkout
+ok - fm-claude-trust.sh: preserves unrelated store content
+ok - fm-claude-trust.sh: refuses a store symlinked to another user's file
+ok - fm-claude-trust.sh: follows a store symlink to this user's own file and leaves the link intact
+ok - fm-claude-trust.sh: refuses an unparseable store and leaves it untouched
+ok - fm-claude-trust.sh: a missing node is refused rather than degraded
+ok - fm-claude-trust.sh: a scope refusal stays fail-closed without node
+ok - fm-spawn.sh: a claude spawn pre-trusts its worktree and launches with a readable brief doorbell
+ok - fm-spawn.sh: a trust-refused claude spawn leaves no task state behind
+ok - fm-spawn.sh: a claude secondmate spawn pre-trusts a standalone-clone home
+ok - fm-spawn.sh: a claude secondmate spawn pre-trusts a leased worktree home
+ok - fm-claude-trust.sh: home-level trust is refused for everything but a home seeded for this secondmate
+ok - fm-claude-trust.sh: worktree mode still refuses a secondmate home
+ok - fm-spawn.sh: a claude secondmate spawn refuses when home trust cannot be recorded
+ok - fm-spawn.sh: a claude secondmate spawn pre-trusts exactly its --add-dir steering inbox
+ok - fm-claude-trust.sh: inbox trust is refused for everything but this secondmate's steering inbox
+ok - fm-spawn.sh: a claude secondmate spawn refuses when its steering inbox trust is refused
