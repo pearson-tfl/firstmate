@@ -6367,6 +6367,19 @@ claude*)
     echo "error: could not pre-register Claude workspace trust for $WT; refusing to launch a claude worker that would wedge on the trust dialog; $(spawn_endpoint_hint)" >&2
     exit 1
   fi
+  # A secondmate's --add-dir steering channel (claude_add_dirs_flag) meets
+  # Claude's separate "Adding a new directory" dialog on a profile that never
+  # trusted it, so it is registered in the same store; the directory is made
+  # here exactly as claude_add_dirs_flag makes it.
+  if [ "$KIND" = secondmate ]; then
+    sm_state=$(cd "$STATE" && pwd -P) || sm_state=
+    sm_inbox="$sm_state/$ID.inbox"
+    if [ -z "$sm_state" ] || ! mkdir -p "$sm_inbox/handled" \
+      || ! "$FM_ROOT/bin/fm-claude-trust.sh" --secondmate-inbox "$sm_inbox" "$ID" >/dev/null; then
+      echo "error: could not pre-register Claude trust for $ID's steering inbox; refusing to launch a claude secondmate that would wedge on the add-directory dialog; $(spawn_endpoint_hint)" >&2
+      exit 1
+    fi
+  fi
   ;;
 agy)
   if [ "$KIND" = secondmate ]; then

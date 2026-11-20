@@ -838,6 +838,72 @@ test_secondmate_spawn_fails_closed_when_home_trust_cannot_be_recorded() {
   pass "fm-spawn.sh: a claude secondmate spawn refuses when home trust cannot be recorded"
 }
 
+# Claude shows its "Adding a new directory" dialog for an --add-dir path the
+# profile has never trusted, so the secondmate spawn must register the exact
+# steering inbox it grants - the same path the launch's --add-dir names - and
+# nothing wider.
+test_secondmate_spawn_pretrusts_its_steering_inbox() {
+  local case_dir home out inbox store
+  case_dir="$TMP_ROOT/sm-inbox-spawn"
+  home="$case_dir/fm-homes/inbox-n1"
+  seed_secondmate_home "$home" inbox-n1 clone
+  out=$(spawn_secondmate_claude "$case_dir" "$home" inbox-n1)
+  expect_code 0 $? "a claude secondmate spawn must succeed: $out"
+  inbox="$(cd "$case_dir/primary/state" && pwd -P)/inbox-n1.inbox"
+  store="$case_dir/claude-config/.claude.json"
+  assert_grep "--add-dir '$inbox'" "$case_dir/launch.log" \
+    "the launch did not grant the steering inbox this test expects to be trusted"
+  assert_trusted "$store" "$inbox" "the claude secondmate spawn did not pre-register trust for its steering inbox"
+  assert_not_trusted "$store" "$(dirname "$inbox")" "the spawn trusted the parent's whole state directory"
+  assert_not_trusted "$store" "$(cd "$case_dir/primary" && pwd -P)" "the spawn trusted the whole parent home"
+  pass "fm-spawn.sh: a claude secondmate spawn pre-trusts exactly its --add-dir steering inbox"
+}
+
+run_inbox_trust() {  # <config> <inbox> <id>
+  CLAUDE_CONFIG_DIR="$1" HOME="$1" "$TRUST" --secondmate-inbox "$2" "$3" 2>&1
+}
+
+# The channel's shape is the whole boundary for inbox trust, so each row drives
+# one property apart from a genuine inbox and must be refused and left untrusted.
+test_secondmate_inbox_trust_refuses_everything_but_the_channel() {
+  local case_dir config state target out
+  case_dir="$TMP_ROOT/sm-inbox-refusals"
+  config="$case_dir/claude-config"
+  state="$case_dir/home/state"
+  mkdir -p "$config" "$state"
+  state=$(cd "$state" && pwd -P)
+
+  target="$state/ok-n1.inbox"
+  mkdir -p "$target/handled"
+  out=$(run_inbox_trust "$config" "$target" ok-n1)
+  expect_code 0 $? "a genuine steering inbox must be accepted: $out"
+  assert_trusted "$config/.claude.json" "$target" "a genuine steering inbox was not trusted"
+
+  out=$(run_inbox_trust "$config" "$target" other-n1)
+  expect_code 1 $? "another secondmate's inbox must be refused: $out"
+  assert_contains "$out" "other-n1.inbox" "the refusal did not name the expected channel"
+
+  target="$state/bare-n1.inbox"
+  mkdir -p "$target"
+  out=$(run_inbox_trust "$config" "$target" bare-n1)
+  expect_code 1 $? "an inbox without handled/ must be refused: $out"
+  assert_contains "$out" "handled/" "the refusal did not name the missing handled/ directory"
+  assert_not_trusted "$config/.claude.json" "$target" "an inbox without handled/ was trusted"
+
+  target="$state/cfg-n1.inbox"
+  mkdir -p "$target/handled" "$target/.claude"
+  out=$(run_inbox_trust "$config" "$target" cfg-n1)
+  expect_code 1 $? "an inbox carrying Claude configuration must be refused: $out"
+  assert_contains "$out" ".claude" "the refusal did not name the Claude configuration"
+  assert_not_trusted "$config/.claude.json" "$target" "an inbox carrying Claude configuration was trusted"
+
+  out=$(run_inbox_trust "$config" "$state" state)
+  expect_code 1 $? "the state directory itself must be refused: $out"
+  assert_not_trusted "$config/.claude.json" "$state" "the state directory was trusted"
+
+  pass "fm-claude-trust.sh: inbox trust is refused for everything but this secondmate's steering inbox"
+}
+
 test_fresh_worktree_is_trusted
 test_fresh_worktree_also_trusts_the_project_root_without_import_consent
 test_registration_carries_forward_existing_import_consent
@@ -869,3 +935,5 @@ test_secondmate_leased_worktree_home_is_trusted
 test_secondmate_home_trust_refuses_everything_unseeded
 test_worktree_mode_still_refuses_a_secondmate_home
 test_secondmate_spawn_fails_closed_when_home_trust_cannot_be_recorded
+test_secondmate_spawn_pretrusts_its_steering_inbox
+test_secondmate_inbox_trust_refuses_everything_but_the_channel

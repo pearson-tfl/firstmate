@@ -11,12 +11,16 @@
 # Usage: fm-claude-trust.sh <worktree> <project>
 #        fm-claude-trust.sh --secondmate-home <home> <id>
 #        fm-claude-trust.sh --lab-home <home>
+#        fm-claude-trust.sh --secondmate-inbox <inbox> <id>
 #   <worktree>  the isolated task worktree this spawn launches into
 #   <project>   the primary checkout that worktree belongs to
 #   <home>      the seeded secondmate home this spawn launches into
 #   <id>        the secondmate id that home must already be marked for
 #   --lab-home  the disposable lab home bin/fm-live-lab.sh launches a lab
 #               primary in
+#   <inbox>     the parent home's state/<id>.inbox steering channel a Claude
+#               secondmate launch grants with --add-dir; a stable entry point
+#               for any relauncher that carries that grant onto another profile
 # Prints one line naming what it registered; refuses loudly on anything else.
 #
 # WHY THIS EXISTS. Claude Code gates a folder it has never seen behind an
@@ -157,12 +161,29 @@
 # trust-only for the same reason as a secondmate home, and bin/fm-live-lab.sh
 # removes the entry again when it tears the lab down.
 #
+# SECONDMATE-INBOX MODE. Every Claude secondmate launch passes --add-dir for
+# its steering channel, the PARENT home's state/<id>.inbox, and Claude Code
+# gates an --add-dir path the profile has never trusted behind its own
+# "Adding a new directory" dialog - same cursor-on-"No, exit" shape as the
+# trust dialog, and its "Yes, add it" answer holds for one session only, so a
+# relaunch onto any profile without a record meets it again. Verified
+# 2026-11-20 on Claude Code 2.1.329 in an isolated tmux launch: a projects
+# entry with hasTrustDialogAccepted for the exact inbox path (or any ancestor)
+# suppresses it, and nothing else in the profile does. Only the exact inbox is
+# registered, never its state/ or home ancestor, so no wider tree is trusted.
+# The scope test is the channel's own shape: the directory's name is exactly
+# <id>.inbox, it is a directory this user owns holding the handled/ directory
+# bin/fm-spawn.sh creates for it, and it carries no Claude project
+# configuration (.claude, CLAUDE.md, CLAUDE.local.md, .mcp.json) - so the
+# record grants nothing beyond the file access --add-dir already grants.
+# Trust-only, like the other home modes.
+#
 # Only the launching user's own store is written. In worktree mode: the
 # projects entries for the worktree path and the resolved canonical project
 # path in ${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json, which must be a regular
 # file this uid owns; every unrelated key and project entry is preserved, and
-# both entries land in one atomic replacement. In secondmate-home and lab-home
-# mode: the single projects entry for the registered home path, same store,
+# both entries land in one atomic replacement. In secondmate-home, lab-home and
+# secondmate-inbox mode: the single projects entry for the registered home path, same store,
 # same atomic replacement. fm-spawn.sh forwards CLAUDE_CONFIG_DIR onto the
 # claude launch verbatim rather than resolving it, and the pane starts in the
 # registered directory, so only an absolute value names the same store on both sides; a
@@ -188,6 +209,7 @@ usage() {
   echo "usage: fm-claude-trust.sh <worktree> <project>" >&2
   echo "       fm-claude-trust.sh --secondmate-home <home> <id>" >&2
   echo "       fm-claude-trust.sh --lab-home <home>" >&2
+  echo "       fm-claude-trust.sh --secondmate-inbox <inbox> <id>" >&2
   exit 2
 }
 
@@ -210,6 +232,14 @@ case "${1:-}" in
     SUB_ID=
     PROJ_ARG=
     SCOPE_NOUN="lab home"
+    ;;
+  --secondmate-inbox)
+    [ "$#" -eq 3 ] || usage
+    MODE=secondmate-inbox
+    TARGET_ARG=$2
+    SUB_ID=$3
+    PROJ_ARG=
+    SCOPE_NOUN="secondmate inbox"
     ;;
   '' | -h | --help)
     usage
@@ -328,6 +358,18 @@ if [ "$MODE" = worktree ]; then
     [ -n "$CANON_GIT_DIR" ] && [ "$CANON_GIT_DIR" = "$PROJ_COMMON" ] \
       || refuse "project '$PROJ_REAL' is a linked worktree whose primary checkout could not be resolved"
   fi
+elif [ "$MODE" = secondmate-inbox ]; then
+  [ -n "$SUB_ID" ] || refuse "no secondmate id was supplied, so '$TARGET_REAL' cannot be matched against its channel name"
+  [ "$(basename -- "$TARGET_REAL")" = "$SUB_ID.inbox" ] \
+    || refuse "'$TARGET_REAL' is not named '$SUB_ID.inbox', so it is not secondmate '$SUB_ID''s steering inbox"
+  [ -O "$TARGET_REAL" ] || refuse "'$TARGET_REAL' is not owned by this user"
+  [ -d "$TARGET_REAL/handled" ] && [ ! -L "$TARGET_REAL/handled" ] \
+    || refuse "'$TARGET_REAL' has no handled/ directory, so it is not a steering inbox"
+  for inbox_cfg in .claude CLAUDE.md CLAUDE.local.md .mcp.json; do
+    if [ -e "$TARGET_REAL/$inbox_cfg" ] || [ -L "$TARGET_REAL/$inbox_cfg" ]; then
+      refuse "'$TARGET_REAL' carries Claude project configuration ($inbox_cfg), which trusting it would activate"
+    fi
+  done
 elif [ "$MODE" = lab-home ]; then
   LAB_MARKER="$TARGET_REAL/$FM_GATE_LAB_MARKER"
   [ ! -L "$LAB_MARKER" ] || refuse "'$LAB_MARKER' is a symlink; a lab home carries the marker as a regular file"
