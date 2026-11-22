@@ -604,7 +604,36 @@ trusted: /private/tmp/fm-sm-trust-live-69759/fm-homes/livemate-n1
 No dialog appeared, the composer was reached, and neither did the machine-scoped bypass warning, because this ran against the real config.
 The lab home was deleted and the test entry was removed from the store and verified absent, with the same point-in-time caveat as the worktree arms above.
 
-`bin/fm-spawn.sh` therefore pre-registers the directory every claude launch starts in through `bin/fm-claude-trust.sh` before launch, and `tests/fm-claude-trust.test.sh` pins both halves of the scope contract for both shapes: a fresh worktree and a seeded secondmate home are trusted, and an out-of-scope path is refused.
+### Secondmate steering inbox
+
+Verified 2026-11-20 on Claude Code 2.1.329.
+Every Claude secondmate launch also passes `--add-dir` for its steering inbox in the parent home, `state/<id>.inbox`, and a profile with no trust record for that path stops the pane on a separate dialog before the instructions are read.
+Its "Yes, add it" answer holds for one session only, so a relaunch or an account switch onto a profile without the record meets it again.
+Both arms ran `bin/fm-live-lab.sh up --harness claude --mate` against a fresh scratch `CLAUDE_CONFIG_DIR` holding only `{"hasCompletedOnboarding": true}`, so no account profile was read or written.
+The control arm built the lab from the tree before the inbox registration.
+
+```
+ Adding a new directory:
+ /private/tmp/fmlab-smtrust-before/home/state/lab5b3e79914273-mate.inbox
+ This directory is part of the repository at /private/tmp/fmlab-smtrust-before/home. ...
+ ❯ No, exit
+   Yes, add it
+ Enter to confirm · Esc to cancel
+```
+
+The treatment arm built the lab from the tree with `bin/fm-spawn.sh` calling `bin/fm-claude-trust.sh --secondmate-inbox`, which left exactly two trusted entries in the scratch store: the mate home and `/private/tmp/fmlab-smtrust-after/home/state/lab2931df60a0bd-mate.inbox`.
+
+```
+ ▐▛███▛█   Claude Code v2.1.329
+...
+❯ : Firstmate operational input waiting: read '.../mate/state/operational-inbox/1795183885-ce99ca189277e46e.msg' and handle its contents as Firstmate operational input.
+  ⎿  Not logged in · Please run /login
+```
+
+No dialog appeared and the launch instructions were submitted; the login notice is the scratch profile's own absence of credentials.
+A direct `claude --add-dir` launch against scratch profiles showed the same split: an entry for the exact inbox path, its `state/` directory, or the repository root each suppressed the dialog, and a profile trusting only the launch directory did not.
+
+`bin/fm-spawn.sh` therefore pre-registers the directory every claude launch starts in through `bin/fm-claude-trust.sh` before launch, and `tests/fm-claude-trust.test.sh` pins both halves of the scope contract for each shape: a fresh worktree, a seeded secondmate home, and a secondmate's steering inbox are trusted, and an out-of-scope path is refused.
 That automated spawn case runs against a fake claude, so it asserts the store entry and the launch command and nothing more; the live arms above are what establish that the entry actually suppresses the dialog.
 The composer-classification record below observes the same gate from the other side, where an untrusted worktree left Claude, Grok, and Muse unverified because the guard reads a first-launch trust dialog as an unreadable composer.
 
