@@ -744,7 +744,7 @@ tests/fm-backend-hc-liveness-live-e2e.test.sh 9000
 tests/fm-backend-hc-smoke.test.sh 3700
 tests/fm-backend-hc.test.sh 4000
 tests/fm-backend-orca-live-e2e.test.sh 347
-tests/fm-backend-orca-live-safety.test.sh 10717
+tests/fm-backend-orca-live-safety.test.sh 13527
 tests/fm-backend-orca.test.sh 27102
 tests/fm-backend-paseo-smoke.test.sh 40
 tests/fm-backend-paseo.test.sh 8000
