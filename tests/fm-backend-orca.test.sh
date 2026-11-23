@@ -107,6 +107,19 @@ test_capture_reads_terminal_tail_json() {
   pass "fm_backend_orca_capture: reads the drawn screen and parses result.terminal.tail"
 }
 
+# Composer judgement reads rows such as a padded prompt box, so capture must
+# return the cleared screen's rows byte-for-byte, runs of spaces intact.
+test_capture_returns_cleared_screen_rows_with_spaces() {
+  local out
+  orca_case capture-cleared-screen
+  printf '%s\n' '{"ok":true,"result":{"terminal":{"source":"screen","tail":["➜  fm-t1 git:(fm-t1) echo alpha beta gamma","alpha beta gamma","│ >               │"]}}}' > "$RESP/1.out"
+  out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_capture term-123 40' "$ROOT" )
+  [ "$out" = $'➜  fm-t1 git:(fm-t1) echo alpha beta gamma\nalpha beta gamma\n│ >               │' ] \
+    || fail "capture should return exactly the drawn screen rows with their spaces, got '$out'"
+  pass "fm_backend_orca_capture: returns only the cleared screen's rows, spaces intact"
+}
+
 # A read Orca did not render from the drawn screen - accumulated output
 # (source stream), a screen it could not render (screen-unavailable, which
 # returns the accumulated output instead), or a host that predates the source
@@ -1534,6 +1547,7 @@ test_dispatcher_sources_orca_and_routes_primitives() {
 }
 
 test_capture_reads_terminal_tail_json
+test_capture_returns_cleared_screen_rows_with_spaces
 test_capture_refuses_reads_not_from_the_drawn_screen
 test_visible_capture_reads_the_whole_drawn_screen
 test_target_exists_accepts_live_terminal_without_a_rendered_screen
