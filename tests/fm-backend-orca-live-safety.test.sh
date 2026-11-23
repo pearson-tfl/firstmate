@@ -33,7 +33,7 @@ S="$(cd "$(dirname "$0")/.." && pwd)/state"
 { printf 'orca'; printf ' %s' "$@"; printf '\n'; } >> "$S/log"
 mode=$(cat "$S/mode")
 cmd="${1:-} ${2:-}"
-path='' repo='' name='' worktree='' text='' enter=0 interrupt=0
+path='' repo='' name='' worktree='' text='' enter=0 interrupt=0 source=stream
 shift 2 2>/dev/null || shift $#
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -44,6 +44,7 @@ while [ $# -gt 0 ]; do
     --text) text=$2; shift ;;
     --enter) enter=1 ;;
     --interrupt) interrupt=1 ;;
+    --screen) source=screen ;;
   esac
   shift
 done
@@ -58,7 +59,7 @@ screen_json() {  # <status>
       printf '%s\n' "$l"
     done < "$S/screen" > "$rows"
   fi
-  node -e 'const fs=require("fs"); const t=fs.existsSync(process.argv[1])?fs.readFileSync(process.argv[1],"utf8").split("\n").filter((l,i,a)=>i<a.length-1):[]; process.stdout.write(JSON.stringify({ok:true,result:{terminal:{handle:"term_fake",status:process.argv[2],tail:t}}}))' "$rows" "$1"
+  node -e 'const fs=require("fs"); const t=fs.existsSync(process.argv[1])?fs.readFileSync(process.argv[1],"utf8").split("\n").filter((l,i,a)=>i<a.length-1):[]; process.stdout.write(JSON.stringify({ok:true,result:{terminal:{handle:"term_fake",status:process.argv[2],source:process.argv[3],tail:t}}}))' "$rows" "$1" "$source"
 }
 case "$cmd" in
   "--version ") echo 9.9.9-fake ;;
