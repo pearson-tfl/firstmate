@@ -2549,6 +2549,25 @@ Stand-in shell programs played the agent; no agent was signed in, and Pi 1.2.0 a
 
 In the same evaluation, with `tasks-axi` 0.2.6 on the PATH, `tests/fm-backend-orca.test.sh` passed 52 of 52 at that commit.
 
+### Linux paired server
+
+CLI lookup and readiness were verified on 2026-11-23 on Linux x86_64 against an Orca 1.4.271 paired server, whose install left `orca` and `orca-ide` wrappers in `~/.orca/cli/bin` with neither name on PATH.
+
+```sh
+env -i HOME="$HOME" PATH=/usr/local/bin:/usr/bin:/bin bash -c '. bin/fm-backend.sh; fm_backend_source orca; fm_backend_orca_bin; fm_backend_orca_runtime_check && echo runtime-ready; fm_backend_required_tool_available orca orca && echo tool-available'
+```
+
+Observed output:
+
+```text
+/Users/johnp/.orca/cli/bin/orca-ide
+runtime-ready
+tool-available
+```
+
+The runtime answered with the same `runtimeId` the paired macOS client reports for that server through `orca status --environment <name> --json`.
+No worktree, terminal, or agent was created on the server, so the spawn, steer, and cleanup paths remain proven only by the fake-Orca suite on Linux.
+
 ### Orca whole-task proof
 
 Not yet proved.

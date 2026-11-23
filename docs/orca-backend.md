@@ -1,6 +1,6 @@
 # Orca runtime backend
 
-Orca is an experimental backend in which the Orca app owns both the task worktree and terminal endpoint.
+Orca is an experimental backend in which an Orca runtime - the macOS app, or a headless Orca server on Linux - owns both the task worktree and terminal endpoint.
 The crewmate harness remains the agent process launched inside that endpoint.
 Firstmate agents load [`firstmate-orca`](../.agents/skills/firstmate-orca/SKILL.md) before operating or recovering this backend.
 
@@ -19,18 +19,17 @@ The [whole-task proof](verification/runtime-backends.md#orca-whole-task-proof) s
 
 ## Setup
 
-Pick Orca when you already use the Orca app and want Orca-managed worktrees and terminals instead of Treehouse plus a session multiplexer.
+Pick Orca when you already use Orca and want Orca-managed worktrees and terminals instead of Treehouse plus a session multiplexer.
 Orca is explicit-only and does not support secondmate spawns (code).
-Firstmate's Orca backend has been exercised only on macOS (real Orca).
+Firstmate's Orca backend has run its adapter building blocks only on macOS (real Orca); on Linux only the CLI lookup and readiness check have run against a paired Orca server (real Orca).
 
 Prerequisites:
 
-- `/Applications/Orca.app` installed, running, and ready.
-- The `orca` CLI on the PATH.
-  Orca 1.4.271 ships it inside the app at `/Applications/Orca.app/Contents/Resources/bin/orca`, and the install checked reached it through a link at `/usr/local/bin/orca` (real Orca).
+- An Orca runtime on the same machine as the Firstmate home, running and ready: `/Applications/Orca.app` on macOS, or a paired Orca server on Linux.
+- The Orca CLI: `orca` on PATH (macOS), `orca-ide` on PATH (Linux, where GNOME's screen reader owns `orca`), or the `~/.orca/cli/bin/orca-ide` that a paired Orca server's install leaves off PATH.
+  `bin/backends/orca.sh` (`fm_backend_orca_bin`) owns that lookup order.
+  Orca 1.4.271 ships the macOS CLI inside the app at `/Applications/Orca.app/Contents/Resources/bin/orca`, and the install checked reached it through a link at `/usr/local/bin/orca` (real Orca).
 - The universal harness and toolchain requirements in [`configuration.md`](configuration.md#toolchain).
-
-Firstmate looks only for a command named `orca` (code), while Orca's Linux build names its command `orca-ide` (reported), so a Linux home would need an `orca` name on the PATH; no Firstmate task has run on Linux Orca.
 
 Select Orca with local `config/backend` containing `orca`, `FM_BACKEND=orca` for one launch, or an explicit request to Firstmate.
 It is never auto-detected.
@@ -110,8 +109,11 @@ Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ende
 
 ## Active limits
 
-- The backend is explicit-only and has been exercised only on macOS.
-- The app must be running and report ready.
+- The backend is explicit-only.
+- The Orca runtime must share the Firstmate home's filesystem, because spawn and cleanup check the worktree on local disk (code).
+  To run lanes on a paired Orca server, run the Firstmate home on that server's machine; it drives that runtime through its local CLI, which is the same runtime the paired client reaches (real Orca).
+  Pointing a home at another machine's runtime with `--environment` or `ORCA_ENVIRONMENT` is unsupported.
+- The Orca runtime must be running and report ready.
 - Secondmate spawns are unsupported (code).
 - An interrupt is reported delivered with its cancellation unconfirmed unless the harness keeps its own confirmation record (muse confirms from its session log), and an interrupt for a harness that must read its screen between or after presses (Devin and Command Code) is refused because Orca has no verified viewport read (code); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
 - Orca has no recovery-grade agent-state classifier, so `exit` and `relaunch` refuse (code).

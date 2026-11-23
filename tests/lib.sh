@@ -53,6 +53,11 @@ export FM_GATE_REFUSE_BYPASS=1
 # leaked harness pin alone stays inert outside a suite.
 export FM_TEST_SEAM=1
 
+# bin/backends/orca.sh falls back to the CLI a paired Orca server leaves in
+# ~/.orca/cli/bin; on such a host a case that hides `orca` from PATH would
+# otherwise drive the real runtime. A case that needs the fallback sets its own.
+export FM_BACKEND_ORCA_BUNDLE_BIN=/nonexistent/fm-test-no-orca-bundle
+
 # Clear the task-worker marker bin/fm-spawn.sh exports into ship and scout
 # panes. This suite builds git-init fixture repositories whose primary checkout
 # it runs a copied bin/fm-test-run.sh in, and that runner refuses the primary

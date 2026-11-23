@@ -38,7 +38,7 @@ RESP="${FM_ORCA_RESPONSES:?}"
 COUNT_FILE="$RESP/.count"
 next=$(( $(cat "$COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
 {
-  printf 'orca'
+  printf '%s' "${0##*/}"
   for a in "$@"; do printf '\x1f%s' "$a"; done
   printf '\n'
 } >> "$LOG"
@@ -467,19 +467,55 @@ test_kill_is_best_effort_close() {
 test_kill_refuses_when_the_orca_cli_is_absent() {
   local out status orca_free
   orca_case kill-no-cli
-  orca_free=$(fm_test_base_path_sans "$PATH" orca)
+  orca_free=$(fm_test_base_path_sans "$PATH" orca orca-ide)
   ! PATH="$orca_free" command -v orca >/dev/null 2>&1 \
     || fail "the orca-free search path still resolved orca"
+  ! PATH="$orca_free" command -v orca-ide >/dev/null 2>&1 \
+    || fail "the orca-free search path still resolved orca-ide"
   PATH="$orca_free" command -v bash >/dev/null 2>&1 \
     || fail "the orca-free search path lost bash, so this case would pass vacuously"
   out=$( PATH="$orca_free" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_kill term-123' "$ROOT" 2>&1 )
   status=$?
   [ "$status" -ne 0 ] || fail "kill reported success for a close its missing CLI never attempted"
-  assert_contains "$out" "backend=orca selected but the 'orca' CLI is not installed" \
+  assert_contains "$out" "backend=orca selected but the Orca CLI was not found: neither 'orca' nor 'orca-ide' is on PATH" \
     "kill did not name the missing CLI as the reason the close never happened"
   [ ! -s "$LOG" ] || fail "kill invoked orca despite the CLI being absent"
   pass "fm_backend_orca_kill: a close its missing CLI never attempted reports the failure instead of a success"
+}
+
+# Linux names the Orca CLI orca-ide, and a paired Orca server's install leaves
+# it in ~/.orca/cli/bin off PATH; every adapter call must reach whichever the
+# host has, with a PATH `orca` still winning where both exist.
+test_cli_resolves_orca_ide_and_paired_server_install() {
+  local orca_free out
+  orca_free=$(fm_test_base_path_sans "$PATH" orca orca-ide)
+
+  orca_case cli-orca-ide-on-path
+  mv "$FB/orca" "$FB/orca-ide"
+  PATH="$FB:$orca_free" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_kill term-123' "$ROOT"
+  expect_code 0 $? "kill should succeed through orca-ide on PATH"
+  assert_contains "$(cat "$LOG")" $'orca-ide\x1f''terminal'$'\x1f''close' \
+    "orca-ide on PATH was not used when orca is absent"
+
+  orca_case cli-both-on-path
+  cp "$FB/orca" "$FB/orca-ide"
+  PATH="$FB:$orca_free" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_kill term-123' "$ROOT"
+  case "$(cat "$LOG")" in
+    orca$'\x1f'terminal*) ;;
+    *) fail "orca on PATH should win over orca-ide, got: $(cat "$LOG")" ;;
+  esac
+
+  orca_case cli-paired-server-install
+  mv "$FB/orca" "$FB/orca-ide"
+  out=$( PATH="$orca_free" FM_BACKEND_ORCA_BUNDLE_BIN="$FB/orca-ide" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_runtime_check && fm_backend_orca_kill term-123' "$ROOT" 2>&1 )
+  expect_code 0 $? "runtime check and kill should succeed through the paired-server install: $out"
+  assert_contains "$(cat "$LOG")" $'orca-ide\x1f''status' "the paired-server install did not answer the readiness check"
+  assert_contains "$(cat "$LOG")" $'orca-ide\x1f''terminal'$'\x1f''close' "the paired-server install was not used off PATH"
+  pass "fm_backend_orca_bin: reaches orca, then orca-ide, then the paired-server install"
 }
 
 test_remove_worktree_refuses_empty_id() {
@@ -1490,6 +1526,7 @@ test_send_key_refuses_unknown_key
 test_send_key_escape_and_composer_keys_are_raw_bytes
 test_kill_is_best_effort_close
 test_kill_refuses_when_the_orca_cli_is_absent
+test_cli_resolves_orca_ide_and_paired_server_install
 test_remove_worktree_refuses_empty_id
 test_remove_worktree_rejects_orca_error_json
 test_worktree_path_resolves_id
