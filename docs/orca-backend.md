@@ -121,6 +121,7 @@ Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ende
 
 ```sh
 tests/fm-backend-orca.test.sh
+tests/fm-backend-orca-live-safety.test.sh
 tests/fm-spawn-orca-worktree.test.sh
 tests/fm-backend.test.sh
 tests/fm-bootstrap.test.sh
@@ -128,3 +129,4 @@ tests/fm-teardown-endpoint-safety.test.sh
 ```
 
 These run against the stand-in `orca`; [`verification/runtime-backends.md`](verification/runtime-backends.md#orca) records the real-Orca evidence.
+After an Orca update, `FM_ORCA_LIVE_E2E=1 bin/fm-test-run.sh tests/fm-backend-orca-live-e2e.test.sh` re-proves the adapter against a disposable Orca runtime; [`verification/runtime-backends.md`](verification/runtime-backends.md#real-orca-lane) records its state.
