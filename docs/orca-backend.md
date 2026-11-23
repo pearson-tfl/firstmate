@@ -115,7 +115,7 @@ Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ende
 - Secondmate spawns are unsupported (code).
 - The adapter refuses Escape (real Orca) and Ctrl-U (code), so `fm-control.sh interrupt` refuses a harness that interrupts with Escape (real Orca); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
 - Orca has no recovery-grade agent-state classifier, so `exit` and `relaunch` refuse (code).
-- Kimi is refused at spawn preflight because the backend has no viewport-only capture, and Cortex and Command Code are refused because Orca supplies no pane identity for their composers (code).
+- Cortex and Command Code are refused because Orca supplies no pane identity for their composers (code).
 - Firstmate checks readiness, not Orca's version (code).
 - Only the verified terminal-handle and worktree result fields are accepted; speculative response shapes are rejected (fake Orca).
 - Orca's linked worktree has the shape the spawn-time Claude workspace-trust check in `bin/fm-claude-trust.sh` requires (real Orca), but that check has not run against an Orca worktree.
