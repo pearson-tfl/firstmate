@@ -13,11 +13,12 @@ TMP_ROOT=$(fm_test_tmproot fm-orca-live-safety)
 trap fm_test_cleanup EXIT
 GUARD="$ROOT/tests/fm-backend-orca-live-e2e.test.sh"
 
-# make_fake <dir> <own|foreign>: a fake Orca CLI whose state lives beside it
-# (the guard runs it under `env -i`, so it cannot take settings from the
+# make_fake <dir> <own|foreign|login>: a fake Orca CLI whose state lives beside
+# it (the guard runs it under `env -i`, so it cannot take settings from the
 # environment). In `own` mode a terminal behaves like the shell SHELL names,
 # showing that wrapper's PS1; in `foreign` mode it shows an agent composer,
-# the screen a tmux client attached to a live session would show.
+# the screen a tmux client attached to a live session would show; in `login`
+# mode it shows a login shell's own prompt, as when SHELL was ignored.
 make_fake() {
   local dir=$1 mode=$2
   mkdir -p "$dir/bin" "$dir/state"
@@ -78,7 +79,11 @@ case "$cmd" in
     printf '{"ok":true,"result":{"removed":true}}\n'
     ;;
   "terminal create")
-    if [ "$mode" = own ]; then prompt > "$S/screen"; else printf '● Kneading…\n❯ \n' > "$S/screen"; fi
+    case "$mode" in
+      own) prompt > "$S/screen" ;;
+      foreign) printf '● Kneading…\n❯ \n' > "$S/screen" ;;
+      login) printf 'bash-3.2$ \n' > "$S/screen" ;;
+    esac
     printf '{"ok":true,"result":{"terminal":{"handle":"term_fake"}}}\n'
     ;;
   "terminal read")
@@ -150,14 +155,16 @@ serve_stopped "$D"
 pass "orca live lane: the runtime never sees SSH_*, TMUX or Orca identity, and a run in its own shell completes and stops the runtime"
 
 # --- foreign screen: nothing sent, everything released ----------------------
-D="$TMP_ROOT/foreign"; make_fake "$D" foreign
-run_guard "$D"
-assert_not_equals 0 "$RC" "a foreign terminal must fail the lane"
-assert_contains "$ERR" "refusing to send" "a foreign terminal must be named as the reason"
-! grep -q 'terminal send' "$D/state/log" || fail "a key reached a terminal that is not the lane's own shell"
-assert_grep 'worktree rm' "$D/state/log" "a refused run must still release its worktree"
-serve_stopped "$D"
-pass "orca live lane: a terminal showing anything but its nonce prompt gets no key, and the run still releases and stops"
+for mode in foreign login; do
+  D="$TMP_ROOT/$mode"; make_fake "$D" "$mode"
+  run_guard "$D"
+  assert_not_equals 0 "$RC" "a $mode terminal must fail the lane"
+  assert_contains "$ERR" "refusing to send" "a $mode terminal must be named as the reason"
+  ! grep -q 'terminal send' "$D/state/log" || fail "a key reached a $mode terminal that is not the lane's own shell"
+  assert_grep 'worktree rm' "$D/state/log" "a refused $mode run must still release its worktree"
+  serve_stopped "$D"
+done
+pass "orca live lane: a terminal showing anything but its nonce prompt (agent composer or plain login shell) gets no key, and the run still releases and stops"
 
 # --- another runtime answering: no Orca mutation at all ---------------------
 D="$TMP_ROOT/mismatch"; make_fake "$D" own

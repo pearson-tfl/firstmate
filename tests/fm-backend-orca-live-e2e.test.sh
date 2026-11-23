@@ -36,6 +36,7 @@ if [ "${FM_ORCA_LIVE_INNER:-}" != 1 ]; then
   orca_bin=$(command -v orca)
   node_dir=$(dirname "$(command -v node)")
   git_dir=$(dirname "$(command -v git)")
+  fm_test_cleanup
   # Only these names cross into the run; everything else is dropped.
   exec env -i \
     PATH="/usr/bin:/bin:/usr/sbin:/sbin:$node_dir:$git_dir" \
@@ -70,8 +71,6 @@ stop_runtime() {
     for i in $(seq 1 50); do kill -0 "$SERVE_PID" 2>/dev/null || break; sleep 0.2; done
     kill -KILL "$SERVE_PID" 2>/dev/null || true
   fi
-  # Anything still naming the scratch folder is this run's own.
-  pkill -f "$SB" 2>/dev/null || true
   fm_test_cleanup
 }
 trap stop_runtime EXIT
