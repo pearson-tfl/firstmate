@@ -1,0 +1,4 @@
+ok - orca live lane: off unless FM_ORCA_LIVE_E2E or FM_LIVE requests it
+ok - orca live lane: the runtime never sees SSH_*, TMUX or Orca identity, and a run in its own shell completes and stops the runtime
+not ok - own-shell lane run on Orca-style reads (stderr: not ok - Orca 9.9.9-fake: refusing to send - terminal term_fake is not this guard's own busy shell (last row: 'fm-orca-live-9c8a93c442da6a72$echo fm-literal-$((6*8))')): expected exit 0, got 1
+exit=1
