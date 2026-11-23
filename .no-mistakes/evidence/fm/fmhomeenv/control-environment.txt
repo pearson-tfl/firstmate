@@ -1,0 +1,6 @@
+FM_PROJECTS_OVERRIDE={run-worktree}/.fm-home-live.1NCdQJ/primary/foreign
+FM_ROOT_OVERRIDE={run-worktree}/.fm-home-live.1NCdQJ/primary/foreign
+FM_DATA_OVERRIDE={run-worktree}/.fm-home-live.1NCdQJ/primary/foreign
+FM_CONFIG_OVERRIDE={run-worktree}/.fm-home-live.1NCdQJ/primary/foreign
+FM_STATE_OVERRIDE={run-worktree}/.fm-home-live.1NCdQJ/primary/foreign
+FM_HOME={run-worktree}/.fm-home-live.1NCdQJ/primary

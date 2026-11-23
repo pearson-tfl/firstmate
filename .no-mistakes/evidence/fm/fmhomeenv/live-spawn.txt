@@ -1,0 +1,93 @@
+{run-worktree}/.fm-home-live.1NCdQJ/mate
+SPAWN ship
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.fm-home-live.1NCdQJ/mate
+warning: {run-worktree}/.fm-home-live.1NCdQJ/mate/data/home-ship/launch-brief.md records no ship branch; defaulting to legacy branch fm/home-ship
+warning: {run-worktree}/.fm-home-live.1NCdQJ/mate/data/home-ship/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches
+notice: home-ship ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned home-ship harness=sh kind=ship mode=local-only yolo=off window=fm-lab-home:fm-home-ship worktree={run-worktree}/.fm-home-live.1NCdQJ/pool/.treehouse/project-cecf10/1/project
+FM_HOME={run-worktree}/.fm-home-live.1NCdQJ/mate
+FM_ROOT_OVERRIDE=
+FM_STATE_OVERRIDE=
+FM_DATA_OVERRIDE=
+FM_CONFIG_OVERRIDE=
+FM_PROJECTS_OVERRIDE=
+cwd={run-worktree}/.fm-home-live.1NCdQJ/pool/.treehouse/project-cecf10/1/project
+OBSERVED ship: spawning home preserved; all five foreign overrides cleared across compound command
+SPAWN scout
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.fm-home-live.1NCdQJ/mate
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 9s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+spawned home-scout harness=sh kind=scout window=fm-lab-home:fm-home-scout worktree={run-worktree}/.fm-home-live.1NCdQJ/pool/.treehouse/project-cecf10/2/project
+FM_HOME={run-worktree}/.fm-home-live.1NCdQJ/mate
+FM_ROOT_OVERRIDE=
+FM_STATE_OVERRIDE=
+FM_DATA_OVERRIDE=
+FM_CONFIG_OVERRIDE=
+FM_PROJECTS_OVERRIDE=
+cwd={run-worktree}/.fm-home-live.1NCdQJ/pool/.treehouse/project-cecf10/2/project
+OBSERVED scout: spawning home preserved; all five foreign overrides cleared across compound command
+SPAWN primary
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.fm-home-live.1NCdQJ/mate
+WARNING: watcher still down (same stale episode; last beat: 18s ago, grace 300s) - full banner already printed this episode.
+warning: {run-worktree}/.fm-home-live.1NCdQJ/mate/data/home-primary/launch-brief.md records no ship branch; defaulting to legacy branch fm/home-primary
+warning: {run-worktree}/.fm-home-live.1NCdQJ/mate/data/home-primary/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches
+notice: home-primary ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned home-primary harness=sh kind=ship mode=local-only yolo=off window=fm-lab-home:fm-home-primary worktree={run-worktree}/.fm-home-live.1NCdQJ/pool/.treehouse/project-cecf10/3/project
+FM_HOME={run-worktree}/.fm-home-live.1NCdQJ/mate
+FM_ROOT_OVERRIDE=
+FM_STATE_OVERRIDE=
+FM_DATA_OVERRIDE=
+FM_CONFIG_OVERRIDE=
+FM_PROJECTS_OVERRIDE=
+cwd={run-worktree}/.fm-home-live.1NCdQJ/pool/.treehouse/project-cecf10/3/project
+OBSERVED primary: spawning home preserved; all five foreign overrides cleared across compound command
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/commit-msg': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/pre-commit': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/post-commit': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/post-checkout': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/post-merge': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/pre-push': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-ship.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/commit-msg': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/pre-commit': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/post-commit': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/post-checkout': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/post-merge': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/pre-push': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-scout.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/commit-msg': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/pre-commit': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/post-commit': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/post-checkout': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/post-merge': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/pre-push': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '{run-worktree}/.fm-home-live.1NCdQJ/mate/state/home-primary.git-hooks/sendemail-validate': Permission denied

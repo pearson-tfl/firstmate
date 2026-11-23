@@ -1,0 +1,57 @@
+Live fm-spawn home isolation
+
+Surface: actual fm-spawn.sh, real tmux on a private fm-lab socket (120x40), real Treehouse, synthetic git project, supported raw compound /bin/sh command. No harness CLI was substituted or model invoked.
+
+Oracle: workers must see the spawning lab home; all five directory overrides must be empty. A control window first proved foreign values were inherited from the tmux server.
+
+CONTROL
+FM_PROJECTS_OVERRIDE={run-worktree}/.fm-home-live.1NCdQJ/primary/foreign
+FM_ROOT_OVERRIDE={run-worktree}/.fm-home-live.1NCdQJ/primary/foreign
+FM_DATA_OVERRIDE={run-worktree}/.fm-home-live.1NCdQJ/primary/foreign
+FM_CONFIG_OVERRIDE={run-worktree}/.fm-home-live.1NCdQJ/primary/foreign
+FM_STATE_OVERRIDE={run-worktree}/.fm-home-live.1NCdQJ/primary/foreign
+FM_HOME={run-worktree}/.fm-home-live.1NCdQJ/primary
+
+
+SHIP
+FM_HOME={run-worktree}/.fm-home-live.1NCdQJ/mate
+FM_ROOT_OVERRIDE=
+FM_STATE_OVERRIDE=
+FM_DATA_OVERRIDE=
+FM_CONFIG_OVERRIDE=
+FM_PROJECTS_OVERRIDE=
+cwd={run-worktree}/.fm-home-live.1NCdQJ/pool/.treehouse/project-cecf10/1/project
+
+Second command in the compound launch produced byte-identical output.
+
+
+SCOUT
+FM_HOME={run-worktree}/.fm-home-live.1NCdQJ/mate
+FM_ROOT_OVERRIDE=
+FM_STATE_OVERRIDE=
+FM_DATA_OVERRIDE=
+FM_CONFIG_OVERRIDE=
+FM_PROJECTS_OVERRIDE=
+cwd={run-worktree}/.fm-home-live.1NCdQJ/pool/.treehouse/project-cecf10/2/project
+
+Second command in the compound launch produced byte-identical output.
+
+
+PRIMARY
+FM_HOME={run-worktree}/.fm-home-live.1NCdQJ/mate
+FM_ROOT_OVERRIDE=
+FM_STATE_OVERRIDE=
+FM_DATA_OVERRIDE=
+FM_CONFIG_OVERRIDE=
+FM_PROJECTS_OVERRIDE=
+cwd={run-worktree}/.fm-home-live.1NCdQJ/pool/.treehouse/project-cecf10/3/project
+
+Second command in the compound launch produced byte-identical output.
+
+
+All three spawn calls returned success and every environment assertion passed. Driver exit 1 came from cleanup of read-only generated Git hook directories; permissions were subsequently restored and the disposable directory removed. Private tmux server stopped. Working tree clean.
+
+
+Not live-validated: native T3 and Polytoken harness configuration. Neither t3 nor polytoken was on PATH. No workspace T3 credential was supplied; the T3 live guard skipped for a missing disposable token. Operator credentials were not accessed.
+
+Supplemental checks: bash tests/fm-spawn-launch-home.test.sh, bash tests/fm-polytoken-harness.test.sh, and bash tests/fm-backend-t3code.test.sh all completed with exit 0. These mocked/replayed checks are supplemental, not native harness live evidence. The live driver passed its product assertions; its cleanup error was resolved separately.

@@ -1,0 +1,7 @@
+FM_HOME={run-worktree}/.fm-home-live.1NCdQJ/mate
+FM_ROOT_OVERRIDE=
+FM_STATE_OVERRIDE=
+FM_DATA_OVERRIDE=
+FM_CONFIG_OVERRIDE=
+FM_PROJECTS_OVERRIDE=
+cwd={run-worktree}/.fm-home-live.1NCdQJ/pool/.treehouse/project-cecf10/3/project

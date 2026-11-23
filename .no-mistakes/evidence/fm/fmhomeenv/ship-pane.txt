@@ -1,0 +1,40 @@
+bash-5.3$ treehouse get
+🌳 Setting up worktree...
+🌳 Entered worktree at {run-worktree}/.fm-home-live.1NCdQJ/
+pool/.treehouse/project-cecf10/1/project. Type 'exit' to return.
+[johnp@dell-v100 project]$ cd -- '{run-worktree}/.fm-home-l
+ive.1NCdQJ/pool/.treehouse/project-cecf10/1/project'
+[johnp@dell-v100 project]$ export GOTMPDIR=/tmp/fm-home-ship/gotmp
+[johnp@dell-v100 project]$ export COMPACT_ADVISER_DISABLE=1
+[johnp@dell-v100 project]$ export FM_TASK_ID=home-ship
+[johnp@dell-v100 project]$ . '/tmp/fm-home-ship+0a8cf6aa1633867fe45de9e186bf6770e2620de7525b9645de4848d3680a1ca4/launch.
+s1795472335.713889.11796.sh'
+[johnp@dell-v100 project]$
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
