@@ -1,5 +1,9 @@
-ok - fm_backend_orca_capture: parses result.terminal.tail and calls terminal read
-ok - fm_backend_orca_capture: falls back to result text fields
+ok - fm_backend_orca_capture: reads the drawn screen and parses result.terminal.tail
+ok - fm_backend_orca_capture: refuses stream, screen-unavailable, and source-less reads; composer reads unknown
+ok - fm_backend_visible_capture: orca advertises and reads the whole drawn screen
+ok - fm_backend_target_exists: orca liveness does not depend on a rendered screen
+ok - fm_backend_orca_composer_state: only a known footer below a box survives the elided gap; prompts and transcript leave it stale
+ok - fm_task_inbox_composer_text: reads a boxed Orca composer's text above an elided footer gap
 ok - fm_backend_orca_capture: fails closed on Orca read error JSON
 ok - fm_backend_orca_runtime_check: accepts reachable ready runtime
 ok - fm_backend_orca_runtime_check: fails closed when runtime is not ready
@@ -15,7 +19,7 @@ ok - fm_backend_orca_send_text_submit: reports send-failed when Orca send fails
 ok - Orca send helpers: fail closed on ok:false JSON
 ok - fm_backend_orca_send_key: Enter maps to empty enter, C-c maps to interrupt
 ok - fm_backend_orca_send_key: refuses unsupported keys loudly
-ok - fm_backend_orca_send_key: refuses Escape instead of mapping it to interrupt
+ok - fm_backend_orca_send_key: Escape and C-u go as raw control bytes through orca-ide alone; C-g is refused
 ok - fm_backend_orca_kill: calls terminal close and stays best-effort
 ok - fm_backend_orca_kill: a close its missing CLI never attempted reports the failure instead of a success
 ok - fm_backend_orca_bin: reaches orca-ide on PATH, the paired-server install, then a bare orca
@@ -38,6 +42,7 @@ ok - fm-spawn.sh --backend orca: releases terminal and worktree on later aborts
 ok - fm-peek/fm-send/fm-crew-state route through backend=orca metadata and its durable inbox
 ok - fm-peek/fm-crew-state: Orca read error JSON fails closed
 ok - fm_backend_target_exists: Orca ok:false read JSON is not live
+ok - fm-crew-state: a live Orca terminal without a rendered screen is not reported gone
 ok - fm-teardown.sh backend=orca: scout report gate then helper-backed worktree removal
 ok - fm-teardown.sh backend=orca: scout teardown refuses id/path mismatches
 ok - fm-teardown.sh backend=orca: releases terminal/worktree when path is absent
@@ -52,3 +57,4 @@ ok - fm-teardown.sh backend=orca: refuses incomplete worktree-only endpoint meta
 ok - fm-teardown.sh --force: removes Orca secondmate children through Orca
 ok - fm-teardown.sh --force: refuses Orca child id/path mismatches
 ok - fm-teardown.sh --force: refuses partial Orca secondmate children before runtime dispatch
+exit=0

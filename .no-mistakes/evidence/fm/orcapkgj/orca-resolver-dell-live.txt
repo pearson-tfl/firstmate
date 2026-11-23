@@ -1,0 +1,15 @@
+== S1: Dell paired server only (no orca/orca-ide on PATH) ==
+resolved: <home>/.orca/cli/bin/orca-ide
+runtime-ready
+tool-available
+exit=0
+== S2: GNOME-style bare orca first on PATH + paired server install ==
+command -v orca: /tmp/tmp.lIXZ39ssPw/gnome/orca
+resolved: <home>/.orca/cli/bin/orca-ide
+runtime-ready
+tool-available
+gnome log: <never invoked>
+== S2b: nothing installed (bundle overridden absent) -> clear error ==
+error: backend=orca selected but the Orca CLI was not found: neither 'orca' nor 'orca-ide' is on PATH and /tmp/tmp.lIXZ39ssPw/nohome/.orca/cli/bin/orca-ide is absent
+exit=1
+tool-available exit=1

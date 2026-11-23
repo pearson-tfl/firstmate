@@ -1,0 +1,11 @@
+== S4: Escape and C-u on a Linux host (GNOME orca first on PATH, Orca CLI only as orca-ide) ==
+Escape exit=0
+C-u exit=0
+-- orca-ide received (od -c):
+0000000   t   e   r   m   i   n   a   l       s   e   n   d       -   -
+0000020   t   e   r   m   i   n   a   l       t   e   r   m   -   1    
+0000040   -   -   t   e   x   t     033       -   -   j   s   o   n  \n
+0000000   t   e   r   m   i   n   a   l       s   e   n   d       -   -
+0000020   t   e   r   m   i   n   a   l       t   e   r   m   -   1    
+0000040   -   -   t   e   x   t     025       -   -   j   s   o   n  \n
+-- GNOME orca log: <never invoked>

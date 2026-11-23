@@ -1,0 +1,8 @@
+== S3a: bootstrap backend=orca, paired-server install present, orca/orca-ide not on PATH ==
+on PATH: orca=none orca-ide=none
+MISSING: chrome-devtools-axi (install: npm install -g chrome-devtools-axi && chrome-devtools-axi setup hooks)
+MISSING: quota-axi (install: npm install -g quota-axi)
+== S3b: bootstrap backend=orca, no Orca CLI anywhere (bundle path absent) ==
+MISSING_MANUAL: orca (instructions: docs/orca-backend.md (orca-ide or a paired Orca server on Linux, never GNOME's orca))
+MISSING: chrome-devtools-axi (install: npm install -g chrome-devtools-axi && chrome-devtools-axi setup hooks)
+MISSING: quota-axi (install: npm install -g quota-axi)
