@@ -1,0 +1,3 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-lab.gwNoOO
+warning: secondmate labseat sync skipped before launch: primary default-branch commit cannot be resolved
+spawned labseat harness=claude kind=secondmate mode=secondmate yolo=off window=primary:fm-labseat worktree=/private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-labseat.heB5Pj/labseat

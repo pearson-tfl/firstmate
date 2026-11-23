@@ -1,0 +1,15 @@
+{
+  "feedbackDrafts": "off",
+  "disableAgentView": true,
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
+  "hooks_events": [
+    "SessionEnd",
+    "Stop",
+    "StopFailure",
+    "UserPromptSubmit"
+  ]
+}

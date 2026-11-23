@@ -1,0 +1,1 @@
+no AGENT_VIEW env var on seat process

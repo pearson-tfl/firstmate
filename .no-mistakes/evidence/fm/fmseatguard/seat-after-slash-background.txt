@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.330
+▝▜██████▀  Opus 5.5 with high effort · Claude Ultra
+ ▝▝   ▝▝   /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-labseat.heB5Pj/labseat · /rc
+
+  Updated: 7 features, 91 fixes, 32 other changes
+  code.claude.com/docs/en/changelog for details
+
+
+❯ : Firstmate operational input waiting: read '/private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-labseat.heB5Pj/labseat/state/operational-inbox/1795438632-bf57b489da8c8f22.msg' and handle
+  its contents as Firstmate operational input.
+
+  Listed 2 directories, ran 3 shell commands
+
+⏺ Checking how Firstmate expects a launch brief to be handled.
+
+  Ran 1 shell command
+  ⎿  Interrupted · What should Claude do instead?
+
+⏺ Unknown command: /background
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+● full  $0.31  last $0.31  29s                                                                                                                                        Review  Audit  Board  Details [-]
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── labseat ─
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 40.0k · 5h – · 7d 0% ↺2d11h · high · cache 59m
+  firstmate ⎇ main · v2.1.330 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

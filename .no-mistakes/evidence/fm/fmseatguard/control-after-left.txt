@@ -1,0 +1,7 @@
+ ▐▛███▛█   Claude Code v2.1.330
+▝▜██████▀  New sessions: Opus 5.5 · high effort · /private/var/folders/7_/s21vrdxx35zdq4vf6ty__k900000gn/T/fm-labseat.heB5Pj/control
+[agent view session list: 30 rows of the operator's own sessions redacted]
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ describe a task for a new session
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions · enter to return · space to reply · ctrl+x to remove · ? for shortcuts
