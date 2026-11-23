@@ -585,7 +585,8 @@ test_backend_key_capability_matrix() {
         || fail "$backend should be able to deliver $key"
     done
   done
-  fm_control_backend_supports_key orca C-g || fail "orca should deliver C-g"
+  fm_control_backend_supports_key orca C-g \
+    && fail "orca has no verified C-g and must not claim it"
   fm_control_backend_supports_key zellij C-g \
     && fail "zellij has no verified C-g and must not claim it"
   pass "fm-control-lib: the backend key matrix matches each adapter's real send-key surface"

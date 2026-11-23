@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # bin/backends/orca.sh - the Orca terminal session-provider adapter.
 #
-# Orca owns both the task worktree and the terminal endpoint. Escape, Ctrl+U
-# and Ctrl+G go as raw control bytes (fm_backend_orca_send_key).
+# Orca owns both the task worktree and the terminal endpoint. Escape and Ctrl+U
+# go as raw control bytes (fm_backend_orca_send_key).
 #
 # Target string shape: the Orca terminal id accepted by `orca terminal ...`.
 
@@ -318,9 +318,6 @@ fm_backend_orca_send_key() {  # <terminal-id> <key>
       ;;
     C-u|ctrl+u|Ctrl-u|Ctrl-U)
       fm_backend_orca_run_json orca terminal send --terminal "$terminal" --text $'\x15' --json
-      ;;
-    C-g|ctrl+g|Ctrl-g|Ctrl-G)
-      fm_backend_orca_run_json orca terminal send --terminal "$terminal" --text $'\x07' --json
       ;;
     *)
       echo "error: unsupported Orca key '$key'" >&2
