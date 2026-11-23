@@ -203,7 +203,7 @@ CHANGED_DEFAULT_TIMEOUT_SECS=1500
 
 # How many separate-runner shards the portable serial remainder splits into.
 # One owner: CI lane names carry this count and are refused when they disagree.
-PORTABLE_SERIAL_SHARDS=12
+PORTABLE_SERIAL_SHARDS=13
 
 # Conservative balance hint for a portable-serial script with no measurement.
 # Rounded above the current CI mean, including the capability-skipped scripts.
@@ -841,7 +841,7 @@ tests/fm-herdr-submit-confirm-live-e2e.test.sh 126
 tests/fm-herdr-version-floor-live-e2e.test.sh 58
 tests/fm-home-summary-refresh.test.sh 45414
 tests/fm-host-mirror-live-e2e.test.sh 54
-tests/fm-host-mirror.test.sh 266
+tests/fm-host-mirror.test.sh 11587
 tests/fm-inactive-reconcile.test.sh 68493
 tests/fm-inbox.test.sh 6643
 tests/fm-jev-mem-guard.test.sh 320
@@ -965,10 +965,10 @@ tests/fm-subagent-pretool-check.test.sh 4625
 tests/fm-supervision-events.test.sh 1452
 tests/fm-supervision-host-attended-live-e2e.test.sh 60
 tests/fm-supervision-host-drain.test.sh 35278
-tests/fm-supervision-host-hook.test.sh 301
+tests/fm-supervision-host-hook.test.sh 403793
 tests/fm-supervision-host-live-e2e.test.sh 48
-tests/fm-supervision-host-park.test.sh 385
-tests/fm-supervision-host.test.sh 547
+tests/fm-supervision-host-park.test.sh 329326
+tests/fm-supervision-host.test.sh 435581
 tests/fm-tangle-guard.test.sh 10935
 tests/fm-task-delivery.test.sh 81073
 tests/fm-task-inbox.test.sh 95877
