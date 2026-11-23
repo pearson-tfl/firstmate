@@ -1,0 +1,7 @@
+$ (fake GNOME screen reader at <tmp>/gnome/orca, first on PATH; real paired-server CLI in ~/.orca/cli/bin)
+command -v orca: <tmp>/gnome/orca
+resolved=<home>/.orca/cli/bin/orca-ide
+runtime-ready
+tool-available
+exit=0
+screen-reader invocations: none

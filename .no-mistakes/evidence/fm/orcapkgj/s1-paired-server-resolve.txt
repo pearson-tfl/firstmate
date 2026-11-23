@@ -1,0 +1,8 @@
+$ env -i HOME=$HOME PATH=/usr/local/bin:/usr/bin:/bin bash -c ". bin/fm-backend.sh; fm_backend_source orca; command -v orca orca-ide; echo resolved=\$(fm_backend_orca_bin); fm_backend_orca_runtime_check && echo runtime-ready; fm_backend_required_tool_available orca orca && echo tool-available"
+(neither orca nor orca-ide on PATH)
+resolved=<home>/.orca/cli/bin/orca-ide
+runtime-ready
+tool-available
+exit=0
+--- raw status (trimmed) ---
+{"ok":true,"state":"ready","reachable":true,"appVersion":"1.4.271"}

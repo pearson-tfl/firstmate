@@ -1,0 +1,4 @@
+== A: lab home backend=orca, no orca/orca-ide on PATH, paired-server bundle path absent ==
+MISSING_MANUAL: orca (instructions: docs/orca-backend.md (orca-ide or a paired Orca server on Linux, never GNOME's orca))
+== B: same lab, real paired-server install at ~/.orca/cli/bin/orca-ide (off PATH) ==
+(no orca lines: Orca CLI requirement satisfied)
