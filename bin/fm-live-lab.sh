@@ -109,6 +109,8 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=bin/fm-tmux-lib.sh
+. "$SCRIPT_DIR/fm-tmux-lib.sh"
 BUILDER_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 LAB_HOME_HELPER="$SCRIPT_DIR/fm-lab-home.sh"
 CLAUDE_TRUST="$SCRIPT_DIR/fm-claude-trust.sh"
@@ -162,6 +164,13 @@ load_lab() {  # <root>: refuse anything up did not build, then load its record
 lab_tmux() {
   [ -n "${TMUX_DIR:-}" ] || return 1
   env -u TMUX TMUX_TMPDIR="$TMUX_DIR" tmux "$@"
+}
+
+# lab_send_keys: lab_tmux's environment around the shared typing helper
+# fm_tmux_send_keys (bin/fm-tmux-lib.sh), which leaves any pane mode first.
+lab_send_keys() {  # <target> <send-keys args...>
+  [ -n "${TMUX_DIR:-}" ] || return 1
+  ( unset TMUX; export TMUX_TMPDIR="$TMUX_DIR"; fm_tmux_send_keys "$@" )
 }
 
 # The empty-environment base every lab process starts from.
@@ -372,9 +381,9 @@ say_text() {  # <window> <text>
   local id
   id=$(window_id "$1")
   [ -n "$id" ] || { echo "fm-live-lab: no lab window named '$1'" >&2; return 1; }
-  lab_tmux send-keys -t "$id" -l "$2" || return 1
+  lab_send_keys "$id" -l "$2" || return 1
   sleep 1
-  lab_tmux send-keys -t "$id" Enter
+  lab_send_keys "$id" Enter
 }
 
 make_notes_project() {

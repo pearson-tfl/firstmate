@@ -4,8 +4,8 @@
 # "run a real tmux smoke test (create session, send text + Enter, capture,
 # list, kill)" from data/fm-backend-design-d7/report.md. Every other suite in
 # this repo fakes tmux; this one is the one place that talks to a REAL tmux
-# server, isolated on a private socket (`-L`) so it never touches the host's
-# actual sessions.
+# server, isolated on a private socket path (`-S`) so it never touches the
+# host's actual sessions.
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,22 +28,26 @@ wait_for_capture_text() {  # <target> <text> [samples]
 
 command -v tmux >/dev/null 2>&1 || { echo "skip: tmux not found"; exit 0; }
 REAL_TMUX=$(command -v tmux)
-SOCKET="fm-backend-smoke-$$"
+SOCKET=
 SHIM_DIR=
 trap cleanup_all EXIT
 
 cleanup_all() {
-  "$REAL_TMUX" -L "$SOCKET" kill-server >/dev/null 2>&1 || true
-  [ -n "${SHIM_DIR:-}" ] && rm -rf "$SHIM_DIR"
+  if [ -n "${SHIM_DIR:-}" ]; then
+    "$REAL_TMUX" -S "$SHIM_DIR/outer.sock" kill-server >/dev/null 2>&1 || true
+    "$REAL_TMUX" -S "$SOCKET" kill-server >/dev/null 2>&1 || true
+    rm -rf "$SHIM_DIR"
+  fi
 }
 
 # A `tmux` shim on PATH that transparently redirects every call to the private
 # socket, so bin/backends/tmux.sh's bare `tmux ...` invocations never touch the
 # host's real sessions.
 SHIM_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-backend-smoke.XXXXXX")
+SOCKET="$SHIM_DIR/smoke.sock"
 cat > "$SHIM_DIR/tmux" <<SH
 #!/usr/bin/env bash
-exec "$REAL_TMUX" -f /dev/null -L "$SOCKET" "\$@"
+exec "$REAL_TMUX" -f /dev/null -S "$SOCKET" "\$@"
 SH
 chmod +x "$SHIM_DIR/tmux"
 PATH="$SHIM_DIR:$PATH"
@@ -251,6 +255,76 @@ if fm_backend_tmux_send_key "$SESSION:fm-v1.0" X; then
   fail "fm_backend_tmux_send_key accepted a gone dotted target"
 fi
 pass "real tmux: a gone dotted window reads absent beside its undotted neighbor"
+
+# --- typing into a pane held in a mode ---------------------------------------
+# A pane scrolled back with tmux mouse on sits in copy-mode, where typed keys
+# are mode commands: with vi mode keys and a client attached, a doorbell's keys
+# open a "(jump backward)" prompt and send-keys hangs. The attached client runs
+# in an outer tmux server on its own socket, as a captain's view would.
+DOORBELL=': Firstmate instruction waiting: list the inbox, read and act on each, then mv each into handled/.'
+MODE_PANE=$(tmux new-window -d -P -F '#{pane_id}' -t "$SESSION:" -n fm-mode cat) \
+  || fail "real tmux: mode window failed"
+"$REAL_TMUX" -f /dev/null -S "$SHIM_DIR/outer.sock" new-session -d -x 200 -y 50 \
+  "$SHIM_DIR/tmux attach -t $SESSION:fm-mode" || fail "real tmux: outer client server failed"
+for _ in $(seq 1 50); do
+  [ "$(tmux list-clients -t "$SESSION" 2>/dev/null | wc -l | tr -d ' ')" -ge 1 ] && break
+  sleep 0.1
+done
+[ "$(tmux list-clients -t "$SESSION" | wc -l | tr -d ' ')" -ge 1 ] \
+  || fail "real tmux: no client attached to the mode window"
+tmux set -g mode-keys vi
+mode_depth() { tmux display-message -p -t "$MODE_PANE" '#{pane_in_mode}'; }
+
+# Divergence: an unguarded send into copy-mode does not land the text, so the
+# guarded case below cannot pass vacuously.
+tmux copy-mode -t "$MODE_PANE"
+[ "$(mode_depth)" = 1 ] || fail "real tmux: copy-mode did not engage"
+fm_run_timed 3 tmux send-keys -t "$MODE_PANE" -l "$DOORBELL" >/dev/null 2>&1 || true
+case "$(tmux capture-pane -J -p -t "$MODE_PANE")" in
+  *"$DOORBELL"*) fail "real tmux: an unguarded send into copy-mode landed, so this case proves nothing" ;;
+esac
+"$REAL_TMUX" -S "$SHIM_DIR/outer.sock" send-keys Escape >/dev/null 2>&1 || true
+tmux send-keys -t "$MODE_PANE" -X cancel >/dev/null 2>&1 || true
+pass "real tmux: an unguarded send into a copy-mode pane does not land the text"
+
+tmux copy-mode -t "$MODE_PANE"
+[ "$(mode_depth)" = 1 ] || fail "real tmux: copy-mode did not re-engage"
+started=$SECONDS
+fm_backend_tmux_send_literal "$MODE_PANE" "$DOORBELL" \
+  || fail "fm_backend_tmux_send_literal failed on a copy-mode pane"
+[ $((SECONDS - started)) -lt 5 ] || fail "fm_backend_tmux_send_literal took $((SECONDS - started))s on a copy-mode pane"
+[ "$(mode_depth)" = 0 ] || fail "fm_backend_tmux_send_literal left the pane in copy-mode"
+fm_backend_tmux_send_key "$MODE_PANE" Enter || fail "fm_backend_tmux_send_key Enter failed"
+wait_for_capture_text "$MODE_PANE" "$DOORBELL" \
+  || fail "fm_backend_tmux_send_literal did not land the doorbell in a copy-mode pane"
+pass "real tmux: a send into a copy-mode pane leaves the mode first and the text lands"
+
+# A mode without copy-mode commands refuses the cancel; typed text would drive
+# it (tree-mode binds x to kill), so nothing is typed.
+tmux choose-tree -t "$MODE_PANE"
+[ "$(tmux display-message -p -t "$MODE_PANE" '#{pane_mode}')" = tree-mode ] \
+  || fail "real tmux: tree-mode did not engage"
+if fm_backend_tmux_send_literal "$MODE_PANE" "$DOORBELL" 2>/dev/null; then
+  fail "fm_backend_tmux_send_literal typed into a tree-mode pane"
+fi
+[ "$(tmux display-message -p -t "$MODE_PANE" '#{pane_mode}')" = tree-mode ] \
+  || fail "the refused send changed the tree-mode pane"
+tmux send-keys -t "$MODE_PANE" q
+pass "real tmux: a send into a mode that refuses cancel types nothing"
+
+# A wedged server must not hang the sender past its bound.
+SERVER_PID=$(tmux display-message -p '#{pid}')
+kill -STOP "$SERVER_PID"
+started=$SECONDS
+FM_TMUX_SEND_TIMEOUT=2 fm_backend_tmux_send_literal "$MODE_PANE" x 2>/dev/null
+rc=$?
+elapsed=$((SECONDS - started))
+kill -CONT "$SERVER_PID"
+[ "$rc" = 124 ] || fail "a send to a stopped tmux server returned $rc, expected the 124 bound"
+[ "$elapsed" -lt 6 ] || fail "a send to a stopped tmux server took ${elapsed}s against a 2s bound"
+pass "real tmux: a send to a wedged tmux server returns at its bound"
+"$REAL_TMUX" -S "$SHIM_DIR/outer.sock" kill-server >/dev/null 2>&1 || true
+tmux kill-window -t "$MODE_PANE" >/dev/null 2>&1 || true
 
 # --- kill and recovery-grade missing-window classification ------------------
 

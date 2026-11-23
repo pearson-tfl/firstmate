@@ -61,6 +61,53 @@ unset _FM_TMUX_LIB_DIR
 # so the tmux and herdr adapters cannot drift apart on what counts as ghost text.
 fm_tmux_strip_ghost() { fm_composer_strip_ghost; }
 
+# --- tmux typing primitive ---------------------------------------------------
+#
+# fm_tmux_send_keys is the ONE way firstmate types into a tmux pane; every
+# send-keys caller (backends/tmux.sh, the submit cores below, fm-live-lab.sh)
+# goes through it. A pane left in copy-mode or view-mode (scrolling with tmux
+# mouse on) reads typed keys as mode commands: vi mode keys turn a doorbell's
+# `F` into a "(jump backward)" client prompt and send-keys hangs, while emacs
+# keys silently eat the text. So it first cancels every stacked mode
+# (#{pane_in_mode} counts them) and refuses, typing nothing, when a mode such
+# as tree-mode rejects the cancel, because typed text would drive that mode.
+# The whole sequence runs under FM_TMUX_SEND_TIMEOUT seconds (default 10);
+# a hit bound returns 124 with a message on stderr.
+FM_TMUX_SEND_TIMEOUT=${FM_TMUX_SEND_TIMEOUT:-10}
+
+fm_tmux_pane_mode_depth() {  # <target> -> stacked mode count, 0 when unreadable
+  local depth
+  depth=$(tmux display-message -p -t "$1" '#{pane_in_mode}' 2>/dev/null) || depth=0
+  case "$depth" in ''|*[!0-9]*) depth=0 ;; esac
+  printf '%s' "$depth"
+}
+
+fm_tmux_send_keys_unbounded() {  # <target> <send-keys args...>
+  local target=$1
+  shift
+  # Re-read after each cancel, so a mode the user leaves meanwhile is no refusal.
+  while [ "$(fm_tmux_pane_mode_depth "$target")" -gt 0 ]; do
+    tmux send-keys -t "$target" -X cancel 2>/dev/null && continue
+    [ "$(fm_tmux_pane_mode_depth "$target")" -gt 0 ] || break
+    printf 'error: tmux pane %s is in a mode that refuses cancel; nothing typed\n' "$target" >&2
+    return 1
+  done
+  tmux send-keys -t "$target" "$@"
+}
+
+fm_tmux_send_keys() {  # <target> <send-keys args...>
+  local rc=0
+  # The bash runner bounds the body in a subshell of this shell, so a `tmux`
+  # function that pins a private socket still applies; an external runner's
+  # fresh shell would fall through to the default server. fm_cursor_run_timed
+  # is the lazy loader of bin/fm-timeout-lib.sh's fm_run_timed.
+  FM_TIMEOUT_MECHANISM_OVERRIDE=bash fm_cursor_run_timed "$FM_TMUX_SEND_TIMEOUT" \
+    fm_tmux_send_keys_unbounded "$@" || rc=$?
+  [ "$rc" -ne 124 ] \
+    || printf 'error: tmux send-keys to %s timed out after %ss\n' "$1" "$FM_TMUX_SEND_TIMEOUT" >&2
+  return "$rc"
+}
+
 # --- tmux composer capture and capability primitives ------------------------
 #
 # These four functions are the ONLY tmux-specific composer knowledge left:
@@ -316,7 +363,7 @@ fm_pane_is_busy() {  # <target> [harness]
 fm_tmux_submit_enter_core() {  # <target> <retries> <enter-sleep> [baseline-idle] [busy-harness]
   local target=$1 retries=$2 sleep_s=$3 baseline_idle=${4:-} busy_harness=${5:-} i=0 j state busy_state
   while :; do
-    tmux send-keys -t "$target" Enter 2>/dev/null || true
+    fm_tmux_send_keys "$target" Enter 2>/dev/null || true
     sleep "$sleep_s"
     state=$(fm_tmux_composer_state "$target")
     # The first Enter can open a picker. A later Enter would confirm it.
@@ -376,7 +423,7 @@ fm_tmux_submit_core() {  # <target> <text> <retries> <enter-sleep> <settle>
   [ "$baseline_state" = idle ] && baseline_idle=1
   # A failed literal send replays tmux's stderr (for example "command too
   # long") so the caller can log why nothing was typed.
-  if ! err=$(tmux send-keys -t "$target" -l "$text" 2>&1 >/dev/null); then
+  if ! err=$(fm_tmux_send_keys "$target" -l "$text" 2>&1 >/dev/null); then
     [ -z "$err" ] || printf '%s\n' "$err" >&2
     printf 'send-failed'
     return 0

@@ -5,7 +5,9 @@
 # the tmux command sequences that fm-send.sh, fm-peek.sh, fm-watch.sh,
 # fm-spawn.sh, and fm-teardown.sh already ran inline into named functions
 # here, running the EXACT same commands in the EXACT same order, so the
-# default (tmux, `backend=` absent) path stays byte-identical. Sourced only
+# default (tmux, `backend=` absent) path stays byte-identical, except that
+# every send-keys now goes through fm_tmux_send_keys (bin/fm-tmux-lib.sh),
+# which leaves any pane mode first and bounds the send. Sourced only
 # through bin/fm-backend.sh's fm_backend_source, never directly.
 #
 # Worktree acquisition (running `treehouse get` inside the pane, and polling
@@ -54,7 +56,7 @@ fm_backend_tmux_visible_capture() {  # <target>
 # to a live neighbor, so require exact membership before sending the key.
 fm_backend_tmux_send_key() {  # <target> <key>
   fm_backend_tmux_target_exists "$1" || return 1
-  tmux send-keys -t "$1" "$2"
+  fm_tmux_send_keys "$1" "$2"
 }
 
 # fm_backend_tmux_send_text_submit: type <text> into <target> once, then
@@ -138,7 +140,7 @@ fm_backend_tmux_current_path() {  # <target>
 # (`treehouse get`, the GOTMPDIR export) that already ran this exact sequence
 # inline in fm-spawn.sh. Mirrors `tmux send-keys -t "$T" "<text>" Enter`.
 fm_backend_tmux_send_text_line() {  # <target> <text>
-  tmux send-keys -t "$1" "$2" Enter
+  fm_tmux_send_keys "$1" "$2" Enter
 }
 
 # fm_backend_tmux_send_literal: send TEXT as literal bytes with no
@@ -146,7 +148,7 @@ fm_backend_tmux_send_text_line() {  # <target> <text>
 # send pauses between the literal send and Enter for the harness to settle).
 # Mirrors `tmux send-keys -t "$T" -l "<text>"`.
 fm_backend_tmux_send_literal() {  # <target> <text>
-  tmux send-keys -t "$1" -l "$2"
+  fm_tmux_send_keys "$1" -l "$2"
 }
 
 # fm_backend_tmux_window_inventory: <session-target>'s window names, one per
