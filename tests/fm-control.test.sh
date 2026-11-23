@@ -630,18 +630,20 @@ test_orca_delivers_an_escape_harness_interrupt() {
   } > "$dir/home/state/t1.meta.new"
   sed 's|^window=.*|window=fm-t1|' "$dir/home/state/t1.meta.new" > "$dir/home/state/t1.meta"
   # A fake orca that records each call's bytes (Escape shows as octal 033).
+  # One answer serves every read: the terminal's status, its pane, and an
+  # agent listing that names the running agent on that pane.
   cat > "$dir/fakebin/orca" <<'SH'
 #!/bin/sh
 printf '%s\n' "$*" | od -An -c | tr -s ' \n' ' ' >> "$FM_FAKE_DIR/orca-calls"
 printf '\n' >> "$FM_FAKE_DIR/orca-calls"
-printf '{"ok":true,"result":{"terminal":{"handle":"term-1","status":"running","source":"screen","tail":["ready"]}}}\n'
+printf '{"ok":true,"result":{"terminal":{"handle":"term-1","status":"running","source":"screen","tail":["ready"],"worktreeId":"wt-1::/orca/wt-1","tabId":"tab-1","leafId":"leaf-1"},"agents":[{"kind":"terminal","agent":"claude","state":"working","paneKey":"tab-1:leaf-1"}]}}\n'
 SH
   chmod +x "$dir/fakebin/orca"
   ln -sf orca "$dir/fakebin/orca-ide"
   out=$(run_control "$dir" t1 interrupt); rc=$?
   expect_code 0 "$rc" "an Escape harness on orca should deliver Escape"
   assert_contains "$out" "interrupt-delivered t1 harness=claude backend=orca" "interrupt should report delivery on orca"
-  assert_contains "$out" "cancel=unconfirmed" "orca has no agent-state read, so the cancel must be reported unconfirmed"
+  assert_contains "$out" "cancel=unconfirmed" "orca has no cancel confirmation, so the cancel must be reported unconfirmed"
   assert_contains "$(cat "$dir/fake/orca-calls")" "033" "interrupt did not send the raw Escape byte"
   pass "fm-control interrupt: an Escape harness on orca gets a raw Escape byte"
 

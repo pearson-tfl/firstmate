@@ -51,6 +51,7 @@ The adapter's typed steer writes its text without Enter, so control bytes inside
 
 An Orca terminal opens your normal login shell in your real home folder with your personal shell startup files, and a variable set in the environment Orca starts from reaches every new terminal (real Orca).
 `config/launch-env-allowlist` alone therefore cannot scope worker credentials on Orca, because allowlisted values resolve from the Orca terminal's own environment.
+Orca also sets `CLAUDE_CONFIG_DIR` in its terminals to its own managed Claude folder, so a Claude launched there without a Firstmate account pin uses that folder's sign-in rather than the home's (real Orca).
 To scope worker credentials, configure an [Orca environment source](configuration.md#orca-environment-source-configlaunch-env-vault-configlaunch-env-tmux-session): a vault, with no tmux, or a tmux session.
 
 ## Task shape and metadata
@@ -89,7 +90,6 @@ An ordinary metadata-routed `fm-send.sh` text steer becomes a durable steering-i
 On the typed plane, `fm-send.sh` verifies composer clearance through the fleet-wide classifier in `bin/fm-composer-lib.sh`, retrying Enter without retyping when a slash popup first fills an argument placeholder (fake Orca).
 The composer read is the bottom rows of the drawn screen, so a stale startup banner cannot compete with the bottom-anchored composer (fake Orca); no real agent's composer has yet been classified on Orca.
 A bare shell row is `unknown`, not an empty agent composer, and plain-text captures degrade a glyph row carrying trailing text to `unknown` rather than a false `pending` (fake Orca).
-The watcher has no native Orca busy signal, so each harness adapter's semantic lifecycle supplies worker state (code).
 Grok alone retains its isolated rendered-tail fallback (code).
 
 Cleanup keeps all shared Firstmate safety checks.
@@ -108,6 +108,21 @@ The Orca desktop app kept its terminals when the app itself restarted (real Orca
 After a headless Orca runtime restarted, it refused the old terminal handles as stale (real Orca), and after a reboot every agent is gone (reported).
 Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ended needs manual recovery.
 
+## Agent state
+
+Agent state and busy come from Orca itself, not from the screen: `orca agent list` names each terminal agent on its pane with a state that Orca's status hooks report - working, waiting, or done - from the agent's first report until it ends (real Orca).
+The adapter matches the recorded terminal's pane through `orca terminal show` and reads the newest terminal entry there (fake Orca).
+Working reads busy, done reads idle, and waiting or blocked reads as an agent held on a question such as a permission or trust prompt (real Orca for working, waiting, and done; blocked from `orca agent list --help`).
+`fm-crew-state.sh` reports that wait as `parked` with `waiting for input`, ahead of Firstmate's own turn record, which still reads busy while Claude waits on a permission prompt (real Orca).
+With no Firstmate turn record, Orca's busy is trusted as busy and its idle is not, as for the other native backends (code).
+Orca drops an agent from that listing when it ends, but `orca terminal show` keeps naming Pi and Oh My Pi after they exit, so only the listing counts as presence (real Orca).
+A running terminal with no listed agent reads unverified, as before: a harness Orca does not hook, one that has not reported yet, and one that ended and left its shell look the same (code).
+
+Firstmate's Orca launch ends the terminal with the agent: the staged launch file exits the pane shell once the worker returns, while a refused launch keeps the shell (fake Orca).
+An ended terminal reads `exited`, and a handle Orca no longer knows answers `terminal_handle_stale`; both read as a gone endpoint (real Orca).
+`orca terminal wait --for exit` reports the same end but not a trustworthy exit code (real Orca), so nothing here reads that code.
+Claude, Pi, and Oh My Pi each read busy then idle through a real turn, and Claude read waiting on a permission prompt; Pi and Oh My Pi asked no question in that check, so their waiting state is unproved (real Orca).
+
 ## Active limits
 
 - The backend is explicit-only.
@@ -117,7 +132,7 @@ Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ende
 - The Orca runtime must be running and report ready.
 - Secondmate spawns are unsupported (code).
 - An interrupt is reported delivered with its cancellation unconfirmed unless the harness keeps its own confirmation record (muse confirms from its session log), and an interrupt for a harness that must read its screen between or after presses (Devin and Command Code) is refused because Orca's screen read has never been verified with a real Devin or Command Code on it (code); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
-- Orca has no recovery-grade agent-state classifier, so `exit` and `relaunch` refuse (code).
+- Orca's agent state is not among the backends whose state `fm-control.sh` trusts to prove an agent stopped, so `exit` and `relaunch` refuse (code).
 - Cortex and Command Code are refused because Orca supplies no pane identity for their composers (code).
 - Firstmate checks readiness, not Orca's version (code).
 - Only the verified terminal-handle and worktree result fields are accepted; speculative response shapes are rejected (fake Orca).

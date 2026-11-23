@@ -985,6 +985,7 @@ test_peek_and_crew_state_fail_closed_on_orca_error_json() {
   [ "$status" -ne 0 ] || fail "fm-peek should fail when Orca reports a stale terminal"
   assert_contains "$out" "terminal handle stale" "fm-peek should surface the Orca read error message"
   printf '{"ok":false,"error":{"code":"terminal_handle_stale","message":"terminal handle stale"}}\n' > "$RESP/2.out"
+  cp "$RESP/2.out" "$RESP/3.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-crew-state.sh" "$id" )
   assert_contains "$out" "state: unknown" "crew-state should not treat an Orca read error as a live endpoint"
@@ -1011,6 +1012,123 @@ test_crew_state_keeps_live_orca_terminal_without_a_rendered_screen() {
     FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-crew-state.sh" "$id" )
   assert_not_contains "$out" "backend target gone" "crew-state must not call a live Orca terminal gone because its screen is unavailable"
   pass "fm-crew-state: a live Orca terminal without a rendered screen is not reported gone"
+}
+
+# Orca answers a running terminal's read, its pane, and the agent listing in
+# three calls; these write those answers as fake responses <n>, <n+1>, <n+2>.
+orca_running_read() { printf '{"ok":true,"result":{"terminal":{"status":"running","tail":[]}}}\n'; }
+orca_exited_read() { printf '{"ok":true,"result":{"terminal":{"status":"exited","tail":[]}}}\n'; }
+orca_pane_show() { printf '{"ok":true,"result":{"terminal":{"worktreeId":"repo-a::/orca/wt-a","tabId":"tab-a","leafId":"leaf-a"}}}\n'; }
+orca_agent_list() {  # <state-on-our-pane|none> -> list JSON
+  local mine=''
+  # An older entry on the same pane precedes the newest one.
+  [ "$1" = none ] || mine=',{"kind":"terminal","agent":"claude","state":"working","paneKey":"tab-a:leaf-a","updatedAt":10},{"kind":"terminal","agent":"claude","state":"'"$1"'","paneKey":"tab-a:leaf-a","updatedAt":20}'
+  printf '{"ok":true,"result":{"agents":[{"kind":"terminal","agent":"claude","state":"working","paneKey":"tab-b:leaf-b","updatedAt":30},{"kind":"chat","agent":"omp","state":"working","paneKey":"tab-a:leaf-a","updatedAt":40}%s]}}\n' "$mine"
+}
+orca_probe_responses() {  # <first-n> <state|none>
+  orca_running_read > "$RESP/$1.out"
+  orca_pane_show > "$RESP/$(($1 + 1)).out"
+  orca_agent_list "$2" > "$RESP/$(($1 + 2)).out"
+}
+
+# Route B: busy and agent state come from Orca's agent listing for the
+# terminal's own pane - the newest terminal entry there, never another pane's
+# or a chat's - and from the terminal's own status for an ended endpoint.
+test_busy_and_agent_state_read_orca_agent_listing() {
+  local state busy agent want_busy want_agent out
+  for state in working waiting blocked "done" none exited stale read-error show-error; do
+    orca_case "agent-listing-$state"
+    case "$state" in
+      exited) orca_exited_read > "$RESP/1.out"; orca_exited_read > "$RESP/2.out" ;;
+      stale)
+        printf '{"ok":false,"error":{"code":"terminal_handle_stale","message":"terminal_handle_stale"}}\n' > "$RESP/1.out"
+        cp "$RESP/1.out" "$RESP/2.out"
+        ;;
+      read-error)
+        printf '{"ok":false,"error":{"code":"runtime_unavailable","message":"no runtime"}}\n' > "$RESP/1.out"
+        cp "$RESP/1.out" "$RESP/2.out"
+        ;;
+      show-error)
+        orca_running_read > "$RESP/1.out"
+        printf '{"ok":false,"error":{"code":"runtime_unavailable","message":"no runtime"}}\n' > "$RESP/2.out"
+        orca_running_read > "$RESP/3.out"
+        cp "$RESP/2.out" "$RESP/4.out"
+        ;;
+      *) orca_probe_responses 1 "$state"; orca_probe_responses 4 "$state" ;;
+    esac
+    out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+      bash -c '. "$0/bin/fm-backend.sh"; fm_backend_busy_state orca term-a; printf " "; fm_backend_agent_state orca term-a' "$ROOT" )
+    busy=${out%% *}
+    agent=${out#* }
+    case "$state" in
+      working) want_busy=busy want_agent=alive ;;
+      waiting|blocked) want_busy=blocked want_agent=alive ;;
+      done) want_busy=idle want_agent=alive ;;
+      none) want_busy=unknown want_agent=unverified ;;
+      exited|stale) want_busy=unknown want_agent=missing ;;
+      *) want_busy=unknown want_agent=unreadable ;;
+    esac
+    assert_equals "$want_busy" "$busy" "Orca agent listing '$state' should read busy=$want_busy"
+    assert_equals "$want_agent" "$agent" "Orca agent listing '$state' should read agent state $want_agent"
+  done
+  assert_contains "$(cat "$TMP_ROOT/agent-listing-working/log")" $'orca\x1f''agent'$'\x1f''list'$'\x1f''--worktree'$'\x1f''id:repo-a::/orca/wt-a'$'\x1f''--json' \
+    "the agent listing was not scoped to the terminal's own Orca worktree"
+  pass "fm_backend_busy_state/agent_state: Orca's listing for the terminal's own pane decides busy, waiting, idle, and presence"
+}
+
+# An Orca terminal that has exited is no longer a live endpoint.
+test_target_exists_rejects_exited_orca_terminal() {
+  local status
+  orca_case target-exists-exited
+  orca_exited_read > "$RESP/1.out"
+  set +e
+  PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/fm-backend.sh"; fm_backend_target_exists orca term-exited fm-task' "$ROOT"
+  status=$?
+  set -e
+  [ "$status" -ne 0 ] || fail "fm_backend_target_exists should reject an exited Orca terminal"
+  orca_case target-exists-running
+  orca_running_read > "$RESP/1.out"
+  PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/fm-backend.sh"; fm_backend_target_exists orca term-live fm-task' "$ROOT" \
+    || fail "fm_backend_target_exists should accept a running Orca terminal"
+  pass "fm_backend_target_exists: an exited Orca terminal is gone, a running one exists"
+}
+
+# fm-crew-state reports a worker Orca sees busy, waiting for input, or gone.
+test_crew_state_reports_orca_agent_state() {
+  local wt state id out case_name
+  for case_name in waiting working exited; do
+    id="orcastate${case_name}z9"
+    wt="$TMP_ROOT/agent-state-$case_name-wt"
+    fm_git_init_commit "$wt"
+    state="$TMP_ROOT/agent-state-$case_name-state"; mkdir -p "$state"
+    fm_write_meta "$state/$id.meta" \
+      "window=fm-$id" "endpoint_task_id=$id" "terminal=term-$case_name" "worktree=$wt" "project=$wt" "harness=claude" "kind=scout" "backend=orca"
+    touch "$state/.last-watcher-beat"
+    orca_case "crew-state-$case_name"
+    case "$case_name" in
+      waiting)
+        orca_running_read > "$RESP/1.out"
+        orca_probe_responses 2 waiting
+        ;;
+      working)
+        orca_running_read > "$RESP/1.out"
+        orca_probe_responses 2 working
+        printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["working"]}}}\n' > "$RESP/5.out"
+        orca_probe_responses 6 working
+        ;;
+      exited) orca_exited_read > "$RESP/1.out"; orca_exited_read > "$RESP/2.out" ;;
+    esac
+    out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+      FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-crew-state.sh" "$id" )
+    case "$case_name" in
+      waiting) assert_contains "$out" "state: parked · source: pane · waiting for input (orca-native)" "crew-state should report an Orca agent waiting for input" ;;
+      working) assert_contains "$out" "state: working · source: pane · harness busy (orca-native)" "crew-state should report an Orca agent Orca lists as working" ;;
+      exited) assert_contains "$out" "backend target gone: term-exited" "crew-state should report an exited Orca terminal as gone" ;;
+    esac
+  done
+  pass "fm-crew-state: an Orca worker reads busy, waiting for input, or gone from Orca's own state"
 }
 
 test_target_exists_rejects_orca_error_json() {
@@ -1577,6 +1695,9 @@ test_spawn_releases_orca_resources_when_metadata_write_fails
 test_peek_send_and_crew_state_route_through_orca_meta
 test_peek_and_crew_state_fail_closed_on_orca_error_json
 test_target_exists_rejects_orca_error_json
+test_target_exists_rejects_exited_orca_terminal
+test_busy_and_agent_state_read_orca_agent_listing
+test_crew_state_reports_orca_agent_state
 test_crew_state_keeps_live_orca_terminal_without_a_rendered_screen
 test_scout_teardown_removes_orca_worktree_via_helper
 test_scout_teardown_refuses_orca_id_path_mismatch

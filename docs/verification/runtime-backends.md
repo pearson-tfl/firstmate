@@ -2568,6 +2568,32 @@ tool-available
 The runtime answered with the same `runtimeId` the paired macOS client reports for that server through `orca status --environment <name> --json`.
 No worktree, terminal, or agent was created on the server, so the spawn, steer, and cleanup paths remain proven only by the fake-Orca suite on Linux.
 
+### Orca agent state
+
+Verified on 2026-11-23 on macOS against the desktop app's Orca 1.4.271, in a scratch repository, worktree, and terminals the check created and then removed, with Claude Code 2.1.331 (Haiku 5.5, `--permission-mode default`), Pi, and Oh My Pi signed in on subscriptions.
+Each agent was started in its own Orca terminal; Claude's final run used a launch file ending in `exit`, as `fm-spawn.sh` stages it.
+Branch `fm/ahrorca-f` was copied to the Mac and read through `fm_backend_busy_state`, `fm_backend_agent_state`, and `fm-crew-state.sh` for a scratch task record naming that terminal.
+
+```sh
+orca agent list --worktree id:<worktree-id> --json   # .result.agents[] state and paneKey
+orca terminal show --terminal <handle> --json        # .result.terminal tabId, leafId, agentIdentity
+orca terminal read --terminal <handle> --limit 1 --json  # .result.terminal.status
+```
+
+| Screen | Orca | Adapter busy, agent | `fm-crew-state.sh` |
+|---|---|---|---|
+| Claude idle at its prompt | `done` | `idle`, `alive` | `state: unknown · source: pane · harness state unavailable (unknown missing)` |
+| Claude running a 30-second foreground command, `esc to interrupt` | `working` | `busy`, `alive` | `state: working · source: pane · harness busy (orca-native)` |
+| Claude asking `Do you want to create outside5.txt?` | `waiting` | `blocked`, `alive` | `state: parked · source: pane · waiting for input (orca-native)` |
+| After `/exit`, the launch file's `exit` ended the shell | read `status: exited`, no listed agent | `unknown`, `missing` | `state: unknown · source: none · backend target gone: <handle>` |
+
+The listed entry's `paneKey` equals `<tabId>:<leafId>` from `orca terminal show`.
+Claude at its workspace-trust dialog also listed as `waiting`.
+Pi and Oh My Pi each listed `working` through a 22-second foreground command and `done` after it; neither asked a question, so no waiting state was observed for them.
+After Claude, Pi, or Oh My Pi exited and left the shell running, the listing dropped the agent, while `orca terminal show` still named Pi and Oh My Pi as `agentIdentity`.
+An unknown handle answered `{"ok":false,"error":{"code":"terminal_handle_stale"}}`.
+`tests/fm-backend-orca.test.sh` and `tests/fm-spawn-orca-worktree.test.sh` pin the mapping, the pane match, and the launch file's exit.
+
 ### Orca whole-task proof
 
 Not yet proved.

@@ -8163,6 +8163,11 @@ else
   fi
   LAUNCH_FILE="$LAUNCH_DIR/launch.$SPAWN_GEN.sh"
   LAUNCH_STAGE="$LAUNCH_DIR/.launch.$SPAWN_GEN.tmp"
+  # Orca route A: the pane shell exits once the worker it launched returns, so
+  # the terminal ends with the agent and an exited terminal reads as gone
+  # (bin/backends/orca.sh). Inside the file, a refused launch never reaches it;
+  # its own line keeps a trailing comment in a custom launch from swallowing it.
+  [ "$BACKEND" != orca ] || LAUNCH="$LAUNCH"$'\n''exit'
   if [ "$ORCA_LAUNCH_ENV_ENABLED" = 1 ]; then
     # The sourcing shell already holds the open file; unlink the credentials
     # before launching the worker, including on a later command failure.
