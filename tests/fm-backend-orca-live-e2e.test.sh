@@ -192,12 +192,64 @@ own_shell idle
 fm_backend_orca_send_text_line "$TERM_ID" 'echo fm-after-interrupt-$((6*9))' || fail "Orca $VERSION: send after interrupt failed"
 saw fm-after-interrupt-54
 
+# The close is checked against a running program, and a re-close still succeeds.
+own_shell idle
+fm_backend_orca_send_text_line "$TERM_ID" 'sleep 300' || fail "Orca $VERSION: sleep send failed"
+own_shell busy
 fm_backend_orca_kill "$TERM_ID" || fail "Orca $VERSION: terminal close failed"
 closed=$(orca terminal read --terminal "$TERM_ID" --limit 1 --json 2>/dev/null)
 assert_equals exited "$(field "$closed" result.terminal.status)" "Orca $VERSION: a closed terminal must read as exited"
+fm_backend_orca_kill "$TERM_ID" || fail "Orca $VERSION: a re-close of a closed terminal must succeed"
 
+wt_branch=$(git -C "$wt_path" rev-parse --abbrev-ref HEAD)
 fm_backend_orca_remove_worktree "$WT_ID" || fail "Orca $VERSION: worktree removal failed"
 [ ! -e "$wt_path" ] || fail "Orca $VERSION: worktree removal left $wt_path"
 WT_ID=''
+git -C "$REPO" rev-parse --verify -q "refs/heads/$wt_branch" >/dev/null ||
+  fail "Orca $VERSION: a release without delete-branch must keep $wt_branch"
 
-pass "orca live lane: Orca $VERSION runtime $RUNTIME_ID passes register, worktree, own-shell send, Enter, Ctrl-C, close and release"
+# Teardown on real Orca: a ship task whose work landed loses its branch through
+# Orca's safe deletion; a forced teardown of work that has not landed keeps it.
+FMH="$SB/fm-home"
+mkdir -p "$FMH/root/bin" "$FMH/state" "$FMH/data" "$FMH/config"
+printf '#!/bin/sh\nexit 0\n' > "$FMH/root/bin/fm-guard.sh"
+chmod +x "$FMH/root/bin/fm-guard.sh"
+touch "$FMH/state/.last-watcher-beat"
+teardown_case() {  # <name> <landed|unlanded>
+  local name=$1 kind=$2 c id path term branch force='' out
+  c=$(fm_backend_orca_worktree_create "$REPO" "$name") || fail "Orca $VERSION: worktree create failed for $name"
+  id=$(printf '%s' "$c" | cut -f1); path=$(printf '%s' "$c" | cut -f2); term=$(printf '%s' "$c" | cut -f3)
+  WT_ID=$id
+  [ -n "$term" ] || term=$(fm_backend_orca_terminal_create "$id" "$name") || fail "Orca $VERSION: terminal create failed for $name"
+  branch=$(git -C "$path" rev-parse --abbrev-ref HEAD)
+  printf '%s\n' "$name" > "$path/$name.txt"
+  git -C "$path" add "$name.txt"
+  git -C "$path" -c user.name=fm-test -c user.email=fm-test@example.invalid commit -q -m "$name"
+  if [ "$kind" = landed ]; then
+    git -C "$REPO" merge -q --ff-only "$branch" || fail "Orca $VERSION: could not land $branch"
+  else
+    force=--force
+  fi
+  mkdir -p "$FMH/data/$name"
+  fm_write_meta "$FMH/state/$name.meta" \
+    "window=fm-$name" "endpoint_task_id=$name" "terminal=$term" "worktree=$path" "project=$REPO" \
+    "harness=claude" "kind=ship" "mode=local-only" "yolo=off" \
+    "backend=orca" "orca_worktree_id=$id"
+  out=$(FM_ROOT_OVERRIDE="$FMH/root" FM_STATE_OVERRIDE="$FMH/state" FM_DATA_OVERRIDE="$FMH/data" \
+    FM_CONFIG_OVERRIDE="$FMH/config" "$ROOT/bin/fm-teardown.sh" "$name" $force 2>&1) ||
+    fail "Orca $VERSION: fm-teardown.sh $name $force failed: $out"
+  WT_ID=''
+  assert_equals exited "$(field "$(orca terminal read --terminal "$term" --limit 1 --json 2>/dev/null)" result.terminal.status)" \
+    "Orca $VERSION: teardown of $name must leave its terminal exited"
+  [ ! -e "$path" ] || fail "Orca $VERSION: teardown of $name left $path"
+  [ ! -e "$FMH/state/$name.meta" ] || fail "Orca $VERSION: teardown of $name kept its record"
+  if git -C "$REPO" rev-parse --verify -q "refs/heads/$branch" >/dev/null; then
+    [ "$kind" = unlanded ] || fail "Orca $VERSION: teardown kept the landed branch $branch"
+  else
+    [ "$kind" = landed ] || fail "Orca $VERSION: forced teardown deleted the unlanded branch $branch"
+  fi
+}
+teardown_case fm-orca-td-landed landed
+teardown_case fm-orca-td-forced unlanded
+
+pass "orca live lane: Orca $VERSION runtime $RUNTIME_ID passes register, worktree, own-shell send, Enter, Ctrl-C, checked close, release, and teardown's branch choice"

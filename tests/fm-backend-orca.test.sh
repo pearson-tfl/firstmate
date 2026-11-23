@@ -465,20 +465,52 @@ test_send_key_escape_and_composer_keys_are_raw_bytes() {
   pass "fm_backend_orca_send_key: Escape and C-u go as raw control bytes through orca-ide alone; C-g is refused"
 }
 
-test_kill_is_best_effort_close() {
+# A re-close of an already-closed terminal is what a cleanup re-run sends, so
+# a close that exits nonzero still succeeds once the re-read reports exited.
+test_kill_succeeds_when_the_reread_reports_exited() {
   orca_case kill
   printf '1\n' > "$RESP/1.exit"
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/2.out"
   PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_kill term-123' "$ROOT"
-  expect_code 0 $? "kill should stay best-effort when Orca close fails"
+  expect_code 0 $? "kill should succeed when the re-read reports the terminal exited"
   assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''close'$'\x1f''--terminal'$'\x1f''term-123'$'\x1f''--json' \
     "kill did not call orca terminal close"
-  pass "fm_backend_orca_kill: calls terminal close and stays best-effort"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''read'$'\x1f''--terminal'$'\x1f''term-123'$'\x1f''--limit'$'\x1f''1'$'\x1f''--json' \
+    "kill did not re-read the terminal after closing it"
+  pass "fm_backend_orca_kill: closes, then succeeds on a re-read that reports exited"
 }
 
-# The paired direction - an `orca` stub present, a close command that exits
-# nonzero, still 0 - is test_kill_is_best_effort_close above. This case is the
-# distinction that arm exists to make, so the two are read together.
+# A close that did not take - the terminal still running, a stale handle, or a
+# re-read with no answer - is reported, never passed off as a closed terminal.
+test_kill_refuses_when_the_close_did_not_take() {
+  local case_name resp out status n
+  for case_name in running stale silent; do
+    orca_case "kill-not-closed-$case_name"
+    case "$case_name" in
+      running) resp='{"ok":true,"result":{"terminal":{"status":"running"}}}' ;;
+      stale) resp='{"ok":false,"error":{"code":"terminal_handle_stale","message":"terminal_handle_stale"}}' ;;
+      silent) resp='' ;;
+    esac
+    printf '{"ok":true,"result":{"close":{"ptyKilled":false}}}\n' > "$RESP/1.out"
+    for n in 2 3 4 5 6 7 8 9 10 11; do
+      [ -z "$resp" ] || printf '%s\n' "$resp" > "$RESP/$n.out"
+    done
+    out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+      bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_kill term-123' "$ROOT" 2>&1 )
+    status=$?
+    [ "$status" -ne 0 ] || fail "kill reported a $case_name terminal closed"
+    assert_contains "$out" "Orca terminal term-123 did not close" "kill did not report the $case_name close"
+    case "$case_name" in
+      running) assert_contains "$out" "still reports the terminal running" "kill did not name the running terminal" ;;
+      stale) assert_contains "$out" "terminal_handle_stale" "kill did not name the stale handle" ;;
+    esac
+  done
+  pass "fm_backend_orca_kill: a terminal still running, a stale handle, or a silent re-read reports the close failed"
+}
+
+# test_kill_succeeds_when_the_reread_reports_exited above has an `orca` stub
+# present; this case is the CLI-absent direction, where no close was attempted.
 test_kill_refuses_when_the_orca_cli_is_absent() {
   local out status orca_free
   orca_case kill-no-cli
@@ -584,6 +616,25 @@ test_remove_worktree_rejects_orca_error_json() {
   [ "$status" -ne 0 ] || fail "remove_worktree should fail on Orca ok:false JSON"
   assert_contains "$out" "worktree not found" "remove_worktree should surface the Orca removal error"
   pass "fm_backend_orca_remove_worktree: fails closed on ok:false JSON"
+}
+
+test_remove_worktree_deletes_the_branch_only_when_asked() {
+  local out
+  orca_case remove-branch-choice
+  printf '{"ok":true,"result":{"removed":true}}\n' > "$RESP/1.out"
+  printf '{"ok":true,"result":{"removed":true,"preservedBranch":{"branchName":"fm/kept","head":"abc"}}}\n' > "$RESP/2.out"
+  out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/backends/orca.sh"
+      fm_backend_orca_remove_worktree wt-a::/orca/wt-a || exit 1
+      fm_backend_orca_remove_worktree wt-b::/orca/wt-b delete-branch' "$ROOT" 2>&1 )
+  expect_code 0 $? "remove_worktree should succeed on removed:true$'\n'$out"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''worktree'$'\x1f''rm'$'\x1f''--worktree'$'\x1f''id:wt-a::/orca/wt-a'$'\x1f''--force'$'\x1f''--json' \
+    "remove_worktree without delete-branch should keep the branch"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''worktree'$'\x1f''rm'$'\x1f''--worktree'$'\x1f''id:wt-b::/orca/wt-b'$'\x1f''--force'$'\x1f''--delete-branch'$'\x1f''--json' \
+    "remove_worktree delete-branch should pass --delete-branch"
+  assert_not_contains "$(head -1 "$LOG")" "--delete-branch" "remove_worktree passed --delete-branch unasked"
+  assert_contains "$out" "Orca kept branch fm/kept" "remove_worktree should name a branch Orca kept"
+  pass "fm_backend_orca_remove_worktree: --delete-branch only when asked, and a branch Orca kept is named"
 }
 
 test_worktree_path_resolves_id() {
@@ -1176,6 +1227,7 @@ test_scout_teardown_removes_orca_worktree_via_helper() {
     "decisions_reviewed=1" "decision_keys="
   orca_case teardown
   printf '{"ok":true,"result":{"worktree":{"id":"wt-teardown::/orca/wt-teardown","path":"%s"}}}\n' "$wt" > "$RESP/1.out"
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/3.out"
   neutral=$(neutral_fm_root "$CASE_DIR/neutral")
   set +e
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
@@ -1188,8 +1240,9 @@ test_scout_teardown_removes_orca_worktree_via_helper() {
     "teardown did not close the recorded Orca terminal"
   assert_contains "$(cat "$LOG")" $'orca\x1f''worktree'$'\x1f''rm'$'\x1f''--worktree'$'\x1f''id:wt-teardown::/orca/wt-teardown'$'\x1f''--force'$'\x1f''--json' \
     "teardown did not remove the Orca worktree through orca worktree rm"
+  assert_not_contains "$(cat "$LOG")" "--delete-branch" "a scout has no landed-work test, so its branch must stay"
   assert_absent "$state/$id.meta" "teardown should remove task metadata"
-  pass "fm-teardown.sh backend=orca: scout report gate then helper-backed worktree removal"
+  pass "fm-teardown.sh backend=orca: scout report gate then helper-backed worktree removal, branch kept"
 }
 
 test_scout_teardown_refuses_orca_id_path_mismatch() {
@@ -1248,6 +1301,7 @@ test_teardown_removes_orca_worktree_when_path_missing() {
     "backend=orca" "orca_worktree_id=wt-missing-path::/orca/wt-missing-path" \
     "decisions_reviewed=1" "decision_keys="
   orca_case missing-path
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/2.out"
   neutral=$(neutral_fm_root "$CASE_DIR/neutral")
   set +e
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
@@ -1282,7 +1336,8 @@ test_teardown_preserves_metadata_when_orca_remove_error_json() {
     "decisions_reviewed=1" "decision_keys="
   orca_case remove-error-teardown
   printf '{"ok":true,"result":{}}\n' > "$RESP/1.out"
-  printf '{"ok":false,"error":{"code":"worktree_not_removed","message":"worktree not removed"}}\n' > "$RESP/2.out"
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/2.out"
+  printf '{"ok":false,"error":{"code":"worktree_not_removed","message":"worktree not removed"}}\n' > "$RESP/3.out"
   neutral=$(neutral_fm_root "$CASE_DIR/neutral")
   set +e
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
@@ -1373,6 +1428,7 @@ test_ship_teardown_removes_orca_worktree_when_id_path_matches() {
     "backend=orca" "orca_worktree_id=wt-ship-match::/orca/wt-ship-match"
   orca_case ship-match
   printf '{"ok":true,"result":{"worktree":{"id":"wt-ship-match::/orca/wt-ship-match","path":"%s"}}}\n' "$wt" > "$RESP/1.out"
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/3.out"
   neutral=$(neutral_fm_root "$CASE_DIR/neutral")
   set +e
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
@@ -1385,10 +1441,98 @@ test_ship_teardown_removes_orca_worktree_when_id_path_matches() {
     "teardown did not resolve the Orca worktree id before removal"
   assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''close'$'\x1f''--terminal'$'\x1f''term-ship-match'$'\x1f''--json' \
     "teardown did not close the matched Orca terminal"
-  assert_contains "$(cat "$LOG")" $'orca\x1f''worktree'$'\x1f''rm'$'\x1f''--worktree'$'\x1f''id:wt-ship-match::/orca/wt-ship-match'$'\x1f''--force'$'\x1f''--json' \
-    "teardown did not remove the matched Orca worktree"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''worktree'$'\x1f''rm'$'\x1f''--worktree'$'\x1f''id:wt-ship-match::/orca/wt-ship-match'$'\x1f''--force'$'\x1f''--delete-branch'$'\x1f''--json' \
+    "teardown did not remove the matched Orca worktree and its landed branch"
   assert_absent "$state/$id.meta" "successful matched teardown should remove task metadata"
-  pass "fm-teardown.sh backend=orca: ship teardown requires a matching Orca id path"
+  pass "fm-teardown.sh backend=orca: ship teardown requires a matching Orca id path and deletes a landed branch"
+}
+
+# The landed-work test is the only authority on the branch: with work that has
+# not landed, a forced teardown discards the worktree but keeps the branch.
+test_ship_force_teardown_keeps_an_unlanded_orca_branch() {
+  local proj wt data state config id out rc neutral
+  id="orcashipforcez4"
+  proj="$TMP_ROOT/ship-force-project"
+  wt="$TMP_ROOT/ship-force-wt"
+  data="$TMP_ROOT/ship-force-data"
+  state="$TMP_ROOT/ship-force-state"
+  config="$TMP_ROOT/ship-force-config"
+  fm_git_worktree "$proj" "$wt" "fm/$id"
+  printf 'unlanded\n' > "$wt/unlanded.txt"
+  git -C "$wt" add unlanded.txt
+  git -C "$wt" -c user.name=fm-test -c user.email=fm-test@example.invalid commit -q -m unlanded
+  mkdir -p "$data/$id" "$state" "$config"
+  touch "$state/.last-watcher-beat"
+  fm_write_meta "$state/$id.meta" \
+    "window=fm-$id" "endpoint_task_id=$id" "terminal=term-ship-force" "worktree=$wt" "project=$proj" \
+    "harness=claude" "kind=ship" "mode=local-only" "yolo=off" \
+    "backend=orca" "orca_worktree_id=wt-ship-force::/orca/wt-ship-force"
+  neutral=$(neutral_fm_root "$TMP_ROOT/ship-force-neutral")
+  orca_case ship-force-unforced
+  printf '{"ok":true,"result":{"worktree":{"id":"wt-ship-force::/orca/wt-ship-force","path":"%s"}}}\n' "$wt" > "$RESP/1.out"
+  set +e
+  out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    FM_ROOT_OVERRIDE="$neutral" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
+    "$ROOT/bin/fm-teardown.sh" "$id" 2>&1 )
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "Orca ship teardown should refuse unlanded work without --force"
+  assert_contains "$out" "has work not yet merged" "unforced teardown should refuse on the landed-work test"
+  assert_not_contains "$(cat "$LOG")" $'orca\x1f''worktree'$'\x1f''rm' "refused unlanded teardown removed the worktree"
+  orca_case ship-force
+  printf '{"ok":true,"result":{"worktree":{"id":"wt-ship-force::/orca/wt-ship-force","path":"%s"}}}\n' "$wt" > "$RESP/1.out"
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/3.out"
+  set +e
+  out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    FM_ROOT_OVERRIDE="$neutral" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
+    "$ROOT/bin/fm-teardown.sh" "$id" --force 2>&1 )
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "forced Orca ship teardown should succeed"$'\n'"$out"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''worktree'$'\x1f''rm'$'\x1f''--worktree'$'\x1f''id:wt-ship-force::/orca/wt-ship-force'$'\x1f''--force'$'\x1f''--json' \
+    "forced teardown did not remove the Orca worktree"
+  assert_not_contains "$(cat "$LOG")" "--delete-branch" "forced teardown asked Orca to delete an unlanded branch"
+  git -C "$proj" rev-parse --verify -q "refs/heads/fm/$id" >/dev/null \
+    || fail "forced teardown deleted the unlanded task branch itself"
+  assert_absent "$state/$id.meta" "forced teardown should remove task metadata"
+  pass "fm-teardown.sh --force backend=orca: discards the worktree but keeps a branch whose work has not landed"
+}
+
+# A close the re-read cannot confirm stops cleanup before the worktree goes,
+# keeping the record that names the terminal.
+test_ship_teardown_stops_when_the_orca_close_fails() {
+  local proj wt data state config id out rc neutral n
+  id="orcashipclosefailz3"
+  proj="$TMP_ROOT/ship-close-fail-project"
+  wt="$TMP_ROOT/ship-close-fail-wt"
+  data="$TMP_ROOT/ship-close-fail-data"
+  state="$TMP_ROOT/ship-close-fail-state"
+  config="$TMP_ROOT/ship-close-fail-config"
+  fm_git_worktree "$proj" "$wt" "fm/$id"
+  mkdir -p "$data/$id" "$state" "$config"
+  touch "$state/.last-watcher-beat"
+  fm_write_meta "$state/$id.meta" \
+    "window=fm-$id" "endpoint_task_id=$id" "terminal=term-ship-close-fail" "worktree=$wt" "project=$proj" \
+    "harness=claude" "kind=ship" "mode=local-only" "yolo=off" \
+    "backend=orca" "orca_worktree_id=wt-ship-close-fail::/orca/wt-ship-close-fail"
+  orca_case ship-close-fail
+  printf '{"ok":true,"result":{"worktree":{"id":"wt-ship-close-fail::/orca/wt-ship-close-fail","path":"%s"}}}\n' "$wt" > "$RESP/1.out"
+  for n in 3 4 5 6 7 8 9 10 11 12; do
+    printf '{"ok":true,"result":{"terminal":{"status":"running"}}}\n' > "$RESP/$n.out"
+  done
+  neutral=$(neutral_fm_root "$CASE_DIR/neutral")
+  set +e
+  out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    FM_ROOT_OVERRIDE="$neutral" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
+    "$ROOT/bin/fm-teardown.sh" "$id" 2>&1 )
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "Orca teardown completed although the terminal was still running after its close"
+  assert_contains "$out" "Orca terminal term-ship-close-fail did not close" "teardown did not report the failed close"
+  assert_contains "$out" "could not be closed" "teardown did not stop through the endpoint close refusal"
+  assert_not_contains "$(cat "$LOG")" $'orca\x1f''worktree'$'\x1f''rm' "teardown removed the worktree after a failed close"
+  assert_present "$state/$id.meta" "a failed close must keep the record naming the terminal"
+  pass "fm-teardown.sh backend=orca: stops and reports when the terminal close does not take"
 }
 
 test_ship_teardown_refuses_orca_unresolvable_worktree_id() {
@@ -1555,7 +1699,8 @@ test_secondmate_force_teardown_removes_orca_child_via_orca() {
   printf '{"ok":true,"result":{"worktree":{"id":"wt-child-cleanup::/orca/wt-child-cleanup","path":"%s"}}}\n' "$childwt" > "$RESP/1.out"
   printf '{"ok":true,"result":{"worktree":{"id":"wt-child-cleanup::/orca/wt-child-cleanup","path":"%s"}}}\n' "$childwt" > "$RESP/2.out"
   printf '{"ok":true,"result":{}}\n' > "$RESP/3.out"
-  printf '{"ok":true,"result":{}}\n' > "$RESP/4.out"
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/4.out"
+  printf '{"ok":true,"result":{}}\n' > "$RESP/5.out"
   add_tmux_fake "$FB"
   neutral=$(neutral_fm_root "$CASE_DIR/neutral")
   set +e
@@ -1687,12 +1832,14 @@ test_send_helpers_reject_orca_error_json
 test_send_key_enter_and_interrupt
 test_send_key_refuses_unknown_key
 test_send_key_escape_and_composer_keys_are_raw_bytes
-test_kill_is_best_effort_close
+test_kill_succeeds_when_the_reread_reports_exited
+test_kill_refuses_when_the_close_did_not_take
 test_kill_refuses_when_the_orca_cli_is_absent
 test_cli_resolves_orca_ide_and_paired_server_install
 test_paired_server_install_beats_a_non_orca_orca_on_path
 test_remove_worktree_refuses_empty_id
 test_remove_worktree_rejects_orca_error_json
+test_remove_worktree_deletes_the_branch_only_when_asked
 test_worktree_path_resolves_id
 test_dispatcher_sources_orca_and_routes_primitives
 test_json_get_ignores_undocumented_terminal_id_shapes
@@ -1723,6 +1870,8 @@ test_ship_teardown_removes_orca_worktree_when_id_path_matches
 test_ship_teardown_refuses_orca_unresolvable_worktree_id
 test_ship_teardown_refuses_orca_id_path_mismatch
 test_teardown_refuses_orca_missing_worktree_id
+test_ship_force_teardown_keeps_an_unlanded_orca_branch
+test_ship_teardown_stops_when_the_orca_close_fails
 test_teardown_refuses_orca_worktree_without_terminal_handle
 test_secondmate_force_teardown_removes_orca_child_via_orca
 test_secondmate_force_teardown_refuses_orca_child_id_path_mismatch

@@ -14,7 +14,7 @@ Each behavioral claim below ends with one of these marks.
 - **(code)** - read from Firstmate's own scripts, which own the exact behavior; not exercised on real Orca.
 - **(reported)** - recorded by an earlier Orca evaluation and not re-checked.
 
-No real agent has yet run a whole Firstmate task on Orca: `fm-spawn.sh`, `fm-send.sh`, and `fm-teardown.sh` have not run end to end against real Orca.
+No real agent has yet run a whole Firstmate task on Orca: `fm-spawn.sh` and `fm-send.sh` have not run end to end against real Orca, and `fm-teardown.sh` has run there only on scratch ship tasks with no agent.
 The [whole-task proof](verification/runtime-backends.md#orca-whole-task-proof) section is where that proof is recorded once it runs.
 
 ## Setup
@@ -98,8 +98,13 @@ A ship still refuses dirty or unlanded work.
 Before release, cleanup resolves the recorded Orca worktree id and verifies its path matches the recorded worktree path (fake Orca).
 A missing, unreadable, or mismatched identity preserves metadata and stops rather than deleting anything (fake Orca).
 After those checks, Firstmate closes the exact terminal and releases the exact worktree with Orca's worktree command.
-Closing an Orca terminal ends the process running in it and Orca answers `ptyKilled: true` (real Orca), but Firstmate does not read that answer or re-read the terminal after the close (code).
-The release removes the worktree folder and keeps the task branch (real Orca).
+Closing an Orca terminal ends the process running in it, and a re-read then reports the terminal `exited` (real Orca).
+Firstmate re-reads the terminal after its close and, unless Orca reports it `exited`, stops cleanup with the metadata intact and names what it read: a terminal still running, a stale handle, or no answer (fake Orca).
+A stale handle is not treated as closed, because after an Orca restart the terminal may live on under a new handle.
+The release keeps the task branch unless asked to delete it (real Orca).
+Firstmate asks only when the landed-work test passed, so a scout, a `--force` discard, or a missing worktree keeps the branch (real Orca for a landed and a forced ship).
+Orca's deletion is safe: it deleted a branch whose content was already on `main`, including a squash-style copy, and kept a branch with an unmerged commit, answering `preservedBranch` (real Orca).
+Firstmate names a branch Orca kept that way (fake Orca).
 It never raw-deletes an Orca worktree.
 A close the CLI never attempted, because no Orca CLI was found, stops cleanup with the metadata intact even under `--force`: removing those records would leave nothing on disk naming a terminal that may still be live.
 Reinstall the CLI and rerun; [`verification/runtime-backends.md`](verification/runtime-backends.md) "Endpoint close" owns what this arm can and cannot prove about its own close.

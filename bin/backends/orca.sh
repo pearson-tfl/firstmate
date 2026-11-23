@@ -285,11 +285,24 @@ fm_backend_orca_send_literal() {  # <terminal-id> <text>
   fm_backend_orca_run_json fm_backend_orca_cli terminal send --terminal "$terminal" --text "$text" --json
 }
 
-fm_backend_orca_remove_worktree() {  # <worktree-id>
-  local worktree_id=${1:-}
+# fm_backend_orca_remove_worktree: release the worktree. Orca keeps its branch
+# unless asked; the caller passes delete-branch only when its own landed-work
+# test has passed, and Orca then still keeps a branch it cannot prove merged,
+# answering with result.preservedBranch, which is named on stderr.
+fm_backend_orca_remove_worktree() {  # <worktree-id> [delete-branch]
+  local worktree_id=${1:-} out
+  local -a args=(--force)
   [ -n "$worktree_id" ] || { echo "error: missing Orca worktree id; cannot remove worktree" >&2; return 1; }
+  [ "${2:-}" != delete-branch ] || args+=(--delete-branch)
   fm_backend_orca_tool_check || return 1
-  fm_backend_orca_run_json fm_backend_orca_cli worktree rm --worktree "id:$worktree_id" --force --json
+  out=$(fm_backend_orca_cli worktree rm --worktree "id:$worktree_id" "${args[@]}" --json) || return 1
+  printf '%s' "$out" | fm_backend_orca_json_ok || return 1
+  # shellcheck disable=SC2016  # Single quotes are deliberate: ${...} belongs to the Node snippet.
+  printf '%s' "$out" | node -e '
+const r = JSON.parse(require("fs").readFileSync(0, "utf8")).result || {};
+const b = r.preservedBranch;
+if (b && b.branchName) console.error(`note: Orca kept branch ${b.branchName} because it cannot prove that branch merged`);
+' || true
 }
 
 fm_backend_orca_worktree_path() {
@@ -541,15 +554,43 @@ fm_backend_orca_send_text_submit() {  # <terminal-id> <text> <retries> <enter-sl
     "$terminal" "$retries" "$sleep_s"
 }
 
-# fm_backend_orca_kill: close one recorded task terminal. A missing CLI is a
-# close that was never even attempted, not an endpoint proven gone - with no
-# CLI there is no read that could show the terminal absent - so it reports the
-# failure its tool check already named instead of a success. The close call
-# itself stays best-effort: whether an accepted-then-failed close left the
-# terminal alive is not yet decidable without a presence re-read proven
-# against the real Orca binary (docs/verification/runtime-backends.md
-# "Endpoint close").
+# fm_backend_orca_terminal_closed: one read of <terminal> after its close.
+# Only Orca reporting the terminal `exited` proves it closed; a terminal still
+# `running`, a stale handle (Orca restarted, or the handle came from another
+# server, so the terminal may live on under a new one), or a read that could
+# not run proves nothing. Prints the reason when it is not closed.
+fm_backend_orca_terminal_closed() {  # <terminal-id>
+  fm_backend_orca_cli terminal read --terminal "$1" --limit 1 --json 2>/dev/null | node -e '
+let d;
+try { d = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch (err) {
+  console.log("Orca gave no readable answer to a read of the terminal"); process.exit(1);
+}
+if (d.ok === false) {
+  console.log("a read of the terminal answered " + ((d.error && (d.error.code || d.error.message)) || "an error"));
+  process.exit(1);
+}
+const status = ((d.result || {}).terminal || {}).status;
+if (status === "exited") process.exit(0);
+console.log("Orca still reports the terminal " + (status || "with no status"));
+process.exit(1);
+'
+}
+
+# fm_backend_orca_kill: close one recorded task terminal, then re-read it and
+# succeed only when Orca reports it exited (bin/fm-backend.sh fm_backend_kill
+# owns the contract). A re-close of an already-closed terminal still reads
+# `exited`, so a re-run of cleanup stays quiet. A missing CLI is a close that
+# was never attempted and reports its tool check's failure. The re-read is
+# repeated briefly before giving up; real Orca reported `exited` on the first
+# read (docs/verification/runtime-backends.md "Endpoint close").
 fm_backend_orca_kill() {  # <terminal-id>
+  local terminal=$1 reason='' i
   fm_backend_orca_tool_check || return 1
-  fm_backend_orca_cli terminal close --terminal "$1" --json >/dev/null 2>&1 || true
+  fm_backend_orca_cli terminal close --terminal "$terminal" --json >/dev/null 2>&1 || true
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    reason=$(fm_backend_orca_terminal_closed "$terminal") && return 0
+    [ "$i" = 10 ] || sleep 0.2
+  done
+  echo "error: Orca terminal $terminal did not close: $reason" >&2
+  return 1
 }
