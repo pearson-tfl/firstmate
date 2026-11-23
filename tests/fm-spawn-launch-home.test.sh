@@ -20,7 +20,7 @@ REAL_TMUX=$(command -v tmux)
 TMP_ROOT=$(fm_test_tmproot fm-spawn-launch-home)
 SOCKET="fm-launch-home-$$"
 lab() { "$REAL_TMUX" -L "$SOCKET" -f /dev/null "$@"; }
-trap 'lab kill-server >/dev/null 2>&1 || true' EXIT
+trap 'lab kill-server >/dev/null 2>&1 || true; fm_test_cleanup' EXIT
 
 # The home the tmux server's global environment names: the primary's, in the
 # reported fault.
