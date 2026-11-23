@@ -109,7 +109,7 @@ Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ende
 - The backend is explicit-only and has been exercised only on macOS.
 - The app must be running and report ready.
 - Secondmate spawns are unsupported (code).
-- An interrupt is reported delivered with its cancellation unconfirmed, and a Devin interrupt is refused because Orca has no verified viewport read between its two presses (code); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
+- An interrupt is reported delivered with its cancellation unconfirmed, and an interrupt for a harness that must read its screen between or after presses (Devin and Command Code) is refused because Orca has no verified viewport read (code); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
 - Orca has no recovery-grade agent-state classifier, so `exit` and `relaunch` refuse (code).
 - Kimi is refused at spawn preflight because the backend has no viewport-only capture, and Cortex and Command Code are refused because Orca supplies no pane identity for their composers (code).
 - Firstmate checks readiness, not Orca's version (code).

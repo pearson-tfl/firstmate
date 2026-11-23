@@ -217,7 +217,7 @@ The worktree and the task's records are unaffected either way.
 - An adapter that is not verified for this task's kind is refused **before** the running agent is stopped, not after.
   Muse is a crewmate and scout adapter only, so relaunching a secondmate onto it refuses while its agent is still up rather than leaving that secondmate with no agent when the launch owner refuses.
 - A backend that cannot deliver the harness's interrupt key, or the composer clear that key needs, is refused rather than sent a different key.
-  Orca delivers Escape, Ctrl+U, and Ctrl+G as raw control bytes, so a harness that must see its screen between presses, such as Devin, is refused there instead.
+  Orca delivers Escape, Ctrl+U, and Ctrl+G as raw control bytes, so a harness that must see its screen between or after presses, such as Devin or Command Code, is refused there instead.
   T3 Code has no composer, so Escape and Ctrl+C are both a turn interrupt and Ctrl+U is refused.
 - `exit` and `relaunch` require a backend with a recovery-grade agent-state classifier - tmux, herdr, rex, and t3code - because without one the "the agent stopped" postcondition cannot be proven.
   zellij, orca, cmux, and paseo are refused rather than reported as successful blind.

@@ -651,6 +651,15 @@ SH
   assert_contains "$out" "no verified viewport read" "refusal should name the missing viewport read"
   [ ! -s "$dir/fake/orca-calls" ] || fail "a refused Devin interrupt must not send any key to orca"
   pass "fm-control interrupt: a Devin interrupt on orca refuses before any press"
+
+  # Command Code's single Escape still needs a screen read for its rewind picker.
+  sed -e 's|^window=.*|window=fm-t1|' -e 's|^harness=.*|harness=commandcode|' "$dir/home/state/t1.meta.new" > "$dir/home/state/t1.meta"
+  : > "$dir/fake/orca-calls"
+  out=$(run_control "$dir" t1 interrupt); rc=$?
+  expect_code 1 "$rc" "a Command Code interrupt on orca should refuse"
+  assert_contains "$out" "no verified viewport read" "refusal should name the missing viewport read"
+  [ ! -s "$dir/fake/orca-calls" ] || fail "a refused Command Code interrupt must not send any key to orca"
+  pass "fm-control interrupt: a Command Code interrupt on orca refuses before any press"
 }
 
 test_unverified_state_backends_refuse_stop_verbs() {
