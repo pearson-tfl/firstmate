@@ -16,30 +16,18 @@
 
 # fm_backend_orca_bin: resolve the Orca CLI. macOS names it `orca`; Linux names
 # it `orca-ide` because GNOME's screen reader owns `orca`. Lookup order:
-# `orca-ide` in the first PATH directory holding it, then the CLI a paired Orca
-# server's install leaves in ~/.orca/cli/bin off PATH, then a bare `orca` on
-# PATH last, so a GNOME `orca` never masks either Orca install. A test stub
+# `orca-ide` on PATH, then the CLI a paired Orca server's install leaves in
+# ~/.orca/cli/bin off PATH, then a bare `orca` on PATH last, so a GNOME `orca`
+# never masks either Orca install. A test stub
 # shadows any real install only when it sits ahead on PATH as `orca-ide` too.
 FM_BACKEND_ORCA_BUNDLE_BIN="${FM_BACKEND_ORCA_BUNDLE_BIN:-${HOME:-}/.orca/cli/bin/orca-ide}"
-fm_backend_orca_path_bin() {  # <name>
-  local dir dirs
-  IFS=: read -ra dirs <<< "${PATH:-}"
-  for dir in "${dirs[@]}"; do
-    if [ -f "${dir:-.}/$1" ] && [ -x "${dir:-.}/$1" ]; then
-      printf '%s' "${dir:-.}/$1"
-      return 0
-    fi
-  done
-  return 1
-}
-
 fm_backend_orca_bin() {
-  fm_backend_orca_path_bin orca-ide && return 0
+  command -v orca-ide && return 0
   if [ -x "$FM_BACKEND_ORCA_BUNDLE_BIN" ]; then
     printf '%s' "$FM_BACKEND_ORCA_BUNDLE_BIN"
     return 0
   fi
-  fm_backend_orca_path_bin orca
+  command -v orca
 }
 
 fm_backend_orca_cli() {  # <orca args...>
@@ -413,10 +401,10 @@ fm_backend_orca_send_key() {  # <terminal-id> <key>
     # Without --enter Orca writes --text to the PTY verbatim, so a control byte
     # is the key itself (orca terminal send --help, Orca 1.4.271).
     Escape|escape)
-      fm_backend_orca_run_json orca terminal send --terminal "$terminal" --text $'\x1b' --json
+      fm_backend_orca_run_json fm_backend_orca_cli terminal send --terminal "$terminal" --text $'\x1b' --json
       ;;
     C-u|ctrl+u|Ctrl-u|Ctrl-U)
-      fm_backend_orca_run_json orca terminal send --terminal "$terminal" --text $'\x15' --json
+      fm_backend_orca_run_json fm_backend_orca_cli terminal send --terminal "$terminal" --text $'\x15' --json
       ;;
     *)
       echo "error: unsupported Orca key '$key'" >&2

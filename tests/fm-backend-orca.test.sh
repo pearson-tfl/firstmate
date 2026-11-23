@@ -437,7 +437,8 @@ test_send_key_refuses_unknown_key() {
 test_send_key_escape_and_composer_keys_are_raw_bytes() {
   local out status
   orca_case send-key-raw
-  out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+  mv "$FB/orca" "$FB/orca-ide"
+  out=$( PATH="$FB:$(fm_test_base_path_sans "$PATH" orca orca-ide)" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_send_key term-123 Escape && fm_backend_orca_send_key term-123 C-u && ! fm_backend_orca_send_key term-123 C-g' "$ROOT" 2>&1 )
   status=$?
   expect_code 0 "$status" "send_key Escape and C-u should succeed and C-g should be refused"
@@ -448,7 +449,7 @@ test_send_key_escape_and_composer_keys_are_raw_bytes() {
     "send_key C-u did not send the raw Ctrl+U byte without --enter"
   case "$(cat "$LOG")" in *$'\x07'*) fail "a refused C-g must not reach orca" ;; esac
   case "$(cat "$LOG")" in *--enter*|*--interrupt*) fail "a raw key must not carry --enter or --interrupt" ;; esac
-  pass "fm_backend_orca_send_key: Escape and C-u go as raw control bytes; C-g is refused"
+  pass "fm_backend_orca_send_key: Escape and C-u go as raw control bytes through orca-ide alone; C-g is refused"
 }
 
 test_kill_is_best_effort_close() {
