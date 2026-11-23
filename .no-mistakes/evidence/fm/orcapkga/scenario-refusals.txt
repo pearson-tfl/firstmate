@@ -1,0 +1,17 @@
+== harness=commandcode: bin/fm-control.sh t1 interrupt ==
+error: harness commandcode must see its screen between interrupt presses, because a repeated Escape on an idle agent opens its revert picker, and the orca backend has no verified viewport read; refusing to press blind
+exit=1
+orca calls: 0
+== harness=devin: bin/fm-control.sh t1 interrupt ==
+error: harness devin must see its screen between interrupt presses, because a repeated Escape on an idle agent opens its revert picker, and the orca backend has no verified viewport read; refusing to press blind
+exit=1
+orca calls: 0
+== bin/fm-send.sh t1 --key C-g ==
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: unsupported Orca key 'C-g'
+error: key 'C-g' not sent to primary (orca send failed; tried meta=/tmp/fm-lab.zjCDek/state/t1.meta; backend=from-meta)
+exit=1
+orca calls: 0
+== composer still holds canary draft (no key reached the pane) ==
+❯ Run the bash command: sleep 120 && echo done
+❯ canary draft

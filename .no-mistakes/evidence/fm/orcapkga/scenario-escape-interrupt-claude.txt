@@ -1,0 +1,39 @@
+== Claude pane before interrupt (busy turn) ==
+● full  $0.26  last $0.26  4s                                                                                                 Review  Audit  Board  Details [-]
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 40.0k · 5h – · 7d 20% ↺4d4h · high · cache 59m
+  wt ⎇ task-t1 · v2.1.330 · Concise
+  ⏵⏵ bypass permissions on · 1 shell · esc to interrupt · ↓ to manage
+== FM_HOME=$LAB bin/fm-control.sh t1 interrupt ==
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.zjCDek
+interrupt-delivered t1 harness=claude backend=orca verified=endpoint cancel=unconfirmed
+exit=0
+== Claude pane after interrupt ==
+
+
+
+
+● full  $0.28  last $0.02  8s                                                                                                 Review  Audit  Board  Details [-]
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Write a 3000-word essay about lighthouses directly in your reply. No tools.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 40.0k · 5h – · 7d 20% ↺4d4h · high · cache 59m
+  wt ⎇ task-t1 · v2.1.330 · Concise
+  ⏵⏵ bypass permissions on · 1 shell
+== orca CLI calls recorded by emulator ==
+['terminal', 'send', '--terminal', 'primary', '--text', '\x1b', '--json']
+['terminal', 'read', '--terminal', 'primary', '--limit', '1', '--json']
+41:❯ Write a 3000-word essay about lighthouses directly in your reply. No tools.
+== Claude pane 10s later (no essay streamed, no busy marker) ==
+● full  $0.28  last $0.02  8s                                                                                                 Review  Audit  Board  Details [-]
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Write a 3000-word essay about lighthouses directly in your reply. No tools.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 40.0k · 5h – · 7d 20% ↺4d4h · high · cache 59m
+  wt ⎇ task-t1 · v2.1.330 · Concise
+  ⏵⏵ bypass permissions on · 1 shell

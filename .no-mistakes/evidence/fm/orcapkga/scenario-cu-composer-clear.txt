@@ -1,0 +1,16 @@
+== composer before fm-send --key C-u ==
+41:❯ draft text that C-u should clear
+== FM_HOME=$LAB bin/fm-send.sh t1 --key C-u ==
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.zjCDek
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+exit=0
+== composer after ==
+41:❯ 
+== orca CLI calls recorded by emulator ==
+['terminal', 'send', '--terminal', 'primary', '--text', '\x15', '--json']
