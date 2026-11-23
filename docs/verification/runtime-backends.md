@@ -2504,6 +2504,7 @@ Stand-in shell programs played the agent; no agent was signed in, and Pi 1.2.0 a
 | Check | Observed |
 |---|---|
 | `fm_backend_orca_tool_check`, `fm_backend_orca_runtime_check`, `fm_backend_orca_repo_ensure`, `fm_backend_orca_worktree_create`, `fm_backend_orca_worktree_path`, `fm_backend_orca_terminal_create` | each `rc=0`; no startup terminal returned, so the adapter created one |
+| `fm_backend_orca_repo_ensure` then `fm_backend_orca_worktree_create` output | `repo_id=<uuid>`; `worktree_id=<repo uuid>::<worktree path>` and `worktree_path=<that same worktree path>`, where the repo uuid matched `repo_id` |
 | The created worktree | listed by `git worktree list` on a new branch named for the task; its `.git` is a file (linked worktree) |
 | `fm_backend_orca_send_text_line` then `fm_backend_orca_capture` | `hello-orca-42` and the worktree path read back |
 | `fm_backend_orca_send_key C-c` against a running `sleep` | `rc=0`; `kill -0` on the process then returned 1 |
