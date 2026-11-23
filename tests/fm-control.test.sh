@@ -639,6 +639,7 @@ SH
   out=$(run_control "$dir" t1 interrupt); rc=$?
   expect_code 0 "$rc" "an Escape harness on orca should deliver Escape"
   assert_contains "$out" "interrupt-delivered t1 harness=claude backend=orca" "interrupt should report delivery on orca"
+  assert_contains "$out" "cancel=unconfirmed" "orca has no agent-state read, so the cancel must be reported unconfirmed"
   assert_contains "$(cat "$dir/fake/orca-calls")" "033" "interrupt did not send the raw Escape byte"
   pass "fm-control interrupt: an Escape harness on orca gets a raw Escape byte"
 

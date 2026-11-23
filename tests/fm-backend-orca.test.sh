@@ -341,10 +341,13 @@ test_send_key_refuses_unknown_key() {
 }
 
 test_send_key_escape_and_composer_keys_are_raw_bytes() {
+  local out status
   orca_case send-key-raw
-  PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
-    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_send_key term-123 Escape && fm_backend_orca_send_key term-123 C-u && fm_backend_orca_send_key term-123 C-g' "$ROOT"
-  expect_code 0 $? "send_key Escape, C-u and C-g should succeed"
+  out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_send_key term-123 Escape && fm_backend_orca_send_key term-123 C-u && fm_backend_orca_send_key term-123 C-g' "$ROOT" 2>&1 )
+  status=$?
+  expect_code 0 "$status" "send_key Escape, C-u and C-g should succeed"
+  case "$out" in *"unsupported Orca key"*) fail "send_key still refuses a raw key: $out" ;; esac
   assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''send'$'\x1f''--terminal'$'\x1f''term-123'$'\x1f''--text'$'\x1f\x1b\x1f''--json' \
     "send_key Escape did not send the raw Escape byte without --enter"
   assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''send'$'\x1f''--terminal'$'\x1f''term-123'$'\x1f''--text'$'\x1f\x15\x1f''--json' \
