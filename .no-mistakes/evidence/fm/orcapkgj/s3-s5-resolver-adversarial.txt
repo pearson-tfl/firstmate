@@ -1,0 +1,17 @@
+## S3 GNOME screen reader 'orca' first on PATH + paired-server install in ~/.orca/cli/bin
+resolved: ~/.orca/cli/bin/orca-ide
+runtime-ready
+tool-available
+gnome orca invocations: none
+
+## S4 macOS shape: bare 'orca' only on PATH, no orca-ide, no paired install
+resolved: <tmp>/mac/orca
+runtime-ready
+tool-available
+mac orca invocations: mac orca invoked: status --json
+
+## S5 nothing installed: no orca, no orca-ide, no paired install
+bin rc=1
+error: backend=orca selected but the Orca CLI was not found: neither 'orca' nor 'orca-ide' is on PATH and <tmp>/nonexistent is absent
+runtime rc=1
+tool rc=1

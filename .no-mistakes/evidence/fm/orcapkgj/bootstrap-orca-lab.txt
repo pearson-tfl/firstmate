@@ -1,0 +1,6 @@
+## B1 backend=orca, real paired-server install in ~/.orca/cli/bin, neither name on PATH
+exit=0
+
+## B2 backend=orca, no Orca CLI anywhere (bundle override to nonexistent)
+MISSING_MANUAL: orca (instructions: docs/orca-backend.md (orca-ide or a paired Orca server on Linux, never GNOME's orca))
+exit=0

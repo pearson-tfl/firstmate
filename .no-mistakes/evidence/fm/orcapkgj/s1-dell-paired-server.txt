@@ -1,0 +1,5 @@
+$ env -i HOME=$HOME PATH=/usr/local/bin:/usr/bin:/bin bash -c ". bin/fm-backend.sh; fm_backend_source orca; fm_backend_orca_bin; fm_backend_orca_runtime_check && echo runtime-ready; fm_backend_required_tool_available orca orca && echo tool-available"
+~/.orca/cli/bin/orca-ide
+runtime-ready
+tool-available
+exit=0
