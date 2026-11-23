@@ -20,7 +20,8 @@ GUARD="$ROOT/tests/fm-backend-orca-live-e2e.test.sh"
 # the screen a tmux client attached to a live session would show; in `login`
 # mode it shows a login shell's own prompt, as when SHELL was ignored; in
 # `own-orca` mode it is the `own` shell read the way Orca 1.4.271 returns
-# rows, with the space after the prompt dropped.
+# rows, with the space after the prompt dropped. Like Orca, a read reports
+# source "screen" only for --screen, which the adapter requires.
 make_fake() {
   local dir=$1 mode=$2
   mkdir -p "$dir/bin" "$dir/state"
@@ -182,6 +183,7 @@ for mode in foreign login; do
   run_guard "$D"
   assert_not_equals 0 "$RC" "a $mode terminal must fail the lane"
   assert_contains "$ERR" "refusing to send" "a $mode terminal must be named as the reason"
+  assert_not_contains "$ERR" "(last row: '')" "a $mode refusal must come from the screen it read, not an unreadable one"
   ! grep -q 'terminal send' "$D/state/log" || fail "a key reached a $mode terminal that is not the lane's own shell"
   assert_grep 'worktree rm' "$D/state/log" "a refused $mode run must still release its worktree"
   serve_stopped "$D"

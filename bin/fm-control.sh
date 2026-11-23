@@ -535,6 +535,7 @@ dismiss_interrupt_hazard() {  # <key> <ere>
 # only after the viewport proves the first one armed a running turn, and never
 # sooner than its press gap; without that proof INTERRUPT_ARMED=no and no
 # further press is sent. Its hazard surface is then closed before returning.
+# Such an adapter is refused on orca before any press.
 send_interrupt_keys() {
   local key repeat clear arm hazard gap i=0
   key=$(fm_control_interrupt_key "$HARNESS")
@@ -549,6 +550,9 @@ send_interrupt_keys() {
     || die "harness $HARNESS needs $clear to clear its composer after an interrupt, which the $BACKEND backend cannot deliver; refusing to leave the cancelled prompt where the next submitted line would concatenate onto it"
   [ -z "$arm$hazard" ] || fm_backend_visible_capture_supported "$BACKEND" \
     || die "harness $HARNESS must see its screen between interrupt presses, because a repeated $key on an idle agent opens its revert picker, and the $BACKEND backend has no verified viewport read; refusing to press blind"
+  # Orca's screen read has never been verified with a real Devin or Command Code on it.
+  [ -z "$arm$hazard" ] || [ "$BACKEND" != orca ] \
+    || die "harness $HARNESS must see its screen between interrupt presses, because a repeated $key on an idle agent opens its revert picker, and the orca screen read has never been verified with a real $HARNESS on it, so it is no verified viewport read for this harness; refusing to press blind"
   INTERRUPT_ARMED=yes
   INTERRUPT_HAZARD=none
   while [ "$i" -lt "$repeat" ]; do
