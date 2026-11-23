@@ -110,7 +110,7 @@ Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ende
 
 ## Agent state
 
-Agent state and busy come from Orca itself, not from the screen: `orca agent list` names each terminal agent on its pane with a state that Orca's status hooks report - working, waiting, or done - from the agent's first report until it ends (real Orca).
+Agent state and busy come from Orca itself, not from the screen: `orca agent list` names each terminal agent on its pane with a state that Orca's status hooks report - working, waiting, blocked, or done - from the agent's first report until it ends (real Orca).
 The adapter matches the recorded terminal's pane through `orca terminal show` and reads the newest terminal entry there (fake Orca).
 Working reads busy, done reads idle, and waiting or blocked reads as an agent held on a question such as a permission or trust prompt (real Orca).
 `fm-crew-state.sh` reports that wait as `parked` with `waiting for input`, ahead of Firstmate's own turn record, which still reads busy while Claude waits on a permission prompt (real Orca).
@@ -121,8 +121,8 @@ A running terminal with no listed agent reads unverified, as before: a harness O
 Firstmate's Orca launch ends the terminal with the agent: the staged launch file exits the pane shell once the worker returns, while a refused launch keeps the shell (fake Orca).
 An ended terminal reads `exited`, and a handle Orca no longer knows answers `terminal_handle_stale`; both read as a gone endpoint (real Orca).
 `orca terminal wait --for exit` reports the same end but not a trustworthy exit code (real Orca), so nothing here reads that code.
-Claude, Pi, and Oh My Pi each read busy then idle through a real turn, Claude read waiting on a permission prompt, and Oh My Pi read waiting for input on its interactive question box (real Orca).
-Pi has no interactive question tool and asks no permission questions, so waiting for input is unsupported for Pi on Orca; its busy, idle, and gone states remain proved (real Orca).
+The [agent-state verification](verification/runtime-backends.md#orca-agent-state) records the real Claude, Pi, and Oh My Pi checks.
+Waiting for input is unsupported for Pi on Orca; its busy, idle, and gone states are verified (real Orca).
 
 ## Active limits
 

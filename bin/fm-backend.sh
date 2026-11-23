@@ -1217,13 +1217,13 @@ fm_backend_worktree_path() {  # <backend> <worktree-id>
   esac
 }
 
-# fm_backend_busy_state: native busy/idle/unknown for Herdr, Rex, T3 Code, Tern,
+# fm_backend_busy_state: native busy/idle/blocked/unknown for Herdr, Rex, T3 Code, Tern,
 # and Orca; backends without a native primitive report unknown. Recorded-task consumers
 # use fm-busy-lib.sh's shared classifier, which owns native-state precedence
 # and harness fallbacks. Delivery-only callers own their separate guards.
 # tern reads Tern's native agent list through `tern ctl` when a desktop window
 # answers (an agent waiting on input reads `blocked`) and reports unknown when
-# none does; every consumer here tests only for the exact word `busy`.
+# none does; bin/fm-busy-lib.sh accepts only the exact word `busy` as activity.
 # orca reads Orca's hook-fed agent listing (bin/backends/orca.sh), where an
 # agent held on a question also reads `blocked`.
 fm_backend_busy_state() {  # <backend> <target>

@@ -2572,7 +2572,7 @@ No worktree, terminal, or agent was created on the server, so the spawn, steer, 
 
 Verified on 2026-11-23 on macOS against the desktop app's Orca 1.4.271, in a scratch repository, worktree, and terminals the check created and then removed, with Claude Code 2.1.331 (Haiku 5.5, `--permission-mode default`), Pi, and Oh My Pi signed in on subscriptions.
 Each agent was started in its own Orca terminal; Claude's final run used a launch file ending in `exit`, as `fm-spawn.sh` stages it.
-Branch `fm/ahrorca-f` was copied to the Mac and read through `fm_backend_busy_state`, `fm_backend_agent_state`, and `fm-crew-state.sh` for a scratch task record naming that terminal.
+The adapter was read through `fm_backend_busy_state`, `fm_backend_agent_state`, and `fm-crew-state.sh` for a scratch task record naming that terminal.
 
 ```sh
 orca agent list --worktree id:<worktree-id> --json   # .result.agents[] state and paneKey
