@@ -714,9 +714,9 @@ test_active_dispatch_profile_allows_raw_launch_command() {
   assert_meta_profile "$HOME_DIR/state/$id.meta" custom-agent default default
   launch=$(cat "$LAUNCH_LOG")
   # The unverified-adapter escape hatch is still an agent this fleet launched,
-  # so it carries the compact-adviser floor and the AI-trailer strip; nothing
-  # else may rewrite the captain's own command.
-  [ "$launch" = "$(fm_test_worker_tmux_isolation "$id")export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$HOME_DIR" "$id")unset FM_LOCK_HOLDER FM_LOCK_RECEIPT; $(fm_test_launch_git_prefix "$launch")custom-agent --flag" ] || fail "raw launch command changed"$'\n'"actual: $launch"
+  # so it carries the compact-adviser floor, the AI-trailer strip, and the
+  # launch-home prefix; nothing else may rewrite the captain's own command.
+  [ "$launch" = "$(fm_test_worker_tmux_isolation "$id")export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$HOME_DIR" "$id")unset FM_LOCK_HOLDER FM_LOCK_RECEIPT; $(fm_test_launch_git_prefix "$launch")$(fm_test_launch_home_prefix "$HOME_DIR")custom-agent --flag" ] || fail "raw launch command changed"$'\n'"actual: $launch"
   pass "active crew-dispatch profile allows the raw launch-command escape hatch"
 }
 
@@ -2660,7 +2660,7 @@ claude_expected_launch() {  # <launch> <home> <id> <permission-flag>
   # Every Claude spawn fixes its agent session id; the canonical launch carries
   # the one the task record holds, just before the launch prompt.
   session=$(recorded_session_flag "$2/state/$3.meta")
-  printf '%s' "$(fm_test_worker_tmux_isolation "$3")export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$2" "$3")unset FM_LOCK_HOLDER FM_LOCK_RECEIPT; $(fm_test_launch_git_prefix "$1")${editor_env}env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER -u FM_LOCK_RECEIPT env -u NO_COLOR -u FORCE_COLOR CLAUDE_CODE_DISABLE_WORKFLOWS=1 CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude $4 $(claude_worker_add_dirs "$2" "$3")--name '$3' --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false},\"disableWorkflows\":true}' $CLAUDE_CONTROL_CHANNEL_FLAG $session$quoted"
+  printf '%s' "$(fm_test_worker_tmux_isolation "$3")export COMPACT_ADVISER_DISABLE=1; $(task_inbox_export "$2" "$3")unset FM_LOCK_HOLDER FM_LOCK_RECEIPT; $(fm_test_launch_git_prefix "$1")$(fm_test_launch_home_prefix "$2")${editor_env}env -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u GEMINI_CLI -u FM_LOCK_HOLDER -u FM_LOCK_RECEIPT env -u NO_COLOR -u FORCE_COLOR CLAUDE_CODE_DISABLE_WORKFLOWS=1 CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLAUDE_CODE_SEND_FEEDBACK=0 claude $4 $(claude_worker_add_dirs "$2" "$3")--name '$3' --settings '{\"feedbackDrafts\":\"off\",\"attribution\":{\"commit\":\"\",\"pr\":\"\",\"sessionUrl\":false},\"disableWorkflows\":true}' $CLAUDE_CONTROL_CHANNEL_FLAG $session$quoted"
 }
 
 test_claude_permission_mode_absent_defaults_to_bypass() {
