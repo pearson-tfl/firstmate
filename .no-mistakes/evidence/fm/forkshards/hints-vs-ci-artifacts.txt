@@ -1,0 +1,12 @@
+artifact files: 112 failed script records: 2
+distinct measured serial scripts: 287 hinted: 287
+hint == slowest successful CI sample: 282
+hint != slowest sample (deliberate exceptions expected):
+  tests/fm-host-mirror.test.sh hint=11587 ci_max=266 samples=10 (documented exception)
+  tests/fm-pi-windows-shell-invocation.test.sh hint=5121 ci_max=155 samples=10 (documented exception)
+  tests/fm-supervision-host-hook.test.sh hint=403793 ci_max=301 samples=10 (documented exception)
+  tests/fm-supervision-host-park.test.sh hint=329326 ci_max=385 samples=10 (documented exception)
+  tests/fm-supervision-host.test.sh hint=435581 ci_max=547 samples=10 (documented exception)
+samples tests/fm-backend-orca-live-safety.test.sh 1
+samples tests/fm-backend-orca-live-e2e.test.sh 1
+measured-but-unhinted: []

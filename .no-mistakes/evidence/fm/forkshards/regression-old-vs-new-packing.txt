@@ -1,0 +1,22 @@
+== BASE runner (d17e8216), 11 shards, its own packing, scored with refreshed measured maxima
+serial 1/11: scripts=25 modeled_ms=1062624 (17.7 min)
+serial 2/11: scripts=25 modeled_ms=1390816 (23.2 min)
+serial 3/11: scripts=27 modeled_ms=1171604 (19.5 min)
+serial 4/11: scripts=27 modeled_ms=1283816 (21.4 min)
+serial 5/11: scripts=26 modeled_ms=1088575 (18.1 min)
+serial 6/11: scripts=27 modeled_ms=1359372 (22.7 min)
+serial 7/11: scripts=25 modeled_ms=1239169 (20.7 min)
+serial 8/11: scripts=26 modeled_ms=1345895 (22.4 min)
+serial 9/11: scripts=26 modeled_ms=1748319 (29.1 min)
+serial 10/11: scripts=26 modeled_ms=1066157 (17.8 min)
+serial 11/11: scripts=27 modeled_ms=1040007 (17.3 min)
+
+== BASE serial 9/11 members of note:
+tests/fm-remote-secondmate-lifecycle-e2e.test.sh
+tests/fm-teardown.test.sh
+tests/fm-watch-arm.test.sh
+
+== HEAD shard of each of those three:
+tests/fm-remote-secondmate-lifecycle-e2e.test.sh -> serial 1/13
+tests/fm-teardown.test.sh -> serial 10/13
+tests/fm-watch-arm.test.sh -> serial 12/13
