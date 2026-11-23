@@ -89,5 +89,5 @@ The portable regression drives ancestry evidence, rejects an unrelated process n
 `tests/fm-tmux-agent-liveness.test.sh` proves with real tmux processes that a `command-code` foreground reads alive and a blind cursor row still yields `empty` or `pending`, gated on that process identity.
 The live guard checks the launch brief, model, effort, identity, busy mod, user-hook coexistence, settings immutability, commit attribution, doorbell acknowledgement, idle and busy interruption, the rewind picker, exit, native resume, and relaunch.
 Zellij, Orca, and cmux were inspected through their existing backend-neutral delivery and key surfaces, not live-tested here; their composer reads carry no Command Code identity, so a steer there is not proven deliverable.
-Orca's existing lack of Escape delivery means a Command Code interrupt is refused there.
+Orca has no verified viewport read for the rewind-picker check, so a Command Code interrupt is refused there before any press.
 macOS process naming was not observed.

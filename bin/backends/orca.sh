@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # bin/backends/orca.sh - the Orca terminal session-provider adapter.
 #
-# Orca owns both the task worktree and the terminal endpoint. Escape key support
-# remains unsupported until Orca exposes a terminal-send primitive for it.
+# Orca owns both the task worktree and the terminal endpoint. Escape and Ctrl+U
+# go as raw control bytes (fm_backend_orca_send_key).
 #
 # Target string shape: the Orca terminal id accepted by `orca terminal ...`.
 
@@ -347,6 +347,14 @@ fm_backend_orca_send_key() {  # <terminal-id> <key>
       ;;
     Enter|enter)
       fm_backend_orca_run_json orca terminal send --terminal "$terminal" --text "" --enter --json
+      ;;
+    # Without --enter Orca writes --text to the PTY verbatim, so a control byte
+    # is the key itself (orca terminal send --help, Orca 1.4.271).
+    Escape|escape)
+      fm_backend_orca_run_json orca terminal send --terminal "$terminal" --text $'\x1b' --json
+      ;;
+    C-u|ctrl+u|Ctrl-u|Ctrl-U)
+      fm_backend_orca_run_json orca terminal send --terminal "$terminal" --text $'\x15' --json
       ;;
     *)
       echo "error: unsupported Orca key '$key'" >&2

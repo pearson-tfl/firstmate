@@ -340,16 +340,21 @@ test_send_key_refuses_unknown_key() {
   pass "fm_backend_orca_send_key: refuses unsupported keys loudly"
 }
 
-test_send_key_refuses_escape_until_supported() {
+test_send_key_escape_and_composer_keys_are_raw_bytes() {
   local out status
-  orca_case send-key-escape
+  orca_case send-key-raw
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
-    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_send_key term-123 Escape' "$ROOT" 2>&1 )
+    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_send_key term-123 Escape && fm_backend_orca_send_key term-123 C-u && ! fm_backend_orca_send_key term-123 C-g' "$ROOT" 2>&1 )
   status=$?
-  [ "$status" -ne 0 ] || fail "send_key should refuse Escape until Orca exposes a real Escape primitive"
-  assert_contains "$out" "unsupported Orca key 'Escape'" "send_key did not name Escape as unsupported"
-  [ ! -s "$LOG" ] || fail "unsupported Escape should not call orca terminal send"
-  pass "fm_backend_orca_send_key: refuses Escape instead of mapping it to interrupt"
+  expect_code 0 "$status" "send_key Escape and C-u should succeed and C-g should be refused"
+  assert_contains "$out" "unsupported Orca key 'C-g'" "send_key did not refuse C-g"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''send'$'\x1f''--terminal'$'\x1f''term-123'$'\x1f''--text'$'\x1f\x1b\x1f''--json' \
+    "send_key Escape did not send the raw Escape byte without --enter"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''send'$'\x1f''--terminal'$'\x1f''term-123'$'\x1f''--text'$'\x1f\x15\x1f''--json' \
+    "send_key C-u did not send the raw Ctrl+U byte without --enter"
+  case "$(cat "$LOG")" in *$'\x07'*) fail "a refused C-g must not reach orca" ;; esac
+  case "$(cat "$LOG")" in *--enter*|*--interrupt*) fail "a raw key must not carry --enter or --interrupt" ;; esac
+  pass "fm_backend_orca_send_key: Escape and C-u go as raw control bytes; C-g is refused"
 }
 
 test_kill_is_best_effort_close() {
@@ -1366,7 +1371,7 @@ test_send_text_submit_reports_send_failed
 test_send_helpers_reject_orca_error_json
 test_send_key_enter_and_interrupt
 test_send_key_refuses_unknown_key
-test_send_key_refuses_escape_until_supported
+test_send_key_escape_and_composer_keys_are_raw_bytes
 test_kill_is_best_effort_close
 test_kill_refuses_when_the_orca_cli_is_absent
 test_remove_worktree_refuses_empty_id
