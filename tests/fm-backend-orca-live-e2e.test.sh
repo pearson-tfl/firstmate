@@ -142,7 +142,8 @@ last_row() {
 }
 
 # own_shell <idle|busy>: idle wants the bare nonce prompt, busy accepts a
-# command still running after it. Polls up to WAIT_S, then refuses.
+# command still running after it, with or without the space Orca 1.4.271's
+# read drops after the prompt. Polls up to WAIT_S, then refuses.
 own_shell() {
   local want=$1 row=''
   for _ in $(seq 1 $((WAIT_S * 5))); do
@@ -150,7 +151,7 @@ own_shell() {
     row=${row%"${row##*[![:space:]]}"}
     case "$want:$row" in
       idle:"$PROMPT") return 0 ;;
-      busy:"$PROMPT "?*) return 0 ;;
+      busy:"$PROMPT"?*) return 0 ;;
     esac
     sleep 0.2
   done

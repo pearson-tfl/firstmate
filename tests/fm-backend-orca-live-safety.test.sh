@@ -18,7 +18,9 @@ GUARD="$ROOT/tests/fm-backend-orca-live-e2e.test.sh"
 # environment). In `own` mode a terminal behaves like the shell SHELL names,
 # showing that wrapper's PS1; in `foreign` mode it shows an agent composer,
 # the screen a tmux client attached to a live session would show; in `login`
-# mode it shows a login shell's own prompt, as when SHELL was ignored.
+# mode it shows a login shell's own prompt, as when SHELL was ignored; in
+# `own-orca` mode it is the `own` shell read the way Orca 1.4.271 returns
+# rows, with the space after the prompt dropped.
 make_fake() {
   local dir=$1 mode=$2
   mkdir -p "$dir/bin" "$dir/state"
@@ -47,7 +49,16 @@ while [ $# -gt 0 ]; do
 done
 prompt() { sed -n "s/^PS1='\(.*\)'\$/\1/p" "$SHELL"; }
 screen_json() {  # <status>
-  node -e 'const fs=require("fs"); const t=fs.existsSync(process.argv[1])?fs.readFileSync(process.argv[1],"utf8").split("\n").filter((l,i,a)=>i<a.length-1):[]; process.stdout.write(JSON.stringify({ok:true,result:{terminal:{handle:"term_fake",status:process.argv[2],tail:t}}}))' "$S/screen" "$1"
+  local rows="$S/screen"
+  if [ "$mode" = own-orca ] && [ -f "$S/screen" ]; then
+    rows="$S/screen.read"
+    p=$(prompt)
+    while IFS= read -r l; do
+      case "$l" in "$p"*) l="${p% }${l#"$p"}" ;; esac
+      printf '%s\n' "$l"
+    done < "$S/screen" > "$rows"
+  fi
+  node -e 'const fs=require("fs"); const t=fs.existsSync(process.argv[1])?fs.readFileSync(process.argv[1],"utf8").split("\n").filter((l,i,a)=>i<a.length-1):[]; process.stdout.write(JSON.stringify({ok:true,result:{terminal:{handle:"term_fake",status:process.argv[2],tail:t}}}))' "$rows" "$1"
 }
 case "$cmd" in
   "--version ") echo 9.9.9-fake ;;
@@ -80,7 +91,7 @@ case "$cmd" in
     ;;
   "terminal create")
     case "$mode" in
-      own) prompt > "$S/screen" ;;
+      own | own-orca) prompt > "$S/screen" ;;
       foreign) printf '● Kneading…\n❯ \n' > "$S/screen" ;;
       login) printf 'bash-3.2$ \n' > "$S/screen" ;;
     esac
@@ -153,6 +164,16 @@ assert_grep '--interrupt' "$D/state/log" "the own-shell lane must send Ctrl-C"
 assert_grep 'terminal close' "$D/state/log" "the lane must close its terminal"
 serve_stopped "$D"
 pass "orca live lane: the runtime never sees SSH_*, TMUX or Orca identity, and a run in its own shell completes and stops the runtime"
+
+# --- own shell as Orca 1.4.271 reads it: no space after the prompt ---------
+D="$TMP_ROOT/own-orca"; make_fake "$D" own-orca
+run_guard "$D"
+expect_code 0 "$RC" "own-shell lane run on Orca-style reads (stderr: $ERR)"
+# The Enter key is an empty --text, logged as two spaces.
+assert_grep 'orca terminal send --terminal term_fake --text  --enter' "$D/state/log" "the lane must press Enter after a literal send"
+assert_grep '--interrupt' "$D/state/log" "the lane must reach Ctrl-C on Orca-style reads"
+serve_stopped "$D"
+pass "orca live lane: its own shell still passes when Orca's read drops the space after the prompt"
 
 # --- foreign screen: nothing sent, everything released ----------------------
 for mode in foreign login; do
