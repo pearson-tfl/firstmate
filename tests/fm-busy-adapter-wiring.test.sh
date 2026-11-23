@@ -356,6 +356,8 @@ test_claude_hooks_semantic_lifecycle() {
   for ev in UserPromptSubmit Stop StopFailure SessionEnd; do
     jq -e ".hooks[\"$ev\"]" "$settings" >/dev/null || fail "claude hook settings lack $ev"
   done
+  jq -e 'has("disableAgentView") | not' "$settings" >/dev/null \
+    || fail "a claude crewmate's settings must leave agent view to the session, not disable it"
 
   out=$(classify claude "$id" "$state")
   [ "$out" = "busy fm-spawn" ] || fail "seed after spawn must be 'busy fm-spawn', got '$out'"
@@ -696,6 +698,8 @@ test_secondmate_claude_spawn_arms_busy_for_the_stall_gate() {
   launch=$(cat "$case_dir/launch.log")
   assert_present "$state/$id.busy-state" "claude secondmate spawn did not arm the busy contract"
   assert_present "$settings" "claude secondmate spawn did not write hook settings"
+  jq -e '.disableAgentView == true' "$settings" >/dev/null \
+    || fail "claude secondmate settings must disable agent view so a stray Left arrow cannot background the seat"
   assert_contains "$launch" "--settings '$settings'" \
     "claude secondmate launch did not pass the state settings file"
   [ ! -e "$sm/.claude/settings.local.json" ] \

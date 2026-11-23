@@ -1377,6 +1377,8 @@ For omp secondmate launches, `fm-spawn.sh` names only the parent home's `state/<
 
 For a Claude secondmate, `fm-spawn.sh` writes the busy hooks into the parent home's `state/<id>.claude-settings.json` and passes that file as Claude Code's one `--settings` value.
 The same file carries `feedbackDrafts` and, unless `config/keep-ai-trailers` is present, the attribution policy every other Claude launch puts in its inline `--settings` JSON.
+Only a secondmate's file also carries `disableAgentView`, because Claude Code otherwise moves an idle seat into agent view on a Left arrow at an empty prompt, and a seat outside its pane cannot be rotated.
+Claude Code reads that key only at launch, so a running seat gains the guard at its next launch.
 Claude Code applies `--settings` for that session and does not write the file into the mate home.
 A key the file sets overrides the same key in user, project, and local settings.
 A key it omits keeps the file-based value, so a `.claude/settings.local.json` already in the home is left untouched.
