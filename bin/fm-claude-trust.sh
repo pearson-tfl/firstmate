@@ -115,17 +115,14 @@
 # in-project pool), so a prefix check would refuse legitimate roots, accept
 # whatever a mutable env var names, and add exactly the policy surface this
 # registration must not grow. The structural test is verified for treehouse
-# worktrees, which are linked git worktrees. Orca's worktree shape is UNVERIFIED:
-# docs/orca-backend.md calls it an "independent worktree", which does not
-# establish a shared git common dir, and orca is macOS-only and was not installed
-# where this was written. If Orca clones instead of linking, its git dir equals
-# its common dir, so this refuses it as a primary checkout and an orca claude
-# spawn fails loudly here rather than wedging on the dialog later. fm-spawn.sh's
-# own validate_spawn_worktree would not catch that case first: it compares the
-# worktree root against the primary and never compares common dirs, so an
-# independent clone passes it. Close this on a box that has Orca through the live
-# opt-in guard family (FM_*_LIVE_E2E=1) and record the result in
-# docs/verification/runtime-backends.md, rather than assuming the shape here.
+# worktrees, which are linked git worktrees. Real Orca 1.4.271 also creates a
+# linked git worktree (docs/verification/runtime-backends.md "Orca"), but this
+# check has not yet run against one. If a future Orca clones instead of linking,
+# its git dir equals its common dir, so this refuses it as a primary checkout and
+# an orca claude spawn fails loudly here rather than wedging on the dialog later.
+# fm-spawn.sh's own validate_spawn_worktree would not catch that case first: it
+# compares the worktree root against the primary and never compares common dirs,
+# so an independent clone passes it. Do not assume the shape here.
 #
 # SECONDMATE-HOME MODE. A secondmate home is a whole firstmate instance rather
 # than a task worktree, and bin/fm-home-seed.sh produces it in two shapes: a
