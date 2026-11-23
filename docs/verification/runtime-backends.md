@@ -2550,7 +2550,7 @@ The fake-Orca cases execute the real staged launch file under synthetic personal
 ### Real-Orca lane
 
 `tests/fm-backend-orca-live-e2e.test.sh` is the refresh command for this section on each Orca release: it drives the adapter against a disposable `orca serve` runtime it starts and stops itself, and its header owns the safeguards that keep it off the operator's live terminals.
-It is opt-in, with `FM_ORCA_LIVE_E2E=1`, and has not yet passed against a real Orca, so the 1.4.116 readiness result above stays the only real-Orca record here.
+It is opt-in, with `FM_ORCA_LIVE_E2E=1`, and has not yet passed against a real Orca, so the readiness and building-block results above stay the only real-Orca records here.
 
 On 2026-11-23 an ungated scratch-runtime probe on macOS with Orca 1.4.271, run over ssh, showed why the safeguards exist.
 The Orca terminal started the operator's own login shell, which inherited `SSH_CONNECTION` from the runtime and ran a login rule that attached it to the operator's live default tmux server, so keys sent to the scratch terminal reached a live agent session.
