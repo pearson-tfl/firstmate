@@ -241,7 +241,7 @@ Backend capability comes from each adapter's real surface, not from a policy cho
 | herdr | yes | yes | yes | yes | yes | yes |
 | zellij | yes | yes | yes | yes | no | no |
 | cmux | yes | yes | yes | yes | no | no |
-| orca | no | yes | yes | no | no | no |
+| orca | yes | yes | yes | yes | no | no |
 | paseo | yes | yes | yes | yes | no | no |
 | rex | yes | yes | yes | yes | yes | yes |
 | t3code | yes | yes | yes | no | yes | no |
