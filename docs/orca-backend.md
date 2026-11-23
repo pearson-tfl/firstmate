@@ -45,8 +45,8 @@ Open the Orca app to watch a task's terminal.
 Routine supervision uses the recorded endpoint through `bin/fm-peek.sh <id>` and `FM_HOME=<home> bin/fm-send.sh <id> '<text>'`.
 The adapter sends text and Enter in one send and sends Ctrl-C (real Orca).
 Its separate Enter key, which the submit retries use, sends empty text with Enter (code).
-The adapter refuses Escape as a key (real Orca) and refuses Ctrl-U as a key (code).
 Orca itself writes raw control bytes such as Escape and Ctrl-U when text is sent without Enter (real Orca).
+The adapter sends Escape, Ctrl-U, and Ctrl-G as keys through that path, as raw control bytes (code).
 The adapter's typed steer writes its text without Enter, so control bytes inside a steer's text pass through (code).
 
 An Orca terminal opens your normal login shell in your real home folder with your personal shell startup files, and a variable set in the environment Orca starts from reaches every new terminal (real Orca).
@@ -109,7 +109,7 @@ Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ende
 - The backend is explicit-only and has been exercised only on macOS.
 - The app must be running and report ready.
 - Secondmate spawns are unsupported (code).
-- The adapter refuses Escape (real Orca) and Ctrl-U (code), so `fm-control.sh interrupt` refuses a harness that interrupts with Escape (real Orca); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
+- An interrupt is reported delivered with its cancellation unconfirmed, and a Devin interrupt is refused because Orca has no verified viewport read between its two presses (code); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
 - Orca has no recovery-grade agent-state classifier, so `exit` and `relaunch` refuse (code).
 - Kimi is refused at spawn preflight because the backend has no viewport-only capture, and Cortex and Command Code are refused because Orca supplies no pane identity for their composers (code).
 - Firstmate checks readiness, not Orca's version (code).
