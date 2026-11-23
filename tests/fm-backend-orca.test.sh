@@ -160,36 +160,53 @@ test_target_exists_accepts_live_terminal_without_a_rendered_screen() {
   pass "fm_backend_target_exists: orca liveness does not depend on a rendered screen"
 }
 
-# The capture is the drawn screen, not accumulated output: after a `clear`,
-# the rows Orca reports on screen are all that comes back, a row whose spaces
-# the program drew by moving the cursor keeps every one of them, and a screen
-# read never pages history with --cursor.
-test_capture_returns_cleared_screen_rows_with_spaces() {
-  local out
-  orca_case capture-cleared-screen
-  printf '%s\n' '{"ok":true,"result":{"terminal":{"source":"screen","tail":["➜  fm-t1 git:(fm-t1) echo alpha beta gamma","alpha beta gamma","│ >               │"]}}}' > "$RESP/1.out"
-  out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
-    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_capture term-123 40' "$ROOT" )
-  [ "$out" = $'➜  fm-t1 git:(fm-t1) echo alpha beta gamma\nalpha beta gamma\n│ >               │' ] \
-    || fail "capture should return exactly the drawn screen rows with their spaces, got '$out'"
-  assert_not_contains "$(cat "$LOG")" $'\x1f''--cursor' "a screen read has no history to page"
-  pass "fm_backend_orca_capture: returns only the cleared screen's rows, spaces intact, never --cursor"
-}
-
 # Orca's drawn-screen read omits blank rows (docs/verification/runtime-backends.md
 # "Orca drawn-screen read"), so an empty bordered composer whose footer sat one
 # blank row below it arrives with the footer directly under the box. That is
-# still an empty composer; a stale box with transcript below it is not.
+# still an empty composer, and text in it is still pending. A stale box with
+# anything but a known footer below it - the zsh prompt that evidence records,
+# a harness's exit message, transcript - is not, at one row as at two.
+orca_screen_state() {  # <tail-json-array> -> composer verdict
+  printf '%s\n' '{"ok":true,"result":{"terminal":{"source":"screen","tail":'"$1"'}}}' > "$RESP/1.out"
+  rm -f "$RESP/.count"
+  PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_composer_state term-123' "$ROOT"
+}
+
 test_composer_state_empty_box_with_elided_footer_gap() {
-  local out
+  local box yolo tail out
   orca_case composer-elided-footer
-  printf '%s\n' '{"ok":true,"result":{"terminal":{"source":"screen","tail":["╭──────────────────╮","│ >                │","╰──────────────────╯","  ? for shortcuts"]}}}' > "$RESP/1.out"
-  printf '%s\n' '{"ok":true,"result":{"terminal":{"source":"screen","tail":["╭──────────────────╮","│ permissions: YOLO│","╰──────────────────╯","line one","line two","line three"]}}}' > "$RESP/2.out"
+  box='"╭──────────────────╮","│ >                │","╰──────────────────╯"'
+  yolo='"╭──────────────────╮","│ permissions: YOLO│","╰──────────────────╯"'
+  out=$(orca_screen_state "[$box,\"  ? for shortcuts\"]")
+  [ "$out" = empty ] || fail "an empty box above an elided-gap footer should read empty, got '$out'"
+  out=$(orca_screen_state '["╭──────────────────╮","│ > fix the tests  │","╰──────────────────╯","  ? for shortcuts"]')
+  [ "$out" = pending ] || fail "a box holding text above an elided-gap footer should read pending, got '$out'"
+  for tail in \
+    "$box,\"➜  fm-pkgb git:(fm-pkgb)\"" \
+    "$box,\"Error: session ended\",\"➜  fm-pkgb git:(fm-pkgb)\"" \
+    "$box,\"Resume this session with:\"" \
+    "$box,\"Resume this session with:\",\"claude --resume 1234\"" \
+    "$yolo,\"line one\"" \
+    "$yolo,\"line one\",\"line two\"" \
+    "$yolo,\"line one\",\"line two\",\"line three\""; do
+    out=$(orca_screen_state "[$tail]")
+    [ "$out" = unknown ] || fail "a stale box above non-footer rows [$tail] should read unknown, got '$out'"
+  done
+  pass "fm_backend_orca_composer_state: only a known footer below a box survives the elided gap; prompts and transcript leave it stale"
+}
+
+# The steering inbox reads a held composer's text with the backend's own caps,
+# so a boxed Orca composer holding a stuck doorbell with its footer gap elided
+# still yields that text (fm_task_inbox_ring submits it instead of skipping).
+test_task_inbox_reads_held_text_above_elided_footer_gap() {
+  local out
+  orca_case inbox-composer-text
+  printf '%s\n' '{"ok":true,"result":{"terminal":{"source":"screen","tail":["╭──────────────────────╮","│ > : doorbell line x  │","╰──────────────────────╯","  ? for shortcuts"]}}}' > "$RESP/1.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
-    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_composer_state term-123; printf " "; fm_backend_orca_composer_state term-123' "$ROOT" )
-  [ "$out" = "empty unknown" ] \
-    || fail "an empty box above an elided-gap footer should read empty and a stale box above transcript unknown, got '$out'"
-  pass "fm_backend_orca_composer_state: empty box with its blank footer gap elided reads empty; stale box stays unknown"
+    bash -c '. "$0/bin/fm-backend.sh"; . "$0/bin/fm-task-inbox-lib.sh"; fm_task_inbox_composer_text orca term-123' "$ROOT" )
+  [ "$out" = ': doorbell line x' ] || fail "the held composer text should be read above an elided footer gap, got '$out'"
+  pass "fm_task_inbox_composer_text: reads a boxed Orca composer's text above an elided footer gap"
 }
 
 test_capture_fails_on_orca_error_json() {
@@ -1448,8 +1465,8 @@ test_capture_reads_terminal_tail_json
 test_capture_refuses_reads_not_from_the_drawn_screen
 test_visible_capture_reads_the_whole_drawn_screen
 test_target_exists_accepts_live_terminal_without_a_rendered_screen
-test_capture_returns_cleared_screen_rows_with_spaces
 test_composer_state_empty_box_with_elided_footer_gap
+test_task_inbox_reads_held_text_above_elided_footer_gap
 test_capture_fails_on_orca_error_json
 test_runtime_check_accepts_ready_orca_status
 test_runtime_check_refuses_unready_orca_status

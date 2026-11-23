@@ -438,14 +438,15 @@ fm_task_inbox_squash() {  # <text>
 # Claude's picker footer "Esc to cancel": trust, exit, /model) whose next Enter
 # would answer it.
 fm_task_inbox_composer_text() {  # <backend> <target> [expected-label]
-  local cap
+  local cap caps=styled=0
   fm_backend_source "$1" || return 1
+  [ "$1" != orca ] || caps=$(fm_backend_orca_composer_caps)
   cap=$(fm_backend_capture "$1" "$2" "$FM_COMPOSER_CAPTURE_LINES" "${3:-}" 2>/dev/null) || return 1
   ! fm_composer_blocking_dialog "$cap" >/dev/null || return 1
   ! printf '%s\n' "$cap" | fm_composer_strip_ansi | LC_ALL=C awk '
     /[^ \t\r]/ { last = $0 }
     END { exit !(last ~ /Esc to cancel[ \t\r]*$/) }' || return 1
-  fm_composer_extract_selected_content styled=0 "$cap"
+  fm_composer_extract_selected_content "$caps" "$cap"
 }
 
 # Whether the composer's content, ignoring line wrapping, is exactly <line>.

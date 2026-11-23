@@ -50,8 +50,11 @@
 #               the blank row that separates an envelope from its footer is
 #               gone. Without a cursor, an envelope whose following rows run
 #               to the screen's end, number at most
-#               FM_COMPOSER_ELIDED_FOOTER_MAX, and carry no box edge or agent
-#               glyph keeps those rows as footer instead of reading stale.
+#               FM_COMPOSER_ELIDED_FOOTER_MAX, and are each a known footer
+#               shape (FM_COMPOSER_SHORTCUTS_FOOTER_RE_DEFAULT or
+#               _fm_composer_row_is_composer_furniture's own rows) keeps those
+#               rows as footer instead of reading stale. Any other row (a
+#               shell prompt, an error, transcript) leaves the envelope stale.
 #   rows=<n>    the capture's bounded row count (informational).
 #
 # THE STRICT BLANK-ROW RULE (captain decision blank-row-injection-posture,
@@ -663,6 +666,11 @@ FM_COMPOSER_LEFTBAR_FOOTER_RE_DEFAULT='^(Build|Plan)[[:space:]]+·[[:space:]]+'
 # is deliberately not matched - and the marker is quantifier-free so the same
 # bytes match under LC_ALL=C as under a UTF-8 locale.
 FM_COMPOSER_MODE_HINT_RE_DEFAULT='^[[:space:]]*(⏵|⏸)'
+# The idle help footer several harnesses draw below their composer:
+# `? for shortcuts` (claude; agy 1.2.0), `? for shortcuts.` (rovo) and
+# `? for shortcuts · taste on` (Command Code 1.74.1). Consulted only as a
+# blanks=elided footer row (see the capability model above).
+FM_COMPOSER_SHORTCUTS_FOOTER_RE_DEFAULT='^\?[[:space:]]+for[[:space:]]+shortcuts([^[:alnum:]]|$)'
 # omp (Oh My Pi) draws a one-row status line directly BELOW its borderless
 # composer: an identity or spinner cell, then middle-dot separated model, path,
 # git, and context cells. Verified live through Herdr on omp 18.1.11:
@@ -2009,8 +2017,9 @@ _fm_composer_bare_rule_sandwich() {  # <plain-screen> <row>
   return 0
 }
 
-_fm_composer_select_cursorless() {
-  local plain=$1 generic=-1 next boundary raw trimmed glyph bare footer=0
+_fm_composer_select_cursorless() {  # <plain> <caps>
+  local plain=$1 generic=-1 next boundary raw trimmed glyph bare footer=0 elided=0
+  case $'\n'"$2"$'\n' in *$'\n'blanks=elided$'\n'*) elided=1 ;; esac
   FM_COMPOSER_SELECTED_KIND=
   FM_COMPOSER_SELECTED_FIRST=-1
   FM_COMPOSER_SELECTED_LAST=-1
@@ -2128,7 +2137,7 @@ _fm_composer_select_cursorless() {
     trimmed=$raw
     fm_composer_normalize_trim_var trimmed
     if [ -n "$trimmed" ] && ! fm_composer_row_has_edge "$trimmed" \
-       && ! { [ "${FM_COMPOSER_BLANKS_ELIDED:-0}" = 1 ] \
+       && ! { [ "$elided" = 1 ] \
               && _fm_composer_elided_footer_tail "$plain" "$next"; }; then
       FM_COMPOSER_SELECTED_KIND=
       return 1
@@ -2141,15 +2150,15 @@ _fm_composer_select_cursorless() {
 # envelope's footer on a blanks=elided capture (rule in the header).
 FM_COMPOSER_ELIDED_FOOTER_MAX=2
 _fm_composer_elided_footer_tail() {  # <plain> <start>
-  local plain=$1 row=$2 trimmed glyph n=0
+  local plain=$1 row=$2 trimmed n=0
   while :; do
     trimmed=$(_fm_composer_screen_row "$row" "$plain")
     fm_composer_normalize_trim_var trimmed
     [ -n "$trimmed" ] || break
     n=$((n + 1))
     [ "$n" -le "$FM_COMPOSER_ELIDED_FOOTER_MAX" ] || return 1
-    fm_composer_row_has_edge "$trimmed" && return 1
-    fm_composer_leading_agent_glyph_var glyph "$trimmed" && return 1
+    fm_composer_idle_matches "$trimmed" "$FM_COMPOSER_SHORTCUTS_FOOTER_RE_DEFAULT" sensitive \
+      || _fm_composer_row_is_composer_furniture "$trimmed" '' || return 1
     row=$((row + 1))
   done
   [ "$n" -ge 1 ]
@@ -2166,7 +2175,7 @@ $caps
 EOF
   plain=$(printf '%s\n' "$screen" | fm_composer_strip_ansi)
   _fm_composer_scan_screen "$plain" '' 1
-  _fm_composer_select_cursorless "$plain" || return 1
+  _fm_composer_select_cursorless "$plain" "$caps" || return 1
   row=$FM_COMPOSER_SELECTED_FIRST
   cwd_start=-1
   if [ "$FM_COMPOSER_SELECTED_KIND" = leftbar ]; then
@@ -2313,8 +2322,6 @@ fm_composer_dialog_sink_release() {
 fm_composer_classify_screen() {  # <caps> <screen> [cursor_row] [identity]
   local caps=$1 screen=$2 cy=${3:-} identity=${4:-}
   local styled=0 cursor=0 has_identity=0 cortex_proven=0 cortex_ask=0 kv plain
-  # Dynamically scoped for _fm_composer_select_cursorless; see its staleness probe.
-  local FM_COMPOSER_BLANKS_ELIDED=0
   # Note the dialog before any early return so a pending picker is still named.
   fm_composer_note_blocking_dialog "$screen" || true
   while IFS= read -r kv; do
@@ -2324,7 +2331,6 @@ fm_composer_classify_screen() {  # <caps> <screen> [cursor_row] [identity]
       identity=1) has_identity=1 ;;
       cortex=1) cortex_proven=1 ;;
       cortex=ask) cortex_ask=1 ;;
-      blanks=elided) FM_COMPOSER_BLANKS_ELIDED=1 ;;
     esac
   done <<EOF
 $caps
@@ -2412,7 +2418,7 @@ EOF
   # No cursor: the bottom-most shape wins, with the pi-separator staleness
   # rules layered on (a live pi composer pair below the generic candidate
   # proves that candidate stale).
-  if ! _fm_composer_select_cursorless "$plain"; then
+  if ! _fm_composer_select_cursorless "$plain" "$caps"; then
     printf 'unknown'
     return 0
   fi
