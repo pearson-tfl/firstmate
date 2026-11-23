@@ -325,14 +325,14 @@ fi
 # shell - so a finished crew whose endpoint has closed still reports its run-step
 # state (e.g. done) instead of being masked as unknown. Backend-aware
 # (fm_backend_of_meta defaults absent backend= to tmux, the P1 contract): a
-# herdr task is read through fm_backend_capture while tmux uses the shared
+# herdr task is read through fm_backend_capture while tmux and orca use the shared
 # endpoint-existence predicate.
 TASK_BACKEND=$(fm_backend_of_meta "$META")
 BACKEND_TARGET=$(fm_backend_target_of_meta "$META")
 EXPECTED_LABEL="fm-$ID"
 pane_readable() {  # <target>
   case "$TASK_BACKEND" in
-    tmux) fm_backend_target_exists tmux "$1" ;;
+    tmux|orca) fm_backend_target_exists "$TASK_BACKEND" "$1" ;;
     *) fm_backend_capture "$TASK_BACKEND" "$1" 1 "$EXPECTED_LABEL" >/dev/null 2>&1 ;;
   esac
 }

@@ -97,23 +97,63 @@ SH
 test_capture_reads_terminal_tail_json() {
   local out
   orca_case capture-tail
-  printf '{"result":{"terminal":{"tail":["line one","line two"]}}}\n' > "$RESP/1.out"
+  printf '{"result":{"terminal":{"source":"screen","tail":["line one","line two"]}}}\n' > "$RESP/1.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_capture term-123 40' "$ROOT" )
   [ "$out" = $'line one\nline two' ] || fail "capture should print result.terminal.tail joined by newlines, got '$out'"
-  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''read'$'\x1f''--terminal'$'\x1f''term-123'$'\x1f''--limit'$'\x1f''40'$'\x1f''--json' \
-    "capture did not call orca terminal read with terminal/limit/json"
-  pass "fm_backend_orca_capture: parses result.terminal.tail and calls terminal read"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''read'$'\x1f''--terminal'$'\x1f''term-123'$'\x1f''--screen'$'\x1f''--limit'$'\x1f''40'$'\x1f''--json' \
+    "capture did not call orca terminal read --screen with terminal/limit/json"
+  pass "fm_backend_orca_capture: reads the drawn screen and parses result.terminal.tail"
 }
 
-test_capture_falls_back_to_text_fields() {
+# A read Orca did not render from the drawn screen - accumulated output
+# (source stream), a screen it could not render (screen-unavailable, which
+# returns the accumulated output instead), or a host that predates the source
+# field - is the history read that replays stale frames, so it is refused.
+test_capture_refuses_reads_not_from_the_drawn_screen() {
+  local case_name resp out status
+  for case_name in stream screen-unavailable absent; do
+    orca_case "capture-source-$case_name"
+    case "$case_name" in
+      absent) resp='{"ok":true,"result":{"terminal":{"tail":["stale banner"]}}}' ;;
+      *) resp='{"ok":true,"result":{"terminal":{"source":"'"$case_name"'","tail":["stale banner"]}}}' ;;
+    esac
+    printf '%s\n' "$resp" > "$RESP/1.out"
+    out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+      bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_capture term-abc 5' "$ROOT" 2>&1 )
+    status=$?
+    [ "$status" -ne 0 ] || fail "capture should refuse a read with source $case_name, got '$out'"
+    assert_not_contains "$out" "stale banner" "capture must not print the text of a $case_name read"
+    assert_contains "$out" "drawn screen" "capture should name the missing drawn-screen read for source $case_name"
+  done
+  pass "fm_backend_orca_capture: refuses stream, screen-unavailable, and source-less reads"
+}
+
+# The viewport-only read is the whole drawn frame: --screen with no --limit,
+# routed through the generic dispatcher that Kimi's trust gate and fm-control use.
+test_visible_capture_reads_the_whole_drawn_screen() {
   local out
-  orca_case capture-text
-  printf '{"result":{"text":"plain text output"}}\n' > "$RESP/1.out"
+  orca_case visible-capture
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["row one","row two"]}}}\n' > "$RESP/1.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
-    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_capture term-abc 5' "$ROOT" )
-  [ "$out" = "plain text output" ] || fail "capture should fall back to result.text, got '$out'"
-  pass "fm_backend_orca_capture: falls back to result text fields"
+    bash -c '. "$0/bin/fm-backend.sh"; fm_backend_visible_capture_supported orca && fm_backend_visible_capture orca term-vis fm-task' "$ROOT" )
+  [ "$out" = $'row one\nrow two' ] || fail "visible capture should print the drawn screen rows, got '$out'"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''read'$'\x1f''--terminal'$'\x1f''term-vis'$'\x1f''--screen'$'\x1f''--json' \
+    "visible capture should read --screen with no row limit"
+  pass "fm_backend_visible_capture: orca advertises and reads the whole drawn screen"
+}
+
+# Liveness is not screen rendering: a live terminal whose screen Orca cannot
+# render still exists, so the existence probe must not report it gone.
+test_target_exists_accepts_live_terminal_without_a_rendered_screen() {
+  local status
+  orca_case target-exists-screen-unavailable
+  printf '{"ok":true,"result":{"terminal":{"source":"screen-unavailable","status":"running","tail":["x"]}}}\n' > "$RESP/1.out"
+  PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/fm-backend.sh"; fm_backend_target_exists orca term-live fm-task' "$ROOT"
+  status=$?
+  [ "$status" -eq 0 ] || fail "fm_backend_target_exists should accept a live terminal whose screen is unavailable"
+  pass "fm_backend_target_exists: orca liveness does not depend on a rendered screen"
 }
 
 test_capture_fails_on_orca_error_json() {
@@ -157,7 +197,7 @@ test_send_text_submit_verifies_empty_composer_after_enter() {
   orca_case send-submit
   printf '{"ok":true,"result":{"send":{"handle":"term-123","accepted":true}}}\n' > "$RESP/1.out"
   printf '{"ok":true,"result":{"send":{"handle":"term-123","accepted":true}}}\n' > "$RESP/2.out"
-  printf '{"ok":true,"result":{"terminal":{"tail":["╭───╮","│ > │","╰───╯"]}}}\n' > "$RESP/3.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["╭───╮","│ > │","╰───╯"]}}}\n' > "$RESP/3.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_send_text_submit term-123 "hello captain" 3 0.01 0.01' "$ROOT" )
   [ "$out" = empty ] || fail "send_text_submit should report empty on successful Orca send, got '$out'"
@@ -183,7 +223,7 @@ test_send_text_submit_borderless_claude_confirms() {
   orca_case send-submit-borderless
   printf '{"ok":true,"result":{"send":{"handle":"term-123","accepted":true}}}\n' > "$RESP/1.out"
   printf '{"ok":true,"result":{"send":{"handle":"term-123","accepted":true}}}\n' > "$RESP/2.out"
-  printf '{"ok":true,"result":{"terminal":{"tail":["────────────────","❯","────────────────"]}}}\n' > "$RESP/3.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["────────────────","❯","────────────────"]}}}\n' > "$RESP/3.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_send_text_submit term-123 "hello captain" 3 0.01 0.01' "$ROOT" )
   [ "$out" = empty ] || fail "a borderless claude composer should confirm the submit, got '$out'"
@@ -199,7 +239,7 @@ test_composer_state_stale_banner_never_wins() {
   # `unknown` (defer) - never the banner's false `pending`.
   local out
   orca_case composer-stale-banner
-  printf '{"ok":true,"result":{"terminal":{"tail":["╭────────────────────────╮","│ permissions: YOLO mode │","╰────────────────────────╯","› Use /skills to list available skills"]}}}\n' > "$RESP/1.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["╭────────────────────────╮","│ permissions: YOLO mode │","╰────────────────────────╯","› Use /skills to list available skills"]}}}\n' > "$RESP/1.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_composer_state term-123' "$ROOT" )
   [ "$out" != pending ] || fail "a stale startup banner must never classify as pending composer text"
@@ -212,9 +252,9 @@ test_send_text_submit_retries_when_composer_stays_pending() {
   orca_case send-submit-pending
   printf '{"ok":true,"result":{"send":{"handle":"term-123","accepted":true}}}\n' > "$RESP/1.out"
   printf '{"ok":true,"result":{"send":{"handle":"term-123","accepted":true}}}\n' > "$RESP/2.out"
-  printf '{"ok":true,"result":{"terminal":{"tail":["╭─────────────────╮","│ > hello captain │","╰─────────────────╯"]}}}\n' > "$RESP/3.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["╭─────────────────╮","│ > hello captain │","╰─────────────────╯"]}}}\n' > "$RESP/3.out"
   printf '{"ok":true,"result":{"send":{"handle":"term-123","accepted":true}}}\n' > "$RESP/4.out"
-  printf '{"ok":true,"result":{"terminal":{"tail":["╭─────────────────╮","│ >               │","╰─────────────────╯"]}}}\n' > "$RESP/5.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["╭─────────────────╮","│ >               │","╰─────────────────╯"]}}}\n' > "$RESP/5.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_send_text_submit term-123 "hello captain" 3 0.01 0.01' "$ROOT" )
   [ "$out" = empty ] || fail "send_text_submit should retry Enter until the composer clears, got '$out'"
@@ -227,7 +267,7 @@ test_send_text_submit_retries_when_composer_stays_pending() {
 test_composer_state_popup_placeholder_fill_is_pending() {
   local out
   orca_case composer-popup-placeholder
-  printf '{"ok":true,"result":{"terminal":{"tail":["  ╭──────────────────────────────────────╮","  │ ❯ /compact compaction instructions   │","  ╰──────────────── Composer ────────────╯","","  Enter:send"]}}}\n' > "$RESP/1.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["  ╭──────────────────────────────────────╮","  │ ❯ /compact compaction instructions   │","  ╰──────────────── Composer ────────────╯","","  Enter:send"]}}}\n' > "$RESP/1.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_composer_state term-123' "$ROOT" )
   [ "$out" = pending ] || fail "a popup-close-with-placeholder-fill must still read as pending (not yet submitted), got '$out'"
@@ -241,7 +281,7 @@ test_composer_state_popup_placeholder_fill_is_pending() {
 test_composer_state_bare_shell_prompt_is_unknown() {
   local out
   orca_case composer-bare-shell
-  printf '{"ok":true,"result":{"terminal":{"tail":["some earlier output","kunchen@mac firstmate $ "]}}}\n' > "$RESP/1.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["some earlier output","kunchen@mac firstmate $ "]}}}\n' > "$RESP/1.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_composer_state term-123' "$ROOT" )
   [ "$out" = unknown ] || fail "a bare dead-shell prompt (no bordered composer row) must read unknown, got '$out'"
@@ -256,11 +296,11 @@ test_send_text_submit_popup_autocomplete_requires_second_enter() {
   # 3: read - composer still holds real pending text
   printf '{"ok":true,"result":{"send":{"handle":"term-123","accepted":true}}}\n' > "$RESP/1.out"
   printf '{"ok":true,"result":{"send":{"handle":"term-123","accepted":true}}}\n' > "$RESP/2.out"
-  printf '{"ok":true,"result":{"terminal":{"tail":["  ╭──────────────────────────────────────╮","  │ ❯ /compact compaction instructions   │","  ╰──────────────── Composer ────────────╯","","  Enter:send"]}}}\n' > "$RESP/3.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["  ╭──────────────────────────────────────╮","  │ ❯ /compact compaction instructions   │","  ╰──────────────── Composer ────────────╯","","  Enter:send"]}}}\n' > "$RESP/3.out"
   # 4: Enter #2 actually submits
   # 5: read - composer is empty
   printf '{"ok":true,"result":{"send":{"handle":"term-123","accepted":true}}}\n' > "$RESP/4.out"
-  printf '{"ok":true,"result":{"terminal":{"tail":["  ╭────────────────────────╮","  │ ❯                      │","  ╰──────── Composer ──────╯","","  Shift+Tab:mode"]}}}\n' > "$RESP/5.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["  ╭────────────────────────╮","  │ ❯                      │","  ╰──────── Composer ──────╯","","  Shift+Tab:mode"]}}}\n' > "$RESP/5.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_send_text_submit term-123 "/compact" 3 0.01 1.2' "$ROOT" )
   [ "$out" = empty ] || fail "send_text_submit should eventually report empty once the SECOND Enter actually clears the composer, got '$out'"
@@ -770,18 +810,18 @@ test_peek_send_and_crew_state_route_through_orca_meta() {
   touch "$state/.last-watcher-beat"
   orca_case io-path
   neutral=$(neutral_fm_root "$CASE_DIR/neutral")
-  printf '{"ok":true,"result":{"terminal":{"tail":["ready"]}}}\n' > "$RESP/1.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["ready"]}}}\n' > "$RESP/1.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     FM_ROOT_OVERRIDE="$neutral" FM_STATE_OVERRIDE="$state" FM_SEND_SETTLE=0 \
     "$ROOT/bin/fm-peek.sh" "fm-$id" 10 )
   [ "$out" = ready ] || fail "fm-peek should read through Orca metadata, got '$out'"
   printf '{"ok":true,"result":{"send":{"handle":"term-io","accepted":true}}}\n' > "$RESP/2.out"
   printf '{"ok":true,"result":{"send":{"handle":"term-io","accepted":true}}}\n' > "$RESP/3.out"
-  printf '{"ok":true,"result":{"terminal":{"tail":["│ > │"]}}}\n' > "$RESP/4.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["│ > │"]}}}\n' > "$RESP/4.out"
   PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     FM_ROOT_OVERRIDE="$neutral" FM_HOME="$neutral" FM_STATE_OVERRIDE="$state" FM_SEND_SETTLE=0 \
     "$ROOT/bin/fm-send.sh" "fm-$id" "hello orca"
-  printf '{"ok":true,"result":{"terminal":{"tail":["idle prompt"]}}}\n' > "$RESP/5.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["idle prompt"]}}}\n' > "$RESP/5.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-crew-state.sh" "$id" )
   assert_contains "$out" "state: unknown" "crew-state should fall back cleanly for an idle Orca scout"
@@ -827,6 +867,25 @@ test_peek_and_crew_state_fail_closed_on_orca_error_json() {
   assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''read'$'\x1f''--terminal'$'\x1f''term-stale' \
     "fm-peek/fm-crew-state did not read the recorded Orca terminal"
   pass "fm-peek/fm-crew-state: Orca read error JSON fails closed"
+}
+
+# A live terminal whose screen Orca cannot render is still a live endpoint:
+# crew-state's liveness probe must not call it gone.
+test_crew_state_keeps_live_orca_terminal_without_a_rendered_screen() {
+  local wt state id out
+  id="orcanoscreenz8"
+  wt="$TMP_ROOT/no-screen-wt"
+  fm_git_init_commit "$wt"
+  state="$TMP_ROOT/no-screen-state"; mkdir -p "$state"
+  fm_write_meta "$state/$id.meta" \
+    "window=fm-$id" "endpoint_task_id=$id" "terminal=term-live" "worktree=$wt" "project=$wt" "harness=claude" "kind=scout" "backend=orca"
+  touch "$state/.last-watcher-beat"
+  orca_case crew-state-no-screen
+  printf '{"ok":true,"result":{"terminal":{"source":"screen-unavailable","status":"running","tail":["x"]}}}\n' > "$RESP/1.out"
+  out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$state" "$ROOT/bin/fm-crew-state.sh" "$id" )
+  assert_not_contains "$out" "backend target gone" "crew-state must not call a live Orca terminal gone because its screen is unavailable"
+  pass "fm-crew-state: a live Orca terminal without a rendered screen is not reported gone"
 }
 
 test_target_exists_rejects_orca_error_json() {
@@ -1342,7 +1401,7 @@ test_secondmate_force_teardown_refuses_partial_orca_child() {
 test_dispatcher_sources_orca_and_routes_primitives() {
   local out
   orca_case dispatch
-  printf '{"result":{"terminal":{"tail":["via dispatch"]}}}\n' > "$RESP/1.out"
+  printf '{"result":{"terminal":{"source":"screen","tail":["via dispatch"]}}}\n' > "$RESP/1.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/fm-backend.sh"; fm_backend_validate orca; fm_backend_capture orca term-123 9' "$ROOT" )
   [ "$out" = "via dispatch" ] || fail "dispatcher should route capture to the Orca adapter, got '$out'"
@@ -1350,7 +1409,9 @@ test_dispatcher_sources_orca_and_routes_primitives() {
 }
 
 test_capture_reads_terminal_tail_json
-test_capture_falls_back_to_text_fields
+test_capture_refuses_reads_not_from_the_drawn_screen
+test_visible_capture_reads_the_whole_drawn_screen
+test_target_exists_accepts_live_terminal_without_a_rendered_screen
 test_capture_fails_on_orca_error_json
 test_runtime_check_accepts_ready_orca_status
 test_runtime_check_refuses_unready_orca_status
@@ -1387,6 +1448,7 @@ test_spawn_releases_orca_resources_when_metadata_write_fails
 test_peek_send_and_crew_state_route_through_orca_meta
 test_peek_and_crew_state_fail_closed_on_orca_error_json
 test_target_exists_rejects_orca_error_json
+test_crew_state_keeps_live_orca_terminal_without_a_rendered_screen
 test_scout_teardown_removes_orca_worktree_via_helper
 test_scout_teardown_refuses_orca_id_path_mismatch
 test_teardown_removes_orca_worktree_when_path_missing

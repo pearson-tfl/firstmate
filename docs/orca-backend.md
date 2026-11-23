@@ -78,12 +78,15 @@ Spawn registers the repository, creates an independent worktree, reuses only the
 Registration, worktree creation, and terminal creation work against real Orca (real Orca); the full spawn, including hooks and the harness launch, has not run there.
 Exact command flags and response parsing are owned by `bin/backends/orca.sh` and script help.
 
-`fm-peek.sh` reads with `orca terminal read`.
-That read is a bounded tail of Orca's accumulated output, not the drawn screen: it returned lines a `clear` had already removed and dropped spaces a shell prompt drew by moving the cursor (real Orca).
-Orca's own help calls that read unsuitable for verifying rendered output (Orca help).
+Every capture reads the drawn screen with `orca terminal read --screen`, never the accumulated output stream (fake Orca).
+That stream is a bounded tail of everything printed, not the drawn screen: it returned lines a `clear` had already removed and dropped spaces a shell prompt drew by moving the cursor (real Orca).
+Orca's own help calls that stream read unsuitable for verifying rendered output (Orca help).
+A read Orca reports as anything other than the drawn screen, including `screen-unavailable`, is refused rather than used, while the terminal-exists probe uses a plain read so an unrenderable screen does not mark a live terminal gone (fake Orca).
+The drawn screen has no scrollback, and Orca omits its blank rows, so a capture longer than the screen returns only the screen (real Orca).
+Without a row limit that read is the viewport, so Orca serves the viewport-only read the Kimi trust gate and the interrupt screen checks require (fake Orca).
 An ordinary metadata-routed `fm-send.sh` text steer becomes a durable steering-inbox record, and only its best-effort constant doorbell passes through Orca's submit machinery (fake Orca).
 On the typed plane, `fm-send.sh` verifies composer clearance through the fleet-wide classifier in `bin/fm-composer-lib.sh`, retrying Enter without retyping when a slash popup first fills an argument placeholder (fake Orca).
-Because the classifier reads that accumulated-output tail, stale startup text or cleared lines can reach it on Orca; no real agent's composer has yet been classified there.
+The composer read is the bottom rows of the drawn screen, so a stale startup banner cannot compete with the bottom-anchored composer (fake Orca); no real agent's composer has yet been classified on Orca.
 A bare shell row is `unknown`, not an empty agent composer, and plain-text captures degrade a glyph row carrying trailing text to `unknown` rather than a false `pending` (fake Orca).
 The watcher has no native Orca busy signal, so each harness adapter's semantic lifecycle supplies worker state (code).
 Grok alone retains its isolated rendered-tail fallback (code).

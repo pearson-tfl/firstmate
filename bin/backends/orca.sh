@@ -244,11 +244,39 @@ fm_backend_orca_worktree_path() {
   printf '%s' "$path"
 }
 
-fm_backend_orca_capture() {  # <terminal-id> <lines>
-  local terminal=$1 lines=${2:-40} out
+# fm_backend_orca_screen_read: the terminal as Orca draws it now, never the
+# accumulated output stream. `orca terminal read` without --screen replays
+# everything printed - repainted lines stack as fragments, cursor-drawn spaces
+# vanish, and a cleared startup banner comes back - so every adapter read asks
+# for the drawn screen. A read whose reported source is not `screen` (a stream
+# read, `screen-unavailable` falling back to the stream, or a host predating the
+# field) is refused rather than passed off as the screen. The drawn screen has
+# no scrollback, and Orca omits its blank rows.
+fm_backend_orca_screen_read() {  # <terminal-id> [orca read args...]
+  local terminal=$1 out
+  shift
   fm_backend_orca_tool_check || return 1
-  out=$(orca terminal read --terminal "$terminal" --limit "$lines" --json) || return 1
+  out=$(orca terminal read --terminal "$terminal" --screen "$@" --json) || return 1
   fm_backend_orca_json_text "$out"
+}
+
+# fm_backend_orca_capture: the bottom <lines> rows of the drawn screen; with
+# --screen, Orca's --limit keeps the last rows.
+fm_backend_orca_capture() {  # <terminal-id> <lines>
+  fm_backend_orca_screen_read "$1" --limit "${2:-40}"
+}
+
+# fm_backend_orca_visible_capture: the whole drawn screen (no --limit), which
+# is the viewport by construction. Listed in FM_BACKEND_VISIBLE_CAPTURE.
+fm_backend_orca_visible_capture() {  # <terminal-id> [expected-label]
+  fm_backend_orca_screen_read "$1"
+}
+
+# fm_backend_orca_target_ready: existence only, through a plain read, so a live
+# terminal whose screen Orca cannot render is not reported gone.
+fm_backend_orca_target_ready() {  # <terminal-id>
+  fm_backend_orca_tool_check || return 1
+  fm_backend_orca_run_json orca terminal read --terminal "$1" --limit 1 --json
 }
 
 fm_backend_orca_json_text() {  # <json>
@@ -261,13 +289,12 @@ if (data.ok === false) {
   process.exit(2);
 }
 const r = data.result || {};
-if (r.terminal && Array.isArray(r.terminal.tail)) {
-  process.stdout.write(r.terminal.tail.join("\n"));
-} else if (Array.isArray(r.tail)) {
-  process.stdout.write(r.tail.join("\n"));
-} else {
-  process.stdout.write(r.text || r.output || r.content || r.preview || "");
+const t = r.terminal || r;
+if (t.source !== "screen" || !Array.isArray(t.tail)) {
+  console.error("error: orca terminal read returned source " + (t.source || "(none)") + ", not the drawn screen");
+  process.exit(3);
 }
+process.stdout.write(t.tail.join("\n"));
 '
 }
 

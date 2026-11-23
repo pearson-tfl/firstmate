@@ -2460,7 +2460,32 @@ tests/fm-backend.test.sh
 tests/fm-bootstrap.test.sh
 ```
 
-The fake-Orca suite covers readiness, registration, create response parsing, metadata routing, popup-safe submit, and path-matched release refusal.
+The fake-Orca suite covers readiness, registration, create response parsing, metadata routing, popup-safe submit, path-matched release refusal, and the drawn-screen read contract.
+
+### Orca drawn-screen read
+
+The read semantics the adapter relies on were observed on 2026-11-23 against Orca 1.4.271 (`orca status --json` `result.runtime.appVersion`), on a scratch `orca serve` runtime with its own profile on macOS, in a plain zsh terminal after `clear; seq 1 100`.
+
+```sh
+orca terminal read --terminal $term --screen --json | jq -c '.result.terminal | {source,returnedLineCount,limited,first:.tail[0],last:.tail[-1],n:(.tail|length)}'
+orca terminal read --terminal $term --screen --limit 5 --json | jq -c '.result.terminal | {source,limited,tail}'
+orca terminal read --terminal $term --limit 5 --json | jq -c '.result.terminal | {source,limited,tail}'
+# then, after sending: clear; printf "a\n\n\nb\n"
+orca terminal read --terminal $term --screen --json | jq -c '.result.terminal | {source,tail,tailRows}'
+```
+
+Output, one line per command:
+
+```text
+{"source":"screen","returnedLineCount":40,"limited":false,"first":"62","last":"➜  fm-pkgb git:(fm-pkgb)","n":40}
+{"source":"screen","limited":true,"tail":["97","98","99","100","➜  fm-pkgb git:(fm-pkgb)"]}
+{"source":"stream","limited":true,"tail":["97","98","99","100","➜  fm-pkgb git:(fm-pkgb)"]}
+{"source":"screen","tail":["a","b","➜  fm-pkgb git:(fm-pkgb)"],"tailRows":[{"wrapped":false,"trailingSpaces":0},{"wrapped":false,"trailingSpaces":0},{"wrapped":false,"trailingSpaces":1}]}
+```
+
+With `--screen`, `--limit` keeps the bottom rows, an unlimited read returns exactly the 40-row frame, and blank rows are omitted.
+A Firstmate-adapter run of the changed capture against real Orca, and a real agent on Orca, were not exercised in that session.
+`tests/fm-backend-orca.test.sh` pins the source check, the unlimited viewport read, and the liveness probe.
 
 ### Orca 1.4.271 readiness and CLI
 
