@@ -27,6 +27,7 @@ Prerequisites:
 
 - An Orca runtime on the same machine as the Firstmate home, running and ready: `/Applications/Orca.app` on macOS, or a paired Orca server on Linux.
 - The Orca CLI: `orca` on PATH (macOS), `orca-ide` on PATH (Linux, where GNOME's screen reader owns `orca`), or the `~/.orca/cli/bin/orca-ide` that a paired Orca server's install leaves off PATH.
+  Firstmate tries `orca-ide` on PATH, then `~/.orca/cli/bin/orca-ide`, then a bare `orca` on PATH last, so GNOME's screen reader never masks an Orca install.
   `bin/backends/orca.sh` (`fm_backend_orca_bin`) owns that lookup order.
   Orca 1.4.271 ships the macOS CLI inside the app at `/Applications/Orca.app/Contents/Resources/bin/orca`, and the install checked reached it through a link at `/usr/local/bin/orca` (real Orca).
 - The universal harness and toolchain requirements in [`configuration.md`](configuration.md#toolchain).

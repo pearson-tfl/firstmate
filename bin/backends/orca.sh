@@ -15,30 +15,31 @@
 . "$(dirname -- "${BASH_SOURCE[0]}")/../fm-credential-source-lib.sh"
 
 # fm_backend_orca_bin: resolve the Orca CLI. macOS names it `orca`; Linux names
-# it `orca-ide` because GNOME's screen reader owns `orca`. The first PATH
-# directory holding either wins, preferring `orca-ide` within a directory, so a
-# stub put ahead on PATH still shadows a real install. Then the CLI a paired
-# Orca server's install leaves in ~/.orca/cli/bin, off PATH, so a home on that
-# machine drives its runtime with no PATH change.
-# shortcut: GNOME's `orca` in an earlier PATH directory than `orca-ide` still
-# wins and fails the readiness check; reorder PATH, or skip `orca` on Linux if seen.
+# it `orca-ide` because GNOME's screen reader owns `orca`. Lookup order:
+# `orca-ide` in the first PATH directory holding it, then the CLI a paired Orca
+# server's install leaves in ~/.orca/cli/bin off PATH, then a bare `orca` on
+# PATH last, so a GNOME `orca` never masks either Orca install. A stub put
+# ahead on PATH under the name the host's real install uses still shadows it.
 FM_BACKEND_ORCA_BUNDLE_BIN="${FM_BACKEND_ORCA_BUNDLE_BIN:-${HOME:-}/.orca/cli/bin/orca-ide}"
-fm_backend_orca_bin() {
-  local dir name dirs
+fm_backend_orca_path_bin() {  # <name>
+  local dir dirs
   IFS=: read -ra dirs <<< "${PATH:-}"
   for dir in "${dirs[@]}"; do
-    for name in orca-ide orca; do
-      if [ -f "${dir:-.}/$name" ] && [ -x "${dir:-.}/$name" ]; then
-        printf '%s' "${dir:-.}/$name"
-        return 0
-      fi
-    done
+    if [ -f "${dir:-.}/$1" ] && [ -x "${dir:-.}/$1" ]; then
+      printf '%s' "${dir:-.}/$1"
+      return 0
+    fi
   done
+  return 1
+}
+
+fm_backend_orca_bin() {
+  fm_backend_orca_path_bin orca-ide && return 0
   if [ -x "$FM_BACKEND_ORCA_BUNDLE_BIN" ]; then
     printf '%s' "$FM_BACKEND_ORCA_BUNDLE_BIN"
     return 0
   fi
-  return 1
+  fm_backend_orca_path_bin orca
 }
 
 fm_backend_orca_cli() {  # <orca args...>

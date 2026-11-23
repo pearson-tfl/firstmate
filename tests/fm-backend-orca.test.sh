@@ -518,6 +518,27 @@ test_cli_resolves_orca_ide_and_paired_server_install() {
   pass "fm_backend_orca_bin: reaches orca-ide or orca on PATH, then the paired-server install"
 }
 
+# A Linux GNOME desktop ships its screen reader as /usr/bin/orca. With a paired
+# Orca server's CLI off PATH in ~/.orca/cli/bin, the adapter must drive that
+# install and never run the screen reader.
+test_paired_server_install_beats_a_non_orca_orca_on_path() {
+  local orca_free gnome out
+  orca_free=$(fm_test_base_path_sans "$PATH" orca orca-ide)
+  orca_case cli-gnome-orca-on-path
+  mv "$FB/orca" "$FB/orca-ide"
+  gnome="$CASE_DIR/gnome-bin"
+  mkdir -p "$gnome"
+  printf '#!/bin/sh\necho ran >> "%s"\nexit 1\n' "$CASE_DIR/gnome-ran" > "$gnome/orca"
+  chmod +x "$gnome/orca"
+  out=$( PATH="$gnome:$orca_free" FM_BACKEND_ORCA_BUNDLE_BIN="$FB/orca-ide" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_runtime_check && fm_backend_orca_kill term-123' "$ROOT" 2>&1 )
+  expect_code 0 $? "runtime check and kill should succeed through the paired-server install: $out"
+  [ ! -e "$CASE_DIR/gnome-ran" ] || fail "the non-Orca orca on PATH was run instead of the paired-server install"
+  assert_contains "$(cat "$LOG")" $'orca-ide\x1f''status' "the paired-server install did not answer the readiness check"
+  assert_contains "$(cat "$LOG")" $'orca-ide\x1f''terminal'$'\x1f''close' "the paired-server install was not used"
+  pass "fm_backend_orca_bin: a paired-server install wins over a non-Orca orca on PATH"
+}
+
 test_remove_worktree_refuses_empty_id() {
   local out status
   orca_case remove-empty
@@ -1527,6 +1548,7 @@ test_send_key_escape_and_composer_keys_are_raw_bytes
 test_kill_is_best_effort_close
 test_kill_refuses_when_the_orca_cli_is_absent
 test_cli_resolves_orca_ide_and_paired_server_install
+test_paired_server_install_beats_a_non_orca_orca_on_path
 test_remove_worktree_refuses_empty_id
 test_remove_worktree_rejects_orca_error_json
 test_worktree_path_resolves_id

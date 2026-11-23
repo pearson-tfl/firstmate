@@ -647,7 +647,7 @@ SH
 
 test_orca_backend_gates_orca_tool_only_when_selected() {
   local case_dir fakebin out missing_orca
-  missing_orca="MISSING: orca (install: brew install orca  # or the platform's package manager)"
+  missing_orca="MISSING_MANUAL: orca (instructions: docs/orca-backend.md (orca-ide or a paired Orca server on Linux, never GNOME's orca))"
 
   case_dir="$TMP_ROOT/orca-backend-selected"
   mkdir -p "$case_dir/home/config"
@@ -663,7 +663,7 @@ test_orca_backend_gates_orca_tool_only_when_selected() {
   chmod +x "$fakebin/orca-ide"
   out=$(PATH="$fakebin:$(fm_test_base_path_sans "$BASE_PATH" orca orca-ide)" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
     FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
-  assert_not_contains "$out" "MISSING: orca" "bootstrap should accept orca-ide as the Orca CLI, got: $out"
+  assert_not_contains "$out" "MISSING_MANUAL: orca" "bootstrap should accept orca-ide as the Orca CLI, got: $out"
 
   case_dir="$TMP_ROOT/orca-backend-not-selected"
   mkdir -p "$case_dir/home/config"
@@ -671,7 +671,7 @@ test_orca_backend_gates_orca_tool_only_when_selected() {
   fakebin=$(make_fake_toolchain "$case_dir")
   out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
     FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
-  assert_not_contains "$out" "MISSING: orca" "bootstrap should not require orca unless backend=orca is selected"
+  assert_not_contains "$out" "MISSING_MANUAL: orca" "bootstrap should not require orca unless backend=orca is selected"
   pass "bootstrap: backend=orca gates the Orca CLI without requiring it on the default backend"
 }
 
