@@ -298,8 +298,8 @@ process.stdout.write(t.tail.join("\n"));
 '
 }
 
-# fm_backend_orca_composer_capture: the orca composer screen - one bounded
-# tail read of the live terminal. Deliberately NOT the old 200-line
+# fm_backend_orca_composer_capture: the orca composer screen - the bottom
+# rows of the drawn screen. Deliberately NOT the old 200-line
 # backward-paged read: the composer is bottom-anchored, and paging back into
 # scrollback is what let a stale startup banner (codex's bordered
 # "permissions" box) compete with - and once outrank - the live composer.
