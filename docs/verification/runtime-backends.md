@@ -2589,7 +2589,12 @@ orca terminal read --terminal <handle> --limit 1 --json  # .result.terminal.stat
 
 The listed entry's `paneKey` equals `<tabId>:<leafId>` from `orca terminal show`.
 Claude at its workspace-trust dialog also listed as `waiting`.
-Pi and Oh My Pi each listed `working` through a 22-second foreground command and `done` after it; neither asked a question, so no waiting state was observed for them.
+Pi and Oh My Pi each listed `working` through a 22-second foreground command and `done` after it.
+In a further check on 2026-11-23 against Orca 1.4.271, each harness was asked to put a red-or-blue question to the user through an interactive question tool and wait, in its own scratch terminal that was then closed.
+Oh My Pi showed its own `Red or blue?` question box with Red, Blue, and Other options; `orca agent list` reported `omp=blocked`, `fm_backend_busy_state` read `blocked`, and `fm-crew-state.sh` printed `state: parked · source: pane · waiting for input (orca-native)`.
+This proves Oh My Pi's waiting for input and is the first real observation here of Orca's `blocked` state.
+Pi replied in plain text that it has no interactive question tool and stopped; `orca agent list` reported `pi=done`, and `fm-crew-state.sh` printed `state: unknown · source: pane · harness state unavailable (unknown missing)`.
+Pi asks no permission questions either, so waiting for input is unsupported for Pi on Orca; its busy, idle, and gone states remain proved.
 After Claude, Pi, or Oh My Pi exited and left the shell running, the listing dropped the agent, while `orca terminal show` still named Pi and Oh My Pi as `agentIdentity`.
 An unknown handle answered `{"ok":false,"error":{"code":"terminal_handle_stale"}}`.
 `tests/fm-backend-orca.test.sh` and `tests/fm-spawn-orca-worktree.test.sh` pin the mapping, the pane match, and the launch file's exit.
