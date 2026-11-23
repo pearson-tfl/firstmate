@@ -226,6 +226,7 @@ cat > "$fakebin/orca" <<'EOF'
 printf '%s\n' '{"ok":true,"result":{"runtime":{"reachable":true,"state":"ready"}}}'
 EOF
 chmod +x "$fakebin/orca"
+ln -sf orca "$fakebin/orca-ide"
 for backend in zellij cmux orca; do
   fm_test_spawn_brief "$home" "cortex-$backend"
   if out=$(FM_FAKE_LAUNCH_LOG="$case_dir/cortex-$backend.launch" fm_test_run_spawn "$home" "$wt" "$fakebin" "cortex-$backend" "$proj" \

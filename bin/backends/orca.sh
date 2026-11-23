@@ -18,8 +18,8 @@
 # it `orca-ide` because GNOME's screen reader owns `orca`. Lookup order:
 # `orca-ide` in the first PATH directory holding it, then the CLI a paired Orca
 # server's install leaves in ~/.orca/cli/bin off PATH, then a bare `orca` on
-# PATH last, so a GNOME `orca` never masks either Orca install. A stub put
-# ahead on PATH under the name the host's real install uses still shadows it.
+# PATH last, so a GNOME `orca` never masks either Orca install. A test stub
+# shadows any real install only when it sits ahead on PATH as `orca-ide` too.
 FM_BACKEND_ORCA_BUNDLE_BIN="${FM_BACKEND_ORCA_BUNDLE_BIN:-${HOME:-}/.orca/cli/bin/orca-ide}"
 fm_backend_orca_path_bin() {  # <name>
   local dir dirs

@@ -38,7 +38,7 @@ RESP="${FM_ORCA_RESPONSES:?}"
 COUNT_FILE="$RESP/.count"
 next=$(( $(cat "$COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
 {
-  printf '%s' "${0##*/}"
+  printf 'orca'
   for a in "$@"; do printf '\x1f%s' "$a"; done
   printf '\n'
 } >> "$LOG"
@@ -55,6 +55,7 @@ fi
 exit 0
 SH
   chmod +x "$fb/orca"
+  ln -sf orca "$fb/orca-ide"
   printf '%s\n' "$fb"
 }
 
@@ -496,25 +497,25 @@ test_cli_resolves_orca_ide_and_paired_server_install() {
   PATH="$FB:$orca_free" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_kill term-123' "$ROOT"
   expect_code 0 $? "kill should succeed through orca-ide on PATH"
-  assert_contains "$(cat "$LOG")" $'orca-ide\x1f''terminal'$'\x1f''close' \
+  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''close' \
     "orca-ide on PATH was not used when orca is absent"
 
   orca_case cli-both-on-path
-  cp "$FB/orca" "$FB/orca-ide"
+  mv "$FB/orca" "$FB/orca-ide"
+  printf '#!/bin/sh\necho ran >> "%s"\nexit 1\n' "$CASE_DIR/bare-orca-ran" > "$FB/orca"
+  chmod +x "$FB/orca"
   PATH="$FB:$orca_free" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_kill term-123' "$ROOT"
-  case "$(cat "$LOG")" in
-    orca-ide$'\x1f'terminal*) ;;
-    *) fail "orca-ide should win over orca in the same PATH directory, got: $(cat "$LOG")" ;;
-  esac
+  expect_code 0 $? "kill should succeed through orca-ide beside orca"
+  [ ! -e "$CASE_DIR/bare-orca-ran" ] || fail "orca should not win over orca-ide in the same PATH directory"
 
   orca_case cli-paired-server-install
   mv "$FB/orca" "$FB/orca-ide"
   out=$( PATH="$orca_free" FM_BACKEND_ORCA_BUNDLE_BIN="$FB/orca-ide" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_runtime_check && fm_backend_orca_kill term-123' "$ROOT" 2>&1 )
   expect_code 0 $? "runtime check and kill should succeed through the paired-server install: $out"
-  assert_contains "$(cat "$LOG")" $'orca-ide\x1f''status' "the paired-server install did not answer the readiness check"
-  assert_contains "$(cat "$LOG")" $'orca-ide\x1f''terminal'$'\x1f''close' "the paired-server install was not used off PATH"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''status' "the paired-server install did not answer the readiness check"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''close' "the paired-server install was not used off PATH"
   pass "fm_backend_orca_bin: reaches orca-ide or orca on PATH, then the paired-server install"
 }
 
@@ -534,8 +535,8 @@ test_paired_server_install_beats_a_non_orca_orca_on_path() {
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_runtime_check && fm_backend_orca_kill term-123' "$ROOT" 2>&1 )
   expect_code 0 $? "runtime check and kill should succeed through the paired-server install: $out"
   [ ! -e "$CASE_DIR/gnome-ran" ] || fail "the non-Orca orca on PATH was run instead of the paired-server install"
-  assert_contains "$(cat "$LOG")" $'orca-ide\x1f''status' "the paired-server install did not answer the readiness check"
-  assert_contains "$(cat "$LOG")" $'orca-ide\x1f''terminal'$'\x1f''close' "the paired-server install was not used"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''status' "the paired-server install did not answer the readiness check"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''close' "the paired-server install was not used"
   pass "fm_backend_orca_bin: a paired-server install wins over a non-Orca orca on PATH"
 }
 
