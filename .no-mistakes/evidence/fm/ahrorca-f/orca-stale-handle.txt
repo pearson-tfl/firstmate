@@ -1,0 +1,19 @@
+real stale-handle response:
+{
+  "id": "e3fbf3a2-cc43-4872-80fb-2b1d1113c0fe",
+  "ok": false,
+  "error": {
+    "code": "terminal_handle_stale",
+    "message": "terminal_handle_stale",
+    "data": {
+      "nextSteps": [
+        "Terminal handles belong to the Orca server that issued them. If this handle came from a paired server (for example `orca terminal list --environment <server>`), pass the same --environment <server> to this command."
+      ]
+    }
+  },
+  "_meta": {
+    "runtimeId": "1011124c-71be-4351-b834-483cffa4529d"
+  }
+}
+
+Firstmate agent probe: missing
