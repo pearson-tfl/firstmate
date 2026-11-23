@@ -509,6 +509,14 @@ test_cli_resolves_orca_ide_and_paired_server_install() {
   expect_code 0 $? "kill should succeed through orca-ide beside orca"
   [ ! -e "$CASE_DIR/bare-orca-ran" ] || fail "orca should not win over orca-ide in the same PATH directory"
 
+  orca_case cli-bare-orca-only
+  rm "$FB/orca-ide"
+  out=$( PATH="$FB:$orca_free" FM_BACKEND_ORCA_BUNDLE_BIN="$CASE_DIR/no-bundle/orca-ide" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_runtime_check && fm_backend_orca_kill term-123' "$ROOT" 2>&1 )
+  expect_code 0 $? "runtime check and kill should succeed through a bare orca on PATH (macOS): $out"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''status' "a bare orca on PATH did not answer the readiness check"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''close' "a bare orca on PATH was not used as the last resort"
+
   orca_case cli-paired-server-install
   mv "$FB/orca" "$FB/orca-ide"
   out=$( PATH="$orca_free" FM_BACKEND_ORCA_BUNDLE_BIN="$FB/orca-ide" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
@@ -516,7 +524,7 @@ test_cli_resolves_orca_ide_and_paired_server_install() {
   expect_code 0 $? "runtime check and kill should succeed through the paired-server install: $out"
   assert_contains "$(cat "$LOG")" $'orca\x1f''status' "the paired-server install did not answer the readiness check"
   assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''close' "the paired-server install was not used off PATH"
-  pass "fm_backend_orca_bin: reaches orca-ide or orca on PATH, then the paired-server install"
+  pass "fm_backend_orca_bin: reaches orca-ide on PATH, the paired-server install, then a bare orca"
 }
 
 # A Linux GNOME desktop ships its screen reader as /usr/bin/orca. With a paired
