@@ -1,0 +1,50 @@
+ 1:01M84K9VWQ8VT2H44NSR8VJZW8
+
+ ▐▛███▛█   Claude Code v2.1.330
+▝▜██████▀  Opus 5.5 with high effort · Claude Ultra
+ ▝▝   ▝▝   ~/.no-mistakes/worktrees/137d8f335eb0/01M84K9VWQ8VT2H44NSR8VJZW8 · /rc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+● full  $0.00  0s                                                                                                                                                     Review  Audit  Board  Details [-]
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ : Firstmate instruction waiting: list the inbox, read and act on each, then mv each into handled/.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 ? · 5h – · 7d 18% ↺4d6h · high
+  01M84K9VWQ8VT2H44NSR8VJZW8 · v2.1.330 · Concise
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

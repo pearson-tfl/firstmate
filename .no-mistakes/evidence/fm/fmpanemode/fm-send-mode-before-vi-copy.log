@@ -1,0 +1,9 @@
+[before-vi-copy] (base a8bc2844 bin/fm-send.sh) mode-keys=vi pane_mode=copy-mode pane_in_mode=1 clients=1
+[before-vi-copy] fm-send rc=124 elapsed=60s   (killed by the driver's 60s cap; fm-send itself never returned)
+[before-vi-copy] after: pane_mode=copy-mode pane_in_mode=1
+[before-vi-copy] attached client view (outer):
+    bash-5.3$                                                         [0/0]
+    (goto line)
+[before-vi-copy] pane content:
+    bash-5.3$
+[before-vi-copy] RESULT: text NOT landed

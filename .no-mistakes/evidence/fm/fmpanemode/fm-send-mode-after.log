@@ -1,0 +1,59 @@
+[after-vi-copy] mode-keys=vi pane_mode=copy-mode pane_in_mode=1 clients=1
+[after-vi-copy] fm-send rc=1 elapsed=3s
+    fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fmpm.iOoHoE/lab
+    error: text not submitted to primary:0 (delivery unconfirmed; verdict=unknown; tried meta=/tmp/fmpm.iOoHoE/lab/state/primary:0.meta; metadata window/terminal lookup; backend=tmux; endpoint=verified)
+[after-vi-copy] after: pane_mode= pane_in_mode=0
+[after-vi-copy] attached client view (outer):
+    bash-5.3$ : Firstmate instruction waiting: list the inbox, read and act on each, then mv each into handled/.
+    bash-5.3$
+    [primary] 0:bash*                                                                                                                                                            "dell-v100" 16:23 23-Nov-26
+[after-vi-copy] pane content:
+    bash-5.3$ : Firstmate instruction waiting: list the inbox, read and act on each, then mv each into handled/.
+    bash-5.3$ 
+[after-vi-copy] RESULT: text LANDED
+[before-emacs-copy] mode-keys=emacs pane_mode=copy-mode pane_in_mode=1 clients=1
+[before-emacs-copy] fm-send rc=124 elapsed=60s
+    fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fmpm.iOoHoE/lab
+[before-emacs-copy] after: pane_mode=copy-mode pane_in_mode=1
+[before-emacs-copy] attached client view (outer):
+    bash-5.3$                                                                                                                                                                                          [0/0]
+    (jump backward)
+[before-emacs-copy] pane content:
+    bash-5.3$ 
+[before-emacs-copy] RESULT: text NOT landed
+[after-emacs-copy] mode-keys=emacs pane_mode=copy-mode pane_in_mode=1 clients=1
+[after-emacs-copy] fm-send rc=1 elapsed=2s
+    fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fmpm.iOoHoE/lab
+    error: text not submitted to primary:0 (delivery unconfirmed; verdict=unknown; tried meta=/tmp/fmpm.iOoHoE/lab/state/primary:0.meta; metadata window/terminal lookup; backend=tmux; endpoint=verified)
+[after-emacs-copy] after: pane_mode= pane_in_mode=0
+[after-emacs-copy] attached client view (outer):
+    bash-5.3$ : Firstmate instruction waiting: list the inbox, read and act on each, then mv each into handled/.
+    bash-5.3$
+    [primary] 0:bash*                                                                                                                                                            "dell-v100" 16:24 23-Nov-26
+[after-emacs-copy] pane content:
+    bash-5.3$ : Firstmate instruction waiting: list the inbox, read and act on each, then mv each into handled/.
+    bash-5.3$ 
+[after-emacs-copy] RESULT: text LANDED
+[before-vi-view] mode-keys=vi pane_mode=view-mode pane_in_mode=1 clients=1
+[before-vi-view] fm-send rc=124 elapsed=60s
+    fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fmpm.iOoHoE/lab
+[before-vi-view] after: pane_mode=view-mode pane_in_mode=1
+[before-vi-view] attached client view (outer):
+    view-mode-output                                                                                                                                                                                   [0/0]
+    (goto line)
+[before-vi-view] pane content:
+    bash-5.3$ 
+[before-vi-view] RESULT: text NOT landed
+[after-vi-view] mode-keys=vi pane_mode=view-mode pane_in_mode=1 clients=1
+[after-vi-view] fm-send rc=1 elapsed=2s
+    fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fmpm.iOoHoE/lab
+    error: text not submitted to primary:0 (delivery unconfirmed; verdict=unknown; tried meta=/tmp/fmpm.iOoHoE/lab/state/primary:0.meta; metadata window/terminal lookup; backend=tmux; endpoint=verified)
+[after-vi-view] after: pane_mode= pane_in_mode=0
+[after-vi-view] attached client view (outer):
+    bash-5.3$ : Firstmate instruction waiting: list the inbox, read and act on each, then mv each into handled/.
+    bash-5.3$
+    [primary] 0:bash*                                                                                                                                                            "dell-v100" 16:25 23-Nov-26
+[after-vi-view] pane content:
+    bash-5.3$ : Firstmate instruction waiting: list the inbox, read and act on each, then mv each into handled/.
+    bash-5.3$ 
+[after-vi-view] RESULT: text LANDED
