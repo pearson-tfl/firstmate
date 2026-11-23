@@ -2,7 +2,8 @@
 # bin/backends/orca.sh - the Orca terminal session-provider adapter.
 #
 # Orca owns both the task worktree and the terminal endpoint. Escape and Ctrl+U
-# go as raw control bytes (fm_backend_orca_send_key).
+# go as raw control bytes (fm_backend_orca_send_key). Agent state and busy come
+# from Orca's own agent listing (fm_backend_orca_agent_probe).
 #
 # Target string shape: the Orca terminal id accepted by `orca terminal ...`.
 
@@ -332,10 +333,123 @@ fm_backend_orca_visible_capture() {  # <terminal-id> [expected-label]
 }
 
 # fm_backend_orca_target_ready: existence only, through a plain read, so a live
-# terminal whose screen Orca cannot render is not reported gone.
+# terminal whose screen Orca cannot render is not reported gone. A terminal
+# Orca reads as exited has ended, so it no longer exists as an endpoint.
 fm_backend_orca_target_ready() {  # <terminal-id>
+  local out
   fm_backend_orca_tool_check || return 1
-  fm_backend_orca_run_json fm_backend_orca_cli terminal read --terminal "$1" --limit 1 --json
+  out=$(fm_backend_orca_cli terminal read --terminal "$1" --limit 1 --json) || return 1
+  printf '%s' "$out" | fm_backend_orca_json_ok || return 1
+  [ "$(printf '%s' "$out" | fm_backend_orca_agent_json terminal-status 2>/dev/null)" != exited ]
+}
+
+# fm_backend_orca_terminal_status: running|exited from Orca's plain read, stale
+# when Orca refuses the handle as terminal_handle_stale (the handle names no
+# terminal on this Orca), or unreadable for any other answer or failure.
+fm_backend_orca_terminal_status() {  # <terminal-id>
+  local out
+  out=$(fm_backend_orca_cli terminal read --terminal "$1" --limit 1 --json 2>/dev/null) || true
+  printf '%s' "$out" | fm_backend_orca_agent_json terminal-status 2>/dev/null || printf 'unreadable'
+}
+
+# fm_backend_orca_agent_json: the JSON reads behind the agent probe.
+#   terminal-status  read JSON  -> running|exited|stale (fails otherwise)
+#   pane             show JSON  -> "<worktree-id>\t<tab-id>:<leaf-id>"
+#   state <pane-key> list JSON  -> the newest terminal agent's state on that
+#                                  pane, or none when Orca lists no agent there
+fm_backend_orca_agent_json() {  # <mode> [pane-key]
+  node -e '
+const fs = require("fs");
+const [mode, pane] = process.argv.slice(1);
+let data;
+try { data = JSON.parse(fs.readFileSync(0, "utf8")); } catch (err) { process.exit(1); }
+if (!data || typeof data !== "object") process.exit(1);
+const r = data.result || {};
+if (mode === "terminal-status") {
+  if (data.ok === false) {
+    if (data.error && data.error.code === "terminal_handle_stale") { process.stdout.write("stale"); process.exit(0); }
+    process.exit(1);
+  }
+  const s = r.terminal && r.terminal.status;
+  if (s === "running" || s === "exited") { process.stdout.write(s); process.exit(0); }
+  process.exit(1);
+}
+if (data.ok === false) process.exit(1);
+if (mode === "pane") {
+  const t = r.terminal || {};
+  const ok = (v) => typeof v === "string" && v !== "" && !/[\t\n]/.test(v);
+  if (!ok(t.worktreeId) || !ok(t.tabId) || !ok(t.leafId)) process.exit(1);
+  process.stdout.write(t.worktreeId + "\t" + t.tabId + ":" + t.leafId);
+  process.exit(0);
+}
+if (mode === "state") {
+  if (!Array.isArray(r.agents)) process.exit(1);
+  const mine = r.agents.filter((a) => a && a.kind === "terminal" && a.paneKey === pane);
+  if (mine.length === 0) { process.stdout.write("none"); process.exit(0); }
+  mine.sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+  const s = mine[0].state;
+  process.stdout.write(typeof s === "string" && /^[a-z_]+$/.test(s) ? s : "unknown");
+  process.exit(0);
+}
+process.exit(1);
+' "$@"
+}
+
+# fm_backend_orca_agent_probe: Orca's own report of the agent in one terminal
+# (route B). Orca's status hooks list a terminal agent by the pane it runs in,
+# from its first report until it ends, with its state: working, blocked,
+# waiting, or done. Prints:
+#   missing     Orca refused the handle as stale, or the terminal has exited
+#   unreadable  a read failed or answered in an unrecognized shape
+#   none        the terminal runs but Orca lists no agent on its pane
+#   <state>     Orca's word for the agent listed on the terminal's pane
+# Orca keeps a terminal's agentIdentity after the agent exits (Pi and Oh My Pi,
+# Orca 1.4.271), so only the agent listing is read as presence.
+fm_backend_orca_agent_probe() {  # <terminal-id>
+  local terminal=$1 status out pane worktree
+  fm_backend_orca_tool_check >/dev/null 2>&1 || { printf 'unreadable'; return 0; }
+  status=$(fm_backend_orca_terminal_status "$terminal")
+  case "$status" in
+    stale|exited) printf 'missing'; return 0 ;;
+    running) ;;
+    *) printf 'unreadable'; return 0 ;;
+  esac
+  out=$(fm_backend_orca_cli terminal show --terminal "$terminal" --json 2>/dev/null) || { printf 'unreadable'; return 0; }
+  pane=$(printf '%s' "$out" | fm_backend_orca_agent_json pane 2>/dev/null) || { printf 'unreadable'; return 0; }
+  worktree=${pane%%$'\t'*}
+  pane=${pane#*$'\t'}
+  out=$(fm_backend_orca_cli agent list --worktree "id:$worktree" --json 2>/dev/null) || { printf 'unreadable'; return 0; }
+  printf '%s' "$out" | fm_backend_orca_agent_json state "$pane" 2>/dev/null || printf 'unreadable'
+}
+
+# fm_backend_orca_busy_state: the dispatcher's busy vocabulary from Orca's
+# agent state: working is busy, done is idle, and waiting or blocked - an agent
+# held on a question such as a permission or trust prompt - is blocked, the
+# same word Tern uses. Everything else, including no listed agent, is unknown.
+fm_backend_orca_busy_state() {  # <terminal-id> -> busy|idle|blocked|unknown
+  case "$(fm_backend_orca_agent_probe "$1")" in
+    working) printf 'busy' ;;
+    done) printf 'idle' ;;
+    waiting|blocked) printf 'blocked' ;;
+    *) printf 'unknown' ;;
+  esac
+}
+
+# fm_backend_orca_agent_state: the recovery-grade contract in bin/fm-backend.sh.
+# alive rests on Orca's listing, which Orca clears when the agent ends, not on
+# a Firstmate process read: the terminal's processes belong to the Orca host.
+# A running terminal with no listed agent - a harness Orca does not hook, one
+# that has not reported yet, or one that ended and left its shell - is beyond
+# that listing, so it stays unverified, as every Orca terminal read before it,
+# and dead is never claimed. Firstmate's Orca launch ends the terminal with the
+# agent (route A), which makes an ended agent read missing.
+fm_backend_orca_agent_state() {  # <terminal-id>
+  case "$(fm_backend_orca_agent_probe "$1")" in
+    missing) printf 'missing' ;;
+    unreadable) printf 'unreadable' ;;
+    none) printf 'unverified' ;;
+    *) printf 'alive' ;;
+  esac
 }
 
 fm_backend_orca_json_text() {  # <json>

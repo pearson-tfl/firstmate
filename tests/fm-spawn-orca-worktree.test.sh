@@ -186,6 +186,51 @@ EOF
   pass "an Orca-backed fresh spawn enters the worktree Orca created for it, instead of hard-refusing on the post-launch proof"
 }
 
+# Route A: the pane shell that sources an Orca launch file exits once the worker
+# returns, so the Orca terminal ends with the agent and an ended agent reads as
+# a gone endpoint rather than a live shell.
+test_orca_launch_ends_the_terminal_with_the_worker() {
+  local case_dir home id=orca-exit-a3 fb out status staged i result pane_shell
+  case_dir="$TMP_ROOT/exit-with-worker"
+  home="$case_dir/home"
+  mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config"
+  touch "$home/state/.last-watcher-beat"
+  printf 'manual\n' > "$home/config/backlog-backend"
+  fm_git_init_commit "$case_dir/project"
+  cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
+# Task
+## Captain's intent
+Exercise an Orca-backed spawn for $id.
+
+## Firstmate spec
+Confirm the terminal shell ends with the worker.
+EOF
+  fb=$(make_orca_fakebin "$case_dir")
+  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$case_dir/user-home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_SPAWN_NO_GUARD=1 FM_TEST_ORCA_DIR="$case_dir" FM_TEST_ORCA_LOG="$case_dir/terminal.log" \
+    FM_TEST_ORCA_CONSUME=1 PATH="$fb:$PATH" \
+    "$SPAWN" "$id" "$case_dir/project" --mode direct-PR --yolo off --backend orca \
+    --harness "echo WORKER-RAN # a trailing comment" 2>&1)
+  status=$?
+  expect_code 0 "$status" "an Orca-backed spawn should succeed"$'\n'"$out"
+  staged=$(sed -n "s/^[^']*'\([^']*\/launch\.[^'\/]*\.sh\)'.*$/\1/p" "$case_dir/terminal.log" | tail -1)
+  for i in $(seq 1 50); do [ -f "$staged.copy" ] && break; sleep 0.1; done
+  [ -f "$staged.copy" ] || fail "Orca did not receive the staged launch path"
+  for pane_shell in /bin/sh /bin/bash /bin/zsh; do
+    [ -x "$pane_shell" ] || continue
+    # shellcheck disable=SC2016 # The pane shell expands its own argument.
+    result=$(env -i HOME="$case_dir/user-home" PATH="$PATH" TERM=xterm \
+      "$pane_shell" -c '. "$1"; echo SHELL-OUTLIVED-WORKER' _ "$staged.copy" 2>&1)
+    assert_contains "$result" WORKER-RAN "the launch file did not run the worker in $pane_shell"
+    assert_not_contains "$result" SHELL-OUTLIVED-WORKER "the $pane_shell pane outlived its worker, so the Orca terminal would not end with the agent"
+  done
+  pass "an Orca launch ends the pane shell with its worker, even after a custom launch's trailing comment"
+}
+
 test_orca_relaunch_is_refused_before_the_worktree_carveout_could_run() {
   local case_dir home proj wt id=orca-relaunch-a2 out status
   case_dir="$TMP_ROOT/relaunch"
@@ -1005,6 +1050,7 @@ test_orca_launch_file_delete_failure_keeps_terminal
 test_orca_pane_wins_launch_file_race_at_deadline
 test_orca_snapshot_keeps_raw_bytes_tmux_reports
 test_orca_fresh_spawn_enters_the_worktree_it_created
+test_orca_launch_ends_the_terminal_with_the_worker
 test_orca_relaunch_is_refused_before_the_worktree_carveout_could_run
 
 echo "# all fm-spawn-orca-worktree tests passed"

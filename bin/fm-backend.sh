@@ -1217,13 +1217,15 @@ fm_backend_worktree_path() {  # <backend> <worktree-id>
   esac
 }
 
-# fm_backend_busy_state: native busy/idle/unknown for Herdr, Rex, T3 Code, and
-# Tern; backends without a native primitive report unknown. Recorded-task consumers
+# fm_backend_busy_state: native busy/idle/blocked/unknown for Herdr, Rex, T3 Code, Tern,
+# and Orca; backends without a native primitive report unknown. Recorded-task consumers
 # use fm-busy-lib.sh's shared classifier, which owns native-state precedence
 # and harness fallbacks. Delivery-only callers own their separate guards.
 # tern reads Tern's native agent list through `tern ctl` when a desktop window
 # answers (an agent waiting on input reads `blocked`) and reports unknown when
-# none does; every consumer here tests only for the exact word `busy`.
+# none does; bin/fm-busy-lib.sh accepts only the exact word `busy` as activity.
+# orca reads Orca's hook-fed agent listing (bin/backends/orca.sh), where an
+# agent held on a question also reads `blocked`.
 fm_backend_busy_state() {  # <backend> <target>
   local backend=$1
   shift
@@ -1234,6 +1236,7 @@ fm_backend_busy_state() {  # <backend> <target>
     t3code) fm_backend_t3code_busy_state "$@" ;;
     tern) fm_backend_tern_busy_state "$@" ;;
     hc) fm_backend_hc_busy_state "$@" ;;
+    orca) fm_backend_orca_busy_state "$1" ;;
     *) printf 'unknown' ;;
   esac
 }
@@ -1356,7 +1359,9 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
 #   unverified - this backend has no recovery classifier.
 # Only `dead` and `missing` license recovery. Every `alive` is proven at
 # process level through the shared classifier in bin/fm-agent-process-lib.sh,
-# never from a registration or a rendered title alone. The tmux adapter
+# never from a registration or a rendered title alone, except where the agent
+# runs on a host Firstmate cannot read processes on: T3 Code and Orca answer
+# from that host's own session or agent state. The tmux adapter
 # requires a successful session inventory and returns `missing` only when it
 # omits the exact window; the Herdr adapter reuses its strict husk classifier -
 # which verifies a registered agent against `pane process-info` and the real
@@ -1368,7 +1373,10 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
 # remains unverified because
 # its secondmate ghost-tab and agent-process recovery path has not been
 # empirically validated. Orca, cmux, paseo, and tern do not support secondmate
-# spawns. The t3code adapter maps the thread's V2 status through its one status
+# spawns. The Orca adapter answers from Orca's own agent listing, which Orca's
+# status hooks feed and clear when the agent ends, rather than from a process
+# read (bin/backends/orca.sh); like Tern and hc it is absent from
+# fm_control_backend_state_verified. The t3code adapter maps the thread's V2 status through its one status
 # table (bin/backends/t3code.sh); there is no process to attribute locally.
 # Tern answers through the same process classifier from `tern process`, but
 # bin/fm-control-lib.sh's fm_control_backend_state_verified does not list it, so
@@ -1385,6 +1393,7 @@ fm_backend_agent_state() {  # <backend> <target>
     t3code) fm_backend_t3code_agent_state "$target" ;;
     tern) fm_backend_tern_agent_state "$target" ;;
     hc) fm_backend_hc_agent_state "$target" ;;
+    orca) fm_backend_orca_agent_state "$target" ;;
     *) printf 'unverified' ;;
   esac
 }
