@@ -2547,6 +2547,26 @@ Without `tmux -u`, tmux's non-UTF-8 client output sanitized a multiline UTF-8 va
 A name present only in the server-global environment, or only as text inside another value, was refused.
 The fake-Orca cases execute the real staged launch file under synthetic personal credentials and cover refusal before allocation, file privacy and deletion, deletion-failure refusal that keeps the interactive pane with and without errexit, reclaiming a launch file the pane never ran while the terminal stays open, reclaiming it when HUP, INT or TERM interrupts the spawn after the file is published but before the launch command is sent, during the consume wait, or between text delivery and Enter, a pane that wins the deadline unlink race, and the missing-source warning.
 
+### Real-Orca lane
+
+`tests/fm-backend-orca-live-e2e.test.sh` is the refresh command for this section on each Orca release: it drives the adapter against a disposable `orca serve` runtime it starts and stops itself, and its header owns the safeguards that keep it off the operator's live terminals.
+It is opt-in, with `FM_ORCA_LIVE_E2E=1`, and has not yet passed against a real Orca, so the readiness and building-block results above stay the only real-Orca records here.
+
+On 2026-11-23 an ungated scratch-runtime probe on macOS with Orca 1.4.271, run over ssh, showed why the safeguards exist.
+The Orca terminal started the operator's own login shell, which inherited `SSH_CONNECTION` from the runtime and ran a login rule that attached it to the operator's live default tmux server, so keys sent to the scratch terminal reached a live agent session.
+`tests/fm-backend-orca-live-safety.test.sh` pins the safeguards with a fake `orca`: the runtime environment carries no `SSH_*`, `TMUX`, `TMUX_PANE` or `ORCA_*` identity, no key is sent unless the terminal's last row is the lane's own nonce prompt, and no repository, worktree or terminal call is made unless `orca status` reports the runtime id the lane's runtime printed.
+Verified on 2026-11-23 on Linux x86_64 with Bash 5.3:
+
+```sh
+bash bin/fm-test-run.sh tests/fm-backend-orca-live-safety.test.sh tests/fm-backend-orca-live-e2e.test.sh
+```
+
+```text
+FM_TEST_SUMMARY total=2 failed=0 skipped_gate=1
+```
+
+The skip is the opt-in live lane; with `FM_ORCA_LIVE_E2E=1` on a host without `orca` it fails rather than skips.
+
 ## cmux
 
 The current compatibility floor is cmux 0.64, and the active live evidence uses 0.64.17 build 97 on macOS aarch64.
