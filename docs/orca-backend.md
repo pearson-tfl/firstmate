@@ -103,7 +103,7 @@ Firstmate re-reads the terminal after its close and, unless Orca reports it `exi
 A stale handle is not treated as closed, because after an Orca restart the terminal may live on under a new handle.
 The release keeps the task branch unless asked to delete it (real Orca).
 Firstmate asks only when the landed-work test passed, so a scout, a `--force` discard, or a missing worktree keeps the branch (real Orca for a landed and a forced ship).
-Orca's deletion is safe: it deleted a branch whose content was already on `main`, including a squash-style copy, and kept a branch with an unmerged commit, answering `preservedBranch` (real Orca).
+Orca preserves a branch it cannot prove merged (real Orca); [checked close and branch choice](verification/runtime-backends.md#orca-checked-close-and-branch-choice) records the deletion cases exercised.
 Firstmate names a branch Orca kept that way (fake Orca).
 It never raw-deletes an Orca worktree.
 A close the CLI never attempted, because no Orca CLI was found, stops cleanup with the metadata intact even under `--force`: removing those records would leave nothing on disk naming a terminal that may still be live.
