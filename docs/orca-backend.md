@@ -84,7 +84,7 @@ Orca's own help calls that stream read unsuitable for verifying rendered output 
 A read Orca reports as anything other than the drawn screen, including `screen-unavailable`, is refused rather than used, while the terminal-exists probe uses a plain read so an unrenderable screen does not mark a live terminal gone (fake Orca).
 The drawn screen has no scrollback, and Orca omits its blank rows, so a capture longer than the screen returns only the screen (real Orca).
 The composer read declares those omitted blank rows to the shared classifier (`blanks=elided` in `bin/fm-composer-lib.sh`), so a known agent footer such as `? for shortcuts` that sat one blank row below an empty composer does not make it read stale, while a shell prompt or transcript below a stale composer still does; the steering inbox reads a held composer's text with the same declaration (fake Orca).
-Without a row limit that read is the viewport, so Orca serves the viewport-only read the Kimi trust gate and the interrupt screen checks require (fake Orca).
+Without a row limit that read is the viewport, so Orca serves the viewport-only read the Kimi trust gate requires (fake Orca); the interrupt screen checks do not rely on it, because it has never been verified with a real Devin or Command Code on it (code).
 An ordinary metadata-routed `fm-send.sh` text steer becomes a durable steering-inbox record, and only its best-effort constant doorbell passes through Orca's submit machinery (fake Orca).
 On the typed plane, `fm-send.sh` verifies composer clearance through the fleet-wide classifier in `bin/fm-composer-lib.sh`, retrying Enter without retyping when a slash popup first fills an argument placeholder (fake Orca).
 The composer read is the bottom rows of the drawn screen, so a stale startup banner cannot compete with the bottom-anchored composer (fake Orca); no real agent's composer has yet been classified on Orca.
@@ -113,7 +113,7 @@ Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ende
 - The backend is explicit-only and has been exercised only on macOS.
 - The app must be running and report ready.
 - Secondmate spawns are unsupported (code).
-- An interrupt is reported delivered with its cancellation unconfirmed unless the harness keeps its own confirmation record (muse confirms from its session log), and an interrupt for a harness that must read its screen between or after presses (Devin and Command Code) is refused because Orca has no verified viewport read (code); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
+- An interrupt is reported delivered with its cancellation unconfirmed unless the harness keeps its own confirmation record (muse confirms from its session log), and an interrupt for a harness that must read its screen between or after presses (Devin and Command Code) is refused because Orca's screen read has never been verified with a real Devin or Command Code on it (code); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
 - Orca has no recovery-grade agent-state classifier, so `exit` and `relaunch` refuse (code).
 - Cortex and Command Code are refused because Orca supplies no pane identity for their composers (code).
 - Firstmate checks readiness, not Orca's version (code).
