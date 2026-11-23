@@ -1,0 +1,9 @@
+fm-spawn-launch-home.test.sh: exit 0
+fm-polytoken-harness.test.sh: exit 0
+fm-backend-t3code.test.sh: exit 1 at secondmate fixture beneath code root (setup conflict caused by workspace-only TMPDIR).
+Resolution: archived unchanged HEAD to .validation-code; retained sibling .test-tmp fixture root.
+FM_TEST_ONLY=test_spawn_secondmate_runs_thread_in_home_with_env: exit 0
+FM_TEST_ONLY=test_spawn_codex_secondmate_writes_toml_env: exit 0
+FM_TEST_ONLY=test_spawn_codex_scout_writes_toml_env_with_traceparent: exit 0
+Live driver: exit 0; independent assertions: exit 0.
+All started checks finished. Disposable lab server, homes, code copy, and fixture roots removed.

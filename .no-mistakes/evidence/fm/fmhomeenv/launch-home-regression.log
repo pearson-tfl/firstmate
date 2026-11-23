@@ -1,0 +1,3 @@
+ok - a new window of the lab tmux server inherits the global FM_HOME
+ok - a ship and a scout spawned from a secondmate home see that home's FM_HOME despite the tmux global
+ok - a ship spawned from the primary home still sees the primary home's FM_HOME

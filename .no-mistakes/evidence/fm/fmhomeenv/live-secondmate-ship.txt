@@ -1,0 +1,8 @@
+task=secondmate-ship
+FM_HOME={run-worktree}/.live-home/secondmate
+FM_ROOT_OVERRIDE=
+FM_STATE_OVERRIDE=
+FM_DATA_OVERRIDE=
+FM_CONFIG_OVERRIDE=
+FM_PROJECTS_OVERRIDE=
+cwd={run-worktree}/.live-home/pool/.treehouse/project-f0787b/1/project

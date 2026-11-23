@@ -1,0 +1,5 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.live-home/secondmate
+warning: {run-worktree}/.live-home/secondmate/data/secondmate-ship/launch-brief.md records no ship branch; defaulting to legacy branch fm/secondmate-ship
+warning: {run-worktree}/.live-home/secondmate/data/secondmate-ship/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches
+notice: secondmate-ship ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned secondmate-ship harness=sh kind=ship mode=local-only yolo=off window=lab:fm-secondmate-ship worktree={run-worktree}/.live-home/pool/.treehouse/project-f0787b/1/project

@@ -1,0 +1,70 @@
+live-control.txt
+{run-worktree}/.live-home/global
+
+
+spawn-secondmate-ship.log
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.live-home/secondmate
+warning: {run-worktree}/.live-home/secondmate/data/secondmate-ship/launch-brief.md records no ship branch; defaulting to legacy branch fm/secondmate-ship
+warning: {run-worktree}/.live-home/secondmate/data/secondmate-ship/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches
+notice: secondmate-ship ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned secondmate-ship harness=sh kind=ship mode=local-only yolo=off window=lab:fm-secondmate-ship worktree={run-worktree}/.live-home/pool/.treehouse/project-f0787b/1/project
+
+
+live-secondmate-ship.txt
+task=secondmate-ship
+FM_HOME={run-worktree}/.live-home/secondmate
+FM_ROOT_OVERRIDE=
+FM_STATE_OVERRIDE=
+FM_DATA_OVERRIDE=
+FM_CONFIG_OVERRIDE=
+FM_PROJECTS_OVERRIDE=
+cwd={run-worktree}/.live-home/pool/.treehouse/project-f0787b/1/project
+
+
+spawn-secondmate-scout.log
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.live-home/secondmate
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no live watcher process holds this home lock (last beat: 1s ago).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+spawned secondmate-scout harness=sh kind=scout window=lab:fm-secondmate-scout worktree={run-worktree}/.live-home/pool/.treehouse/project-f0787b/2/project
+
+
+live-secondmate-scout.txt
+task=secondmate-scout
+FM_HOME={run-worktree}/.live-home/secondmate
+FM_ROOT_OVERRIDE=
+FM_STATE_OVERRIDE=
+FM_DATA_OVERRIDE=
+FM_CONFIG_OVERRIDE=
+FM_PROJECTS_OVERRIDE=
+cwd={run-worktree}/.live-home/pool/.treehouse/project-f0787b/2/project
+
+
+spawn-primary-ship.log
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.live-home/primary
+warning: {run-worktree}/.live-home/primary/data/primary-ship/launch-brief.md records no ship branch; defaulting to legacy branch fm/primary-ship
+warning: {run-worktree}/.live-home/primary/data/primary-ship/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches
+notice: primary-ship ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned primary-ship harness=sh kind=ship mode=local-only yolo=off window=lab:fm-primary-ship worktree={run-worktree}/.live-home/pool/.treehouse/project-f0787b/3/project
+
+
+live-primary-ship.txt
+task=primary-ship
+FM_HOME={run-worktree}/.live-home/primary
+FM_ROOT_OVERRIDE=
+FM_STATE_OVERRIDE=
+FM_DATA_OVERRIDE=
+FM_CONFIG_OVERRIDE=
+FM_PROJECTS_OVERRIDE=
+cwd={run-worktree}/.live-home/pool/.treehouse/project-f0787b/3/project
+
+
+live-assertions.txt
+Real fm-spawn + real tmux + real treehouse, raw shell worker interface.
+Control inherited conflicting global home.
+Secondmate ship, secondmate scout, primary ship: expected spawning FM_HOME; all five overrides empty; isolated treehouse cwd.
+All independent assertions passed. Lab tmux server stopped by driver EXIT trap.

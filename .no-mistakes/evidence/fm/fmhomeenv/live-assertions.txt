@@ -1,0 +1,4 @@
+Real fm-spawn + real tmux + real treehouse, raw shell worker interface.
+Control inherited conflicting global home.
+Secondmate ship, secondmate scout, primary ship: expected spawning FM_HOME; all five overrides empty; isolated treehouse cwd.
+All independent assertions passed. Lab tmux server stopped by driver EXIT trap.

@@ -1,66 +1,56 @@
 #!/bin/bash
-set -euo pipefail
+set -eu
 ROOT=$PWD
-E=~/.no-mistakes/evidence/01M857KTN6MHT14HB8TE4Z32Y0
-D=$(mktemp -d "$PWD/.fm-home-live.XXXXXX")
-LAB=$D/mate
-bin/fm-lab-home.sh create "$LAB"
-SOCKDIR=$(bin/fm-lab-home.sh tmux-dir "$LAB")
-export TMUX_TMPDIR=$SOCKDIR
-lab() { tmux -L fm-lab -f /dev/null "$@"; }
-cleanup() { lab kill-server 2>/dev/null || true; bin/fm-lab-home.sh teardown "$LAB"; rm -rf "$D"; }
-trap cleanup EXIT
-unset FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE TMUX TMUX_PANE
-mkdir -p "$D/user" "$D/project" "$D/primary"
-export HOME=$D/user TREEHOUSE_ROOT=$D/pool SHELL=/bin/bash
-export XDG_CONFIG_HOME=$HOME/.config XDG_DATA_HOME=$HOME/.local/share
-export FM_HOME=$LAB
-printf 'codex\n' > "$LAB/config/crew-harness"
-printf 'lab-mate\n' > "$LAB/.fm-secondmate-home"
-touch "$LAB/state/.last-watcher-beat"
-git -C "$D/project" init -q
-git -C "$D/project" -c user.name=Lab -c user.email=lab@example.invalid commit -qm initial --allow-empty
-lab new-session -d -s fm-lab-home -x 120 -y 40 /bin/bash --noprofile --norc
-lab set-option -g default-shell /bin/bash
-lab set-option -g default-command '/bin/bash --noprofile --norc'
-lab set-environment -g FM_HOME "$D/primary"
-for v in FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE; do lab set-environment -g "$v" "$D/primary/foreign"; done
-export TMUX=$(lab display-message -p '#{socket_path},#{pid},#{session_id}' | sed 's/\$//g')
-lab new-window -d -n control "/usr/bin/env > '$E/control-environment.txt'"
-sleep 1
+D=$ROOT/.live-home
+E=~/.no-mistakes/evidence/01M85AJTDXHG508BFYP0Y5E4FJ
+SOCKET=fm-lab-home-$$
+lab() { tmux -L "$SOCKET" "$@"; }
+trap 'lab kill-server 2>/dev/null || true' EXIT
+for name in global secondmate primary; do
+ bin/fm-lab-home.sh create "$D/$name"
+ echo manual > "$D/$name/config/backlog-backend"
+done
+printf 'lab-secondmate\n' > "$D/secondmate/.fm-secondmate-home"
+mkdir -p "$D/project"
+git -C "$D/project" init -b main -q
+git -C "$D/project" -c user.name=Test -c user.email=test@example.invalid commit --allow-empty -m initial -q
 cat > "$D/probe.sh" <<'PROBE'
 #!/bin/sh
-{
- printf 'FM_HOME=%s\n' "$FM_HOME"
- for v in FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE; do eval 'printf "%s=%s\n" "$v" "${'"$v"'-unset}"'; done
- printf 'cwd=%s\n' "$PWD"
-} > "$1"
+printf 'task=%s\nFM_HOME=%s\nFM_ROOT_OVERRIDE=%s\nFM_STATE_OVERRIDE=%s\nFM_DATA_OVERRIDE=%s\nFM_CONFIG_OVERRIDE=%s\nFM_PROJECTS_OVERRIDE=%s\ncwd=%s\n' "$FM_TASK_ID" "$FM_HOME" "${FM_ROOT_OVERRIDE-unset}" "${FM_STATE_OVERRIDE-unset}" "${FM_DATA_OVERRIDE-unset}" "${FM_CONFIG_OVERRIDE-unset}" "${FM_PROJECTS_OVERRIDE-unset}" "$PWD" > "~/.no-mistakes/evidence/01M85AJTDXHG508BFYP0Y5E4FJ/live-$FM_TASK_ID.txt"
 PROBE
-for kind in ship scout primary; do
- id=home-$kind
- if [ "$kind" = primary ]; then rm "$LAB/.fm-secondmate-home"; fi
- mkdir -p "$LAB/data/$id"
- cat > "$LAB/data/$id/brief.md" <<EOF
-/implement
-
+lab new-session -d -s lab -x 120 -y 30
+lab set-environment -g FM_HOME "$D/global"
+for v in ROOT STATE DATA CONFIG PROJECTS; do lab set-environment -g FM_${v}_OVERRIDE "$D/global"; done
+lab set-environment -g TREEHOUSE_ROOT "$D/pool"
+lab set-environment -g SHELL /bin/bash
+lab set-environment -g PATH "$PATH"
+lab new-window -d -n control "printenv FM_HOME > '$E/live-control.txt'"
+for spec in secondmate:ship secondmate:scout primary:ship; do
+ home=${spec%:*}; kind=${spec#*:}; id=$home-$kind
+ mkdir -p "$D/$home/data/$id"
+ cat > "$D/$home/data/$id/brief.md" <<EOF
 # Task
 ## Captain's intent
-Record the isolated worker environment.
-
+Report the launch environment in a disposable fixture.
 ## Firstmate spec
-Execute the supplied custom environment-report command only.
+Run the requested environment capture only.
 EOF
- flags=(--mode local-only --yolo off)
- if [ "$kind" = scout ]; then flags=(--scout); fi
- result=$E/$kind-environment.txt
- launch="/bin/sh '$D/probe.sh' '$result'; /bin/sh '$D/probe.sh' '$E/$kind-compound-environment.txt'"
- echo "SPAWN $kind"
- FM_HOME="$LAB" bin/fm-spawn.sh "$id" "$D/project" "${flags[@]}" "$launch"
- for i in $(seq 1 50); do [ -s "$result" ] && break; sleep .2; done
- cat "$result"
- test "$(sed -n 's/^FM_HOME=//p' "$result")" = "$LAB"
- for v in FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE; do grep -qx "$v=" "$result"; done
- cmp "$result" "$E/$kind-compound-environment.txt"
- echo "OBSERVED $kind: spawning home preserved; all five foreign overrides cleared across compound command"
- lab capture-pane -p -t "fm-lab-home:fm-$id" -S -100 > "$E/$kind-pane.txt" || true
+ touch "$D/$home/state/.last-watcher-beat"
+ flags='--mode local-only --yolo off'
+ [ "$kind" != scout ] || flags=--scout
+ cat > "$D/$id.sh" <<EOF
+#!/bin/bash
+unset FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE FM_GATE_REFUSE_BYPASS FM_TASK_ID
+export FM_HOME='$D/$home' TREEHOUSE_ROOT='$D/pool' PROBE_RESULT='$E/live-$id.txt'
+cd '$ROOT'
+'$ROOT/bin/fm-spawn.sh' '$id' '$D/project' $flags '/bin/sh $D/probe.sh' > '$E/spawn-$id.log' 2>&1
+printf '%s' \$? > '$D/$id.rc'
+EOF
+ lab new-window -d -n "driver-$id" "/bin/bash '$D/$id.sh'"
+ for n in $(seq 1 100); do [ ! -f "$D/$id.rc" ] || break; sleep 1; done
+ if [ ! -f "$D/$id.rc" ]; then lab capture-pane -p -t "driver-$id" > "$E/timeout-$id.txt"; exit 1; fi
+ cat "$E/spawn-$id.log"
+ [ "$(cat "$D/$id.rc")" = 0 ] || exit 1
+ for n in $(seq 1 20); do [ ! -s "$E/live-$id.txt" ] || break; sleep 1; done
+ cat "$E/live-$id.txt"
  done
