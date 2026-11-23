@@ -1,9 +1,9 @@
-closed terminal response: {
-  "id": "fb950ea9-daa6-44cc-8cc0-18b5235b922d",
+Closed terminal response: {
+  "id": "d3303476-d716-4d54-949c-d9b5858892f6",
   "ok": true,
   "result": {
     "terminal": {
-      "handle": "term_b6f6ad34-7212-46e4-83f8-ea559c7bf542",
+      "handle": "term_a55e7738-df72-4f00-bdac-2314480000aa",
       "status": "exited",
       "tail": [],
       "truncated": false,
@@ -16,24 +16,26 @@ closed terminal response: {
     }
   },
   "_meta": {
-    "runtimeId": "fcfd25d7-ef04-41aa-bacd-c5a1373087e6"
+    "runtimeId": "f913ba22-cba0-48d1-8652-5534abecf5fb"
   }
 }
-stale-handle cleanup exit=1
-teardown: reaping leaked worktree process(es) for fm-orca-td-landed: 1733925 1735433
-teardown: force-killing leaked worktree process(es) for fm-orca-td-landed: 1733925 1735433
-error: Orca terminal term_disposable_stale_handle did not close: a read of the terminal answered terminal_handle_stale
-error: the orca endpoint term_disposable_stale_handle for fm-orca-td-landed could not be closed, so it may still be live.
-error: stopping this cleanup without removing the task's records, so the record naming term_disposable_stale_handle is still here to reconcile from.
+Unknown terminal cleanup exit=1: teardown: reaping leaked worktree process(es) for fm-orca-td-landed: 3238088 3239123
+teardown: force-killing leaked worktree process(es) for fm-orca-td-landed: 3238088 3239123
+error: Orca terminal term_disposable_unknown did not close: a read of the terminal answered terminal_handle_stale
+error: the orca endpoint term_disposable_unknown for fm-orca-td-landed could not be closed, so it may still be live.
+error: stopping this cleanup without removing the task's records, so the record naming term_disposable_unknown is still here to reconcile from.
 error: that retention is not durable across a session start: if this task carries a backlog transition, the next session replays its pending close and removes the retained record, so reconcile the surviving endpoint yourself rather than trusting the retention.
-35583c3698857fb6aa80c75d9762a0ca2e379dbc refs/heads/fm-orca-td-landed
-refused cleanup retained metadata, worktree and branch
-cleanup fm-orca-td-landed (landed): teardown fm-orca-td-landed complete (window term_308aaef6-8d4f-4266-9e58-d6e984897a8e, worktree {run-worktree}/.test-tmp/fm-orca-live.mhCncf/home/orca/workspaces/repo/fm-orca-td-landed)
-Backlog: fm-orca-td-landed just finished (this home keeps no markdown backlog at {run-worktree}/.test-tmp/fm-orca-live.mhCncf/fm-home/data/backlog.md). Update {run-worktree}/.test-tmp/fm-orca-live.mhCncf/fm-home/data/backlog.md - move fm-orca-td-landed to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
-branch removed: fm-orca-td-landed
-cleanup fm-orca-td-forced (unlanded): teardown: reaping leaked worktree process(es) for fm-orca-td-forced: 1771247 1772108
-teardown: force-killing leaked worktree process(es) for fm-orca-td-forced: 1771247 1772108
-teardown fm-orca-td-forced complete (window term_f996876b-e6b3-4647-a2aa-9d0bc120e310, worktree {run-worktree}/.test-tmp/fm-orca-live.mhCncf/home/orca/workspaces/repo/fm-orca-td-forced)
-Backlog: fm-orca-td-forced just finished (this home keeps no markdown backlog at {run-worktree}/.test-tmp/fm-orca-live.mhCncf/fm-home/data/backlog.md). Update {run-worktree}/.test-tmp/fm-orca-live.mhCncf/fm-home/data/backlog.md - move fm-orca-td-forced to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
-branch retained: fm-orca-td-forced
-ok - orca live lane: Orca 1.4.272 runtime fcfd25d7-ef04-41aa-bacd-c5a1373087e6 passes register, worktree, own-shell send, Enter, Ctrl-C, checked close, release, and teardown's branch choice
+Refused cleanup preserved worktree, metadata, and branch
+Cleanup fm-orca-td-landed output: teardown fm-orca-td-landed complete (window term_d459cb2a-354f-44e0-849e-4656be9c88a3, worktree {run-worktree}/.test-tmp/fm-orca-live.POWINV/home/orca/workspaces/repo/fm-orca-td-landed)
+Backlog: fm-orca-td-landed just finished (this home keeps no markdown backlog at {run-worktree}/.test-tmp/fm-orca-live.POWINV/fm-home/data/backlog.md). Update {run-worktree}/.test-tmp/fm-orca-live.POWINV/fm-home/data/backlog.md - move fm-orca-td-landed to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+Branch fm-orca-td-landed removed after landed cleanup
+Unlanded cleanup without force exit=1: REFUSED: local-only worktree {run-worktree}/.test-tmp/fm-orca-live.POWINV/home/orca/workspaces/repo/fm-orca-td-forced has work not yet merged into main and not on any remote.
+commits not yet on main:
+f89659f fm-orca-td-forced
+Merge the branch into local main first (bin/fm-merge-local.sh after the captain approves), or push to a fork/remote, or get the captain's explicit OK to discard, then --force.
+Cleanup fm-orca-td-forced output: teardown: reaping leaked worktree process(es) for fm-orca-td-forced: 3261777 3262440
+teardown: force-killing leaked worktree process(es) for fm-orca-td-forced: 3261777 3262440
+teardown fm-orca-td-forced complete (window term_5178fb54-8c19-42f1-8b24-c7585952a846, worktree {run-worktree}/.test-tmp/fm-orca-live.POWINV/home/orca/workspaces/repo/fm-orca-td-forced)
+Backlog: fm-orca-td-forced just finished (this home keeps no markdown backlog at {run-worktree}/.test-tmp/fm-orca-live.POWINV/fm-home/data/backlog.md). Update {run-worktree}/.test-tmp/fm-orca-live.POWINV/fm-home/data/backlog.md - move fm-orca-td-forced to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+Branch fm-orca-td-forced remains after unlanded cleanup
+ok - orca live lane: Orca 1.4.272 runtime f913ba22-cba0-48d1-8652-5534abecf5fb passes register, worktree, own-shell send, Enter, Ctrl-C, checked close, release, and teardown's branch choice

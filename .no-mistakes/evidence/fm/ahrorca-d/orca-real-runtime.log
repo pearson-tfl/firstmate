@@ -1,0 +1,32 @@
+Closed terminal response: {
+  "id": "382b124b-7144-4874-9e70-bb6b29d4104b",
+  "ok": true,
+  "result": {
+    "terminal": {
+      "handle": "term_4bb34ae2-366e-4b29-9ff5-905125329f8f",
+      "status": "exited",
+      "tail": [],
+      "truncated": false,
+      "limited": false,
+      "oldestCursor": "0",
+      "nextCursor": "0",
+      "latestCursor": "0",
+      "returnedLineCount": 0,
+      "source": "stream"
+    }
+  },
+  "_meta": {
+    "runtimeId": "cb101388-4c00-4701-a56b-e717a8388ea4"
+  }
+}
+Cleanup fm-orca-td-landed output: teardown: reaping leaked worktree process(es) for fm-orca-td-landed: 3157357 3157635
+teardown: force-killing leaked worktree process(es) for fm-orca-td-landed: 3157357 3157635
+teardown fm-orca-td-landed complete (window term_15ac4ad6-1e11-419e-bff3-83852868a23b, worktree {run-worktree}/.test-tmp/fm-orca-live.d4NW0Y/home/orca/workspaces/repo/fm-orca-td-landed)
+Backlog: fm-orca-td-landed just finished (this home keeps no markdown backlog at {run-worktree}/.test-tmp/fm-orca-live.d4NW0Y/fm-home/data/backlog.md). Update {run-worktree}/.test-tmp/fm-orca-live.d4NW0Y/fm-home/data/backlog.md - move fm-orca-td-landed to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+Branch fm-orca-td-landed removed after landed cleanup
+Cleanup fm-orca-td-forced output: teardown: reaping leaked worktree process(es) for fm-orca-td-forced: 3169024 3169836
+teardown: force-killing leaked worktree process(es) for fm-orca-td-forced: 3169024 3169836
+teardown fm-orca-td-forced complete (window term_c9ab3a27-3818-4ad8-89eb-5af4fe313964, worktree {run-worktree}/.test-tmp/fm-orca-live.d4NW0Y/home/orca/workspaces/repo/fm-orca-td-forced)
+Backlog: fm-orca-td-forced just finished (this home keeps no markdown backlog at {run-worktree}/.test-tmp/fm-orca-live.d4NW0Y/fm-home/data/backlog.md). Update {run-worktree}/.test-tmp/fm-orca-live.d4NW0Y/fm-home/data/backlog.md - move fm-orca-td-forced to Done, keep Done to the 10 most recent, then re-scan Queued and dispatch only work whose blockers are gone and date is due.
+Branch fm-orca-td-forced remains after unlanded cleanup
+ok - orca live lane: Orca 1.4.272 runtime cb101388-4c00-4701-a56b-e717a8388ea4 passes register, worktree, own-shell send, Enter, Ctrl-C, checked close, release, and teardown's branch choice
