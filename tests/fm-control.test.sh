@@ -637,6 +637,7 @@ printf '\n' >> "$FM_FAKE_DIR/orca-calls"
 printf '{"ok":true,"result":{"terminal":{"handle":"term-1","status":"running","tail":["ready"]}}}\n'
 SH
   chmod +x "$dir/fakebin/orca"
+  ln -sf orca "$dir/fakebin/orca-ide"
   out=$(run_control "$dir" t1 interrupt); rc=$?
   expect_code 0 "$rc" "an Escape harness on orca should deliver Escape"
   assert_contains "$out" "interrupt-delivered t1 harness=claude backend=orca" "interrupt should report delivery on orca"
