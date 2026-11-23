@@ -645,27 +645,24 @@ SH
   assert_contains "$(cat "$dir/fake/orca-calls")" "033" "interrupt did not send the raw Escape byte"
   pass "fm-control interrupt: an Escape harness on orca gets a raw Escape byte"
 
-  # Devin's second Escape waits on Orca's drawn-screen viewport read: a screen
-  # without the armed hint gets exactly one press, never the revert-picker pair.
+  # Orca's screen read has never been verified with a real Devin or Command
+  # Code, so an interrupt that must read the screen between or after presses
+  # refuses before any press.
   sed -e 's|^window=.*|window=fm-t1|' -e 's|^harness=.*|harness=devin|' "$dir/home/state/t1.meta.new" > "$dir/home/state/t1.meta"
   : > "$dir/fake/orca-calls"
   out=$(run_control "$dir" t1 interrupt); rc=$?
-  expect_code 0 "$rc" "a Devin interrupt on orca should deliver its first Escape"
-  assert_contains "$out" "cancel=not-running" "an unarmed Devin interrupt on orca must say no running turn was cancelled"
-  [ "$(grep -c '033' "$dir/fake/orca-calls")" = 1 ] \
-    || fail "an unarmed Devin on orca must receive exactly one Escape, got: $(grep -c '033' "$dir/fake/orca-calls")"
-  pass "fm-control interrupt: an unarmed Devin on orca gets exactly one Escape, never the revert-picker pair"
+  expect_code 1 "$rc" "a Devin interrupt on orca should refuse"
+  assert_contains "$out" "never been verified with a real devin" "refusal should name the unverified orca screen read"
+  [ ! -s "$dir/fake/orca-calls" ] || fail "a refused Devin interrupt must not send any key to orca"
+  pass "fm-control interrupt: a Devin interrupt on orca refuses before any press"
 
-  # Command Code's single Escape is checked on the same viewport read for its
-  # rewind picker; a screen without the picker gets no dismissing press.
   sed -e 's|^window=.*|window=fm-t1|' -e 's|^harness=.*|harness=commandcode|' "$dir/home/state/t1.meta.new" > "$dir/home/state/t1.meta"
   : > "$dir/fake/orca-calls"
   out=$(run_control "$dir" t1 interrupt); rc=$?
-  expect_code 0 "$rc" "a Command Code interrupt on orca should deliver its Escape"
-  assert_contains "$out" "interrupt-delivered t1 harness=commandcode backend=orca" "Command Code interrupt should report delivery on orca"
-  [ "$(grep -c '033' "$dir/fake/orca-calls")" = 1 ] \
-    || fail "Command Code on orca with no rewind picker must receive exactly one Escape, got: $(grep -c '033' "$dir/fake/orca-calls")"
-  pass "fm-control interrupt: a Command Code interrupt on orca gets one Escape and no picker dismissal"
+  expect_code 1 "$rc" "a Command Code interrupt on orca should refuse"
+  assert_contains "$out" "never been verified with a real commandcode" "refusal should name the unverified orca screen read"
+  [ ! -s "$dir/fake/orca-calls" ] || fail "a refused Command Code interrupt must not send any key to orca"
+  pass "fm-control interrupt: a Command Code interrupt on orca refuses before any press"
 }
 
 test_unverified_state_backends_refuse_stop_verbs() {
