@@ -487,7 +487,15 @@
 #   delete the file, or HUP, INT or TERM interrupts spawn first, spawn removes
 #   it unless the pane already did, refuses the worker launch, and leaves the
 #   Orca terminal open.
-#   The selector is not inherited into secondmate homes. This is not a
+#   Vault alternative (config/launch-env-vault), with no tmux involved: a JSON
+#   object keyed by allowlisted name whose values are credential-source
+#   declarations (bin/fm-credential-source-lib.sh owns the schema and
+#   adapters). Every allowlisted name must be declared and read non-empty
+#   through its source before allocation, or the spawn refuses naming the name,
+#   never the value; the values then take the same staged launch-file path,
+#   GIT_CONFIG_NOSYSTEM=1 and consumption wait as the tmux source. Both
+#   selectors present refuses.
+#   Neither selector is inherited into secondmate homes. This is not a
 #   filesystem sandbox; project and harness sandbox
 #   settings still own access to personal credential files.
 # Codex permission mode: docs/configuration.md owns config/codex-permission-mode.
@@ -2412,7 +2420,24 @@ if [ "$RELAUNCH" -eq 0 ]; then
   fi
   if [ "$BACKEND" = orca ]; then
     ORCA_LAUNCH_ENV_ENABLED=$(fm_config_source_present "$CONFIG/launch-env-tmux-session") || exit 1
-    if [ "$ORCA_LAUNCH_ENV_ENABLED" = 1 ]; then
+    ORCA_LAUNCH_ENV_VAULT=$(fm_config_source_present "$CONFIG/launch-env-vault") || exit 1
+    if [ "$ORCA_LAUNCH_ENV_VAULT" = 1 ]; then
+      if [ "$ORCA_LAUNCH_ENV_ENABLED" = 1 ]; then
+        echo "error: config/launch-env-tmux-session and config/launch-env-vault are alternative Orca environment sources; keep only one" >&2
+        exit 1
+      fi
+      if [ "$LAUNCH_ENV_ENABLED" != 1 ]; then
+        echo "error: config/launch-env-vault requires config/launch-env-allowlist; refusing Orca launch" >&2
+        exit 1
+      fi
+      if [ ! -f "$CONFIG/launch-env-vault" ] || [ ! -r "$CONFIG/launch-env-vault" ]; then
+        echo "error: config/launch-env-vault must be a readable regular file" >&2
+        exit 1
+      fi
+      ORCA_LAUNCH_ENV_ARGS=$(fm_backend_orca_launch_env_vault_args \
+        "$CONFIG/launch-env-vault" "$LAUNCH_ENV_NAMES") || exit 1
+      ORCA_LAUNCH_ENV_ENABLED=1
+    elif [ "$ORCA_LAUNCH_ENV_ENABLED" = 1 ]; then
       if [ "$LAUNCH_ENV_ENABLED" != 1 ]; then
         echo "error: config/launch-env-tmux-session requires config/launch-env-allowlist; refusing Orca launch" >&2
         exit 1
@@ -2431,7 +2456,7 @@ if [ "$RELAUNCH" -eq 0 ]; then
       ORCA_LAUNCH_ENV_ARGS=$(fm_backend_orca_launch_env_args \
         "$ORCA_LAUNCH_ENV_SESSION" "$LAUNCH_ENV_NAMES") || exit 1
     elif [ -n "$LAUNCH_ENV_NAMES" ]; then
-      echo "warning: backend=orca resolves config/launch-env-allowlist names from the Orca terminal's own environment, not this home's; set config/launch-env-tmux-session to take them from a scoped tmux session" >&2
+      echo "warning: backend=orca resolves config/launch-env-allowlist names from the Orca terminal's own environment, not this home's; set config/launch-env-vault or config/launch-env-tmux-session to take them from a scoped source" >&2
     fi
   fi
 fi

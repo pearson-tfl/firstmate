@@ -9,7 +9,7 @@ Start with the directory layout, then use the setting reference for the behavior
 | --- | --- |
 | Firstmate's code, private files, or project location | [FM_HOME](#fm_home) and [operational home layout](#operational-home-layout-and-state) |
 | Task windows and worker tools | [Runtime backend](#runtime-backend-configbackend--fm_backend) and [harness support](#harness-support) |
-| Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [account rules](#account-rules-configaccount-rules), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker loadout and workflows](#worker-loadout-and-workflows-configloadout-command-configcrew-workflows), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), its [Orca environment source](#orca-environment-source-configlaunch-env-tmux-session), and the [worker tmux stand-in](#worker-tmux-stand-in-configworker-tmux-dir) |
+| Worker permissions, accounts, or environment | [Codex approval review](#codex-automatic-approval-review), [Claude permission mode](#claude-permission-mode-configclaude-permission-mode), [Codex permission mode](#codex-permission-mode-configcodex-permission-mode), [persistent managed-policy failover](#persistent-managed-policy-failover), [worker account pin](#worker-account-pin-configclaude-account-configpi-account), [account rules](#account-rules-configaccount-rules), [worker tool exclusions](#worker-tool-exclusions-configcrew-exclude-tools), [worker loadout and workflows](#worker-loadout-and-workflows-configloadout-command-configcrew-workflows), [worker launch environment](#worker-launch-environment-configlaunch-env-allowlist), its [Orca environment source](#orca-environment-source-configlaunch-env-vault-configlaunch-env-tmux-session), and the [worker tmux stand-in](#worker-tmux-stand-in-configworker-tmux-dir) |
 | Backlog, preferences, and memory | [Backlog backend](#backlog-backend-taskstoml--configbacklog-backend), [captain preferences](#captain-preferences-datacaptainmd--datacaptain-sharedmd), [external memory tiers](#external-memory-tiers-memory-layering-section), [record export](#record-export-configrecord-export-root), [captain's board](#captains-board-configcaptain-board), and [startup memory budget](#startup-memory-budget-configstartup-memory-budget) |
 | Supervision and presentation | [Pi supervision branch](#pi-supervision-branch), [supervision host](#supervision-host-configsupervision-host), [hung-forwarder detector notify](#hung-forwarder-detector-notify-configdetector-notify), [warm-cache compaction](#warm-cache-compaction-configwarm-compact), and [Calm preference](#calm-preference-configcalm) |
 | Persistent secondmates | [Secondmate routes](#secondmate-routes-datasecondmatesmd) |
@@ -1740,19 +1740,29 @@ Unless the Orca environment source below is configured, allowed values come from
 Listing a name does not provision it in a daemon's environment or transfer credentials to another machine.
 
 On the Orca backend the destination is an Orca terminal whose environment comes from the Orca app and your shell startup files, not from Firstmate or its tmux session.
-Allowlisted names there resolve to whatever that terminal has, often your personal credentials or nothing, so a spawn with a nonempty allowlist prints a warning unless the Orca environment source below is configured.
+Allowlisted names there resolve to whatever that terminal has, often your personal credentials or nothing, so a spawn with a nonempty allowlist prints a warning unless an Orca environment source below is configured.
 
-### Orca environment source (config/launch-env-tmux-session)
+### Orca environment source (config/launch-env-vault, config/launch-env-tmux-session)
 
-An Orca home can opt in to taking allowlisted values from one named tmux session instead of the Orca terminal.
+An Orca home can opt in to taking allowlisted values from a vault or from one named tmux session instead of the Orca terminal.
+Both sources require `config/launch-env-allowlist` and supply only its names; configuring both refuses the spawn.
+
+The vault source needs no tmux.
+Create the local, gitignored `config/launch-env-vault` holding one JSON object keyed by allowlisted name, each value a credential-source declaration that says where the key lives and never holds the key, for example `{"GH_TOKEN": {"source": "macos-keychain", "service": "fm-worker-gh-token"}}`.
+[`bin/fm-credential-source-lib.sh`](../bin/fm-credential-source-lib.sh) owns the declaration schema and its adapters; `macos-keychain` is the one adapter today.
+Every allowlisted name must be declared, and a missing declaration, a malformed file, a source this host cannot run, or an empty or unreadable key stops the spawn before Orca creates the worktree or terminal, naming the variable and never its value.
+Do not put worker keys where Orca itself starts, because every Orca terminal inherits that environment.
+
+The tmux source takes values from one named tmux session.
 Create the local, gitignored `config/launch-env-tmux-session` containing that session's name, and keep the session running for subsequent Orca spawns.
-The source requires `config/launch-env-allowlist` and reads only its names from the session's local environment (`tmux set-environment -t <session>`), so tmux's automatic values such as `SSH_AUTH_SOCK` are never forwarded unless listed.
+It reads only allowlisted names from the session's local environment (`tmux set-environment -t <session>`), so tmux's automatic values such as `SSH_AUTH_SOCK` are never forwarded unless listed.
 A listed name missing from the session, an unreadable session, or a malformed selector stops the spawn before Orca creates the worktree or terminal; a name removed with `tmux set-environment -r` stays deliberately unset.
-Source mode also sets `GIT_CONFIG_NOSYSTEM=1`, so a system Git credential helper cannot answer with personal credentials.
+
+Either source also sets `GIT_CONFIG_NOSYSTEM=1`, so a system Git credential helper cannot answer with personal credentials.
 Values travel only in the owner-only staged launch file, never terminal input, and the pane deletes that file before the worker starts.
 If the pane has not run the launch command and deleted the file within 30 seconds, or the spawn is interrupted before then, Firstmate removes the file unless the pane already did, leaves the Orca terminal open, and reports the spawn as failed rather than leaving credentials on disk.
-The source applies to fresh Orca spawns; `--relaunch` is refused on Orca because it has no recovery-grade agent-state classifier.
-The selector is not inherited into secondmate homes, and other backends ignore it.
+The sources apply to fresh Orca spawns; `--relaunch` is refused on Orca because it has no recovery-grade agent-state classifier.
+Neither selector is inherited into secondmate homes, and other backends ignore them.
 [`fm-spawn.sh --help`](../bin/fm-spawn.sh) owns the snapshot and launch-file mechanics.
 Project and harness sandbox settings still own filesystem access to personal credential stores.
 

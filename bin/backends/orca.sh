@@ -11,6 +11,8 @@
 # every backend so the decision cannot drift.
 # shellcheck source=bin/fm-composer-lib.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/../fm-composer-lib.sh"
+# shellcheck source=bin/fm-credential-source-lib.sh
+. "$(dirname -- "${BASH_SOURCE[0]}")/../fm-credential-source-lib.sh"
 
 fm_backend_orca_tool_check() {
   command -v orca >/dev/null 2>&1 || { echo "error: backend=orca selected but the 'orca' CLI is not installed" >&2; return 1; }
@@ -94,6 +96,41 @@ for (const name of new Set(names.split("\n").filter(Boolean))) {
 }
 process.stdout.write(assignments.join(" "), "latin1");
 JS
+}
+
+# The vault alternative to the tmux snapshot above, with no tmux involved: each
+# allowlisted name is read through its declared source in <file>, which
+# bin/fm-credential-source-lib.sh owns (schema, adapters, containment). Every
+# name must be declared and yield a non-empty value; a refusal names the name,
+# never a value. Output has the same shape as the tmux snapshot's.
+fm_backend_orca_launch_env_vault_args() {  # <file> <newline-separated names>
+  local file=$1 name value problem src
+  local -a names=() assignments=()
+  while IFS= read -r name; do
+    [ -n "$name" ] && names+=("$name")
+  done <<<"$2"
+  problem=$(fm_credsrc_check "$file" ${names[@]+"${names[@]}"}) || {
+    echo "error: config/launch-env-vault: ${problem:-unreadable}; refusing Orca launch" >&2
+    return 1
+  }
+  for name in ${names[@]+"${names[@]}"}; do
+    if ! fm_credsrc_declares "$file" "$name"; then
+      echo "error: config/launch-env-vault declares no source for allowlisted name $name; refusing Orca launch" >&2
+      return 1
+    fi
+    src=$(fm_credsrc_field "$file" "$name" source)
+    if ! fm_credsrc_supported "$src"; then
+      echo "error: config/launch-env-vault source $src for $name cannot run on this host; refusing Orca launch" >&2
+      return 1
+    fi
+    if ! value=$(fm_credsrc_read "$file" "$name") || [ -z "$value" ]; then
+      echo "error: cannot read $name from its config/launch-env-vault source; refusing Orca launch" >&2
+      return 1
+    fi
+    assignments+=("$name='${value//\'/\'\\\'\'}'")
+  done
+  local IFS=' '
+  printf '%s' "${assignments[*]-}"
 }
 
 fm_backend_orca_json_get() {  # <field> ; fields: worktree-id worktree-path terminal-handle worktree-terminal-handle repo-id

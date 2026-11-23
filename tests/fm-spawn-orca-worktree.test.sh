@@ -888,8 +888,113 @@ PY
   pass "real tmux preserves absent/C locale values and reported raw bytes, rejects missing/phantom names and excludes the automatic SSH agent"
 }
 
+# The vault source (config/launch-env-vault) delivers keys with no tmux at all:
+# a tmux on PATH that records any call must stay untouched, the values must
+# reach the worker through the staged launch file only, and every refusal must
+# stop before Orca allocates anything, without echoing a key. A fake security
+# and uname stand in for the macOS Keychain, so no case reads the real one.
+test_orca_launch_uses_vault_without_tmux() {
+  local setting case_dir home id fb out status staged value result expected
+  for setting in enabled both no-allowlist undeclared unreadable malformed value-field unsupported; do
+    id="orca-vault-$setting"
+    case_dir="$TMP_ROOT/$id"
+    home="$case_dir/home"
+    mkdir -p "$home/data/$id" "$home/state" "$home/config" "$home/projects" "$case_dir/keychain"
+    touch "$home/state/.last-watcher-beat"
+    printf 'manual\n' > "$home/config/backlog-backend"
+    [ "$setting" = no-allowlist ] || printf 'GH_TOKEN\nGH_CONFIG_DIR\n' > "$home/config/launch-env-allowlist"
+    [ "$setting" != both ] || printf 'scoped-source\n' > "$home/config/launch-env-tmux-session"
+    case "$setting" in
+      undeclared) printf '{"GH_TOKEN":{"source":"macos-keychain","service":"fm-test-gh"}}\n' ;;
+      malformed) printf '{"GH_TOKEN":\n' ;;
+      value-field) printf '{"GH_TOKEN":{"source":"macos-keychain","service":"fm-test-gh","value":"synthetic-inline"},"GH_CONFIG_DIR":{"source":"macos-keychain","service":"fm-test-dir"}}\n' ;;
+      *) printf '{"GH_TOKEN":{"source":"macos-keychain","service":"fm-test-gh"},"GH_CONFIG_DIR":{"source":"macos-keychain","service":"fm-test-dir","account":"worker"}}\n' ;;
+    esac > "$home/config/launch-env-vault"
+    value="synthetic-' \$(touch $case_dir/injected) \`false\`"
+    printf '%s\n' "$value" > "$case_dir/keychain/fm-test-gh"
+    [ "$setting" = unreadable ] || printf 'synthetic-dir\n' > "$case_dir/keychain/fm-test-dir"
+    fm_git_init_commit "$case_dir/project"
+    cat > "$home/data/$id/brief.md" <<EOF
+/implement
+
+# Task
+## Captain's intent
+Verify the Orca vault environment source.
+
+## Firstmate spec
+Execute read-only environment checks.
+EOF
+    cat > "$case_dir/probe.sh" <<'EOF'
+#!/bin/sh
+printf '%s\n' "${GH_TOKEN-unset}" "${GH_CONFIG_DIR-unset}" "${FM_TEST_PERSONAL-unset}" "${GIT_CONFIG_NOSYSTEM-unset}"
+EOF
+    fb=$(make_orca_fakebin "$case_dir")
+    printf '#!/bin/sh\necho "$*" >> "%s/tmux-called"\nexit 1\n' "$case_dir" > "$fb/tmux"
+    # Only `uname -s` (the credential adapter's host check) is faked.
+    # shellcheck disable=SC2016 # The fake's own shell expands these.
+    printf '#!/bin/sh\nif [ "${1:-}" = -s ]; then echo "${FM_TEST_UNAME:-Darwin}"; else exec %s "$@"; fi\n' "$(command -v uname)" > "$fb/uname"
+    cat > "$fb/security" <<'EOF'
+#!/bin/sh
+[ "$1" = find-generic-password ] || exit 2
+shift
+service=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -s) service=$2; shift 2 ;;
+    -a) shift 2 ;;
+    -w) shift ;;
+    *) exit 2 ;;
+  esac
+done
+[ -r "$FM_TEST_ORCA_DIR/keychain/$service" ] || exit 44
+cat "$FM_TEST_ORCA_DIR/keychain/$service"
+EOF
+    chmod +x "$fb/tmux" "$fb/uname" "$fb/security"
+    out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$case_dir/user-home" \
+      FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+      FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+      FM_SPAWN_NO_GUARD=1 FM_TEST_ORCA_DIR="$case_dir" \
+      FM_TEST_ORCA_LOG="$case_dir/terminal.log" FM_TEST_ORCA_CONSUME=1 \
+      FM_TEST_UNAME="$([ "$setting" = unsupported ] && echo Linux || echo Darwin)" \
+      PATH="$fb:$PATH" "$SPAWN" "$id" "$case_dir/project" \
+      --mode direct-PR --yolo off --backend orca --harness "/bin/sh '$case_dir/probe.sh'" 2>&1)
+    status=$?
+    [ ! -e "$case_dir/tmux-called" ] || fail "vault source/$setting called tmux: $(cat "$case_dir/tmux-called")"
+    assert_not_contains "$out" synthetic "vault source/$setting leaked a key into spawn output"
+    if [ "$setting" != enabled ]; then
+      expect_code 1 "$status" "vault source/$setting must refuse: $out"
+      [ ! -d "$case_dir/orca-worktrees" ] || fail "vault refusal/$setting allocated a worktree"
+      [ ! -f "$home/state/$id.meta" ] || fail "vault refusal/$setting published metadata"
+      case "$setting" in
+        undeclared) assert_contains "$out" "declares no source for allowlisted name GH_CONFIG_DIR" "undeclared name must be named" ;;
+        unreadable) assert_contains "$out" "cannot read GH_CONFIG_DIR" "unreadable key must name its variable" ;;
+        both) assert_contains "$out" "alternative Orca environment sources" "both selectors must refuse" ;;
+      esac
+      pass "Orca vault source refuses $setting before allocating resources, without tmux or leaking a key"
+      continue
+    fi
+    expect_code 0 "$status" "vault-source spawn should succeed: $out"
+    assert_not_contains "$out" "warning: backend=orca" "a configured vault must not warn about ambient Orca values"
+    assert_not_contains "$(cat "$case_dir/terminal.log")" synthetic "vault values leaked into terminal input"
+    staged=$(sed -n "s/^[^']*'\([^']*\/launch\.[^'\/]*\.sh\)'.*$/\1/p" "$case_dir/terminal.log" | tail -1)
+    [ -f "$staged.copy" ] || fail "Orca did not receive the staged launch path"
+    [ ! -e "$staged" ] || fail "spawn returned before the pane consumed the launch file"
+    [ "$(cat "$staged.mode")" = 600 ] || fail "vault launch file is not private"
+    expected="$value"$'\nsynthetic-dir\nunset\n1'
+    cp "$staged.copy" "$staged"
+    result=$(env -i HOME="$case_dir/user-home" PATH="$PATH" TERM=xterm \
+      GH_TOKEN=personal-token GH_CONFIG_DIR=personal-gh FM_TEST_PERSONAL=personal-value \
+      /bin/sh -c ". '$staged'") || fail "vault-source launch failed"
+    [ "$result" = "$expected" ] || fail "vault source lost isolation or values"$'\n'"actual: $result"
+    [ ! -e "$case_dir/injected" ] || fail "vault value executed shell syntax"
+    [ ! -e "$staged" ] || fail "key-bearing launch file survived sourcing"
+    pass "Orca vault source delivers declared keys through the private launch file with no tmux, clearing ambient credentials"
+  done
+}
+
 test_orca_source_preserves_values_without_utf8_locale
 test_orca_launch_uses_controlled_tmux_environment
+test_orca_launch_uses_vault_without_tmux
 test_orca_allowlist_without_source_warns
 test_orca_spawn_waits_for_a_slow_pane_before_a_later_failure
 test_orca_unrun_launch_file_is_reclaimed
