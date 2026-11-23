@@ -1,0 +1,4 @@
+orca PATH lookup exit=1
+orca-ide PATH lookup exit=1
+Repository-local runtime candidates:
+local candidate lookup exit=1
