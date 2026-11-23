@@ -78,12 +78,16 @@ Spawn registers the repository, creates an independent worktree, reuses only the
 Registration, worktree creation, and terminal creation work against real Orca (real Orca); the full spawn, including hooks and the harness launch, has not run there.
 Exact command flags and response parsing are owned by `bin/backends/orca.sh` and script help.
 
-`fm-peek.sh` reads with `orca terminal read`.
-That read is a bounded tail of Orca's accumulated output, not the drawn screen: it returned lines a `clear` had already removed and dropped spaces a shell prompt drew by moving the cursor (real Orca).
-Orca's own help calls that read unsuitable for verifying rendered output (Orca help).
+Every capture reads the drawn screen with `orca terminal read --screen`, never the accumulated output stream (fake Orca).
+That stream is a bounded tail of everything printed, not the drawn screen: it returned lines a `clear` had already removed and dropped spaces a shell prompt drew by moving the cursor (real Orca).
+Orca's own help calls that stream read unsuitable for verifying rendered output (Orca help).
+A read Orca reports as anything other than the drawn screen, including `screen-unavailable`, is refused rather than used, while the terminal-exists probe uses a plain read so an unrenderable screen does not mark a live terminal gone (fake Orca).
+The drawn screen has no scrollback, and Orca omits its blank rows, so a capture longer than the screen returns only the screen (real Orca).
+The composer read declares those omitted blank rows to the shared classifier (`blanks=elided` in `bin/fm-composer-lib.sh`), so a known agent footer such as `? for shortcuts` that sat one blank row below an empty composer does not make it read stale, while a shell prompt or transcript below a stale composer still does; the steering inbox reads a held composer's text with the same declaration (fake Orca).
+Without a row limit that read is the viewport, so Orca serves the viewport-only read the Kimi trust gate and the interrupt screen checks require (fake Orca).
 An ordinary metadata-routed `fm-send.sh` text steer becomes a durable steering-inbox record, and only its best-effort constant doorbell passes through Orca's submit machinery (fake Orca).
 On the typed plane, `fm-send.sh` verifies composer clearance through the fleet-wide classifier in `bin/fm-composer-lib.sh`, retrying Enter without retyping when a slash popup first fills an argument placeholder (fake Orca).
-Because the classifier reads that accumulated-output tail, stale startup text or cleared lines can reach it on Orca; no real agent's composer has yet been classified there.
+The composer read is the bottom rows of the drawn screen, so a stale startup banner cannot compete with the bottom-anchored composer (fake Orca); no real agent's composer has yet been classified on Orca.
 A bare shell row is `unknown`, not an empty agent composer, and plain-text captures degrade a glyph row carrying trailing text to `unknown` rather than a false `pending` (fake Orca).
 The watcher has no native Orca busy signal, so each harness adapter's semantic lifecycle supplies worker state (code).
 Grok alone retains its isolated rendered-tail fallback (code).
@@ -111,7 +115,7 @@ Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ende
 - Secondmate spawns are unsupported (code).
 - An interrupt is reported delivered with its cancellation unconfirmed unless the harness keeps its own confirmation record (muse confirms from its session log), and an interrupt for a harness that must read its screen between or after presses (Devin and Command Code) is refused because Orca has no verified viewport read (code); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
 - Orca has no recovery-grade agent-state classifier, so `exit` and `relaunch` refuse (code).
-- Kimi is refused at spawn preflight because the backend has no viewport-only capture, and Cortex and Command Code are refused because Orca supplies no pane identity for their composers (code).
+- Cortex and Command Code are refused because Orca supplies no pane identity for their composers (code).
 - Firstmate checks readiness, not Orca's version (code).
 - Only the verified terminal-handle and worktree result fields are accepted; speculative response shapes are rejected (fake Orca).
 - Orca's linked worktree has the shape the spawn-time Claude workspace-trust check in `bin/fm-claude-trust.sh` requires (real Orca), but that check has not run against an Orca worktree.

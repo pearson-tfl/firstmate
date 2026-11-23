@@ -1059,15 +1059,16 @@ fm_backend_capture() {  # <backend> <target> <lines> [expected-label]
 # capability question and the dispatch, so they cannot disagree. cmux is absent
 # pending live verification: its `read-screen` without `--scrollback` plausibly
 # reads only the viewport, but that has not been observed on a real cmux, and
-# the adapter's own capture opts into history with `--scrollback`. orca's
-# `terminal read --limit` is a history read with no viewport mode. rex has no
+# the adapter's own capture opts into history with `--scrollback`. orca reads
+# the drawn screen with `terminal read --screen` and no `--limit`, which has no
+# scrollback by construction (docs/orca-backend.md). rex has no
 # viewport-only read either; its viewport is DERIVED as the last size.rows rows
 # of the styled capture, which always ends with the full screen grid
 # (bin/backends/rex.sh's header owns the derivation and its verified basis).
 # tern reads the viewport with `tern capture --surfaces` and no `--scrollback`
 # (trimmed to the block's rows); its own capture opts into history with the flag.
 # hc reads the screen alone with `hc read --lines 0`.
-FM_BACKEND_VISIBLE_CAPTURE="tmux herdr zellij rex tern hc"
+FM_BACKEND_VISIBLE_CAPTURE="tmux herdr zellij orca rex tern hc"
 
 # fm_backend_visible_capture_supported: whether <backend> can read the visible
 # viewport WITHOUT scrollback. Callers that must not mistake a scrolled-away
@@ -1307,7 +1308,7 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
       ;;
     orca)
       fm_backend_source orca || return 1
-      fm_backend_orca_capture "$target" 1 >/dev/null 2>&1
+      fm_backend_orca_target_ready "$target" >/dev/null 2>&1
       ;;
     cmux)
       fm_backend_source cmux || return 1
