@@ -1739,7 +1739,7 @@ The command shell and worker may still create their own variables.
 Unless the Orca environment source below is configured, allowed values come from the destination pane at execution time; they are neither copied from the invoking Firstmate process nor written into the launch command.
 Listing a name does not provision it in a daemon's environment or transfer credentials to another machine.
 
-On the Orca backend the destination is an Orca terminal whose environment comes from the Orca app and your shell startup files, not from Firstmate or its tmux session.
+On the Orca backend the destination is an Orca terminal whose environment comes from the Orca runtime (the macOS app or a Linux Orca server) and your shell startup files, not from Firstmate or its tmux session.
 Allowlisted names there resolve to whatever that terminal has, often your personal credentials or nothing, so a spawn with a nonempty allowlist prints a warning unless an Orca environment source below is configured.
 
 ### Orca environment source (config/launch-env-vault, config/launch-env-tmux-session)
