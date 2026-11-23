@@ -1,0 +1,14 @@
+== S6a backend=orca, no Orca CLI anywhere (HOME without paired install)
+MISSING_MANUAL: orca (instructions: docs/orca-backend.md (orca-ide or a paired Orca server on Linux, never GNOME's orca))
+(exit 0)
+== S6b backend=orca, paired-server install only (HOME=lab home with ~/.orca/cli/bin)
+(exit 0)
+== HOME=nohome full bootstrap output
+MISSING_MANUAL: orca (instructions: docs/orca-backend.md (orca-ide or a paired Orca server on Linux, never GNOME's orca))
+MISSING: chrome-devtools-axi (install: npm install -g chrome-devtools-axi && chrome-devtools-axi setup hooks)
+MISSING: quota-axi (install: npm install -g quota-axi)
+PRESENTATION_UNAVAILABLE: lavish-axi (requires >=0.1.77; install: npm install -g lavish-axi && lavish-axi setup hooks) - nonvisual work may proceed with plain-text decisions and reports; install or upgrade before using Lavish
+== HOME=home full bootstrap output
+MISSING: chrome-devtools-axi (install: npm install -g chrome-devtools-axi && chrome-devtools-axi setup hooks)
+MISSING: quota-axi (install: npm install -g quota-axi)
+PRESENTATION_UNAVAILABLE: lavish-axi (requires >=0.1.77; install: npm install -g lavish-axi && lavish-axi setup hooks) - nonvisual work may proceed with plain-text decisions and reports; install or upgrade before using Lavish

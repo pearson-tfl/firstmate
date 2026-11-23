@@ -1,0 +1,17 @@
+== S2 Linux GNOME orca first on PATH + paired-server install off PATH
+resolved CLI: /tmp/fm-orca-lab.j4lDQ0/home/.orca/cli/bin/orca-ide
+runtime_check: OK
+gnome-ran file: absent (screen reader never run)
+== S3 orca-ide on PATH, no paired-server install
+resolved CLI: /tmp/fm-orca-lab.j4lDQ0/ide/orca-ide
+runtime_check: OK
+== S3b orca-ide later on PATH than a GNOME orca, no install
+resolved CLI: /tmp/fm-orca-lab.j4lDQ0/ide/orca-ide
+runtime_check: OK
+gnome-ran file: absent (screen reader never run)
+== S4 macOS: bare orca on PATH only
+resolved CLI: /tmp/fm-orca-lab.j4lDQ0/mac/orca
+runtime_check: OK
+== S5 nothing anywhere
+resolved CLI: 
+error: backend=orca selected but the Orca CLI was not found: neither 'orca' nor 'orca-ide' is on PATH and /tmp/fm-orca-lab.j4lDQ0/nohome/.orca/cli/bin/orca-ide is absent

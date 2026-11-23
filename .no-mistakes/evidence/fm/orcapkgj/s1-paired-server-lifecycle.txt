@@ -1,0 +1,16 @@
+PATH has orca: none; orca-ide: none
+resolved CLI: /tmp/fm-orca-lab.j4lDQ0/home/.orca/cli/bin/orca-ide
+bootstrap tool gate: orca available
+runtime_check: OK (live orcad answered status --json)
+worktree_create rc=0 -> e721d42e-2dcd-4ce3-85ec-9c4c57cf1d71::/tmp/fm-orca-lab.j4lDQ0/home/orca/workspaces/proj/fm-j-lab-wt	/tmp/fm-orca-lab.j4lDQ0/home/orca/workspaces/proj/fm-j-lab-wt
+worktree_path: /tmp/fm-orca-lab.j4lDQ0/home/orca/workspaces/proj/fm-j-lab-wt
+/tmp/fm-orca-lab.j4lDQ0/home/orca/workspaces/proj/fm-j-lab-wt
+pearson-tfl/fm-j-lab-wt
+terminal: term_d538e046-ba06-4158-8ddc-5f4cb0858197
+send_text_line: OK
+--- capture ---
+1:dell-v100% echo FM_J_LIVE_MARKER_$((6*7))
+2:FM_J_LIVE_MARKER_42
+kill: OK
+remove_worktree: OK
+worktree dir removed
