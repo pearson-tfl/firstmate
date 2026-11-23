@@ -1,0 +1,53 @@
+## S1 fm-send.sh --key Escape / C-u on an Orca task (claude harness)
+$ bin/fm-send.sh t1 --key Escape
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.2CznIY
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[exit=0]
+--- orca calls so far: 1
+$ bin/fm-send.sh t1 --key C-u
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.2CznIY
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+[exit=0]
+--- orca calls so far: 2
+## S3a adversarial: fm-send.sh --key C-g on Orca
+$ bin/fm-send.sh t1 --key C-g
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.2CznIY
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: unsupported Orca key 'C-g'
+error: key 'C-g' not sent to term-1 (orca send failed; tried meta=/tmp/fm-lab.2CznIY/state/t1.meta; backend=from-meta)
+[exit=1]
+--- orca calls so far: 2
+## S2 fm-control.sh t1 interrupt (claude on orca)
+$ bin/fm-control.sh t1 interrupt
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.2CznIY
+interrupt-delivered t1 harness=claude backend=orca verified=endpoint cancel=unconfirmed
+[exit=0]
+--- orca calls so far: 4
+## S3b adversarial: devin interrupt on orca
+$ bin/fm-control.sh t1 interrupt
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.2CznIY
+error: harness devin must see its screen between interrupt presses, because a repeated Escape on an idle agent opens its revert picker, and the orca backend has no verified viewport read; refusing to press blind
+[exit=1]
+--- orca calls so far: 4
+## S3c adversarial: commandcode interrupt on orca
+$ bin/fm-control.sh t1 interrupt
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.2CznIY
+error: harness commandcode must see its screen between interrupt presses, because a repeated Escape on an idle agent opens its revert picker, and the orca backend has no verified viewport read; refusing to press blind
+[exit=1]
+--- orca calls so far: 4
+## orca CLI calls recorded by shim
+orca terminal send --terminal term-1 --text <hex:1b> --json
+orca terminal send --terminal term-1 --text <hex:15> --json
+orca terminal send --terminal term-1 --text <hex:1b> --json
+orca terminal read --terminal term-1 --limit 1 --json
+## bytes received by the real PTY (raw-mode reader in tmux pane)
+reader-ready
+            RECV 1b
+RECV 15
+RECV 1b
