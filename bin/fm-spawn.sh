@@ -3186,15 +3186,15 @@ launch_template() {
   # spawn answers. The leading shell loop clears every foreign ORCA_*/FM_*
   # marker the pane actually carries at launch time (verified live: ORCA_*
   # values from the launching session's environment reach worker tool
-  # subprocesses through the pane), keeping the three launch-owned names
-  # (FM_TASK_ID, FM_TASK_INBOX, FM_ZELLIJ_SESSION) so the doorbell and backend
+  # subprocesses through the pane), keeping the launch-owned names
+  # (FM_TASK_ID, FM_TASK_INBOX, FM_ZELLIJ_SESSION, FM_LOCK_HOLDER, FM_HOME) so the doorbell and backend
   # plumbing keep working; the fixed `env -u` set clears every harness-identity
   # marker, because polytoken publishes none of its own and does not clear
   # inherited ones. There is no `__EFFORTFLAG__`: polytoken encodes reasoning
   # effort inside the model reference as `<model>(<effort>)`, so the effort
   # axis rides `__MODELFLAG__` after mapping to the nearest compatible
   # level in the installed model's selectable set.
-  polytoken) printf '%s' 'for _fmv in $(env | cut -d= -f1 | grep -E '\''^(ORCA_|FM_)'\''); do case $_fmv in FM_TASK_ID|FM_TASK_INBOX|FM_ZELLIJ_SESSION|FM_LOCK_HOLDER) ;; *) unset $_fmv ;; esac; done; env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u FM_OMP_HARNESS -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI -u AGENT __FMLOCKHOLDER__ __POLYTOKENBIN__ --config-dir __POLYTOKENCONFIG__ new --sessions-dir __POLYTOKENSESSIONS__ --facet firstmate-worker --facets-dir __POLYTOKENFACETS__ __MODELFLAG__--prompt "$(__SKILLOPENER__ __HARNESS__ encode __BRIEF__)"' ;;
+  polytoken) printf '%s' 'for _fmv in $(env | cut -d= -f1 | grep -E '\''^(ORCA_|FM_)'\''); do case $_fmv in FM_TASK_ID|FM_TASK_INBOX|FM_ZELLIJ_SESSION|FM_LOCK_HOLDER|FM_HOME) ;; *) unset $_fmv ;; esac; done; env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u FM_OMP_HARNESS -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS -u ATLASSIAN_AGENT_TYPE -u ROVODEV_CLI -u AGENT __FMLOCKHOLDER__ __POLYTOKENBIN__ --config-dir __POLYTOKENCONFIG__ new --sessions-dir __POLYTOKENSESSIONS__ --facet firstmate-worker --facets-dir __POLYTOKENFACETS__ __MODELFLAG__--prompt "$(__SKILLOPENER__ __HARNESS__ encode __BRIEF__)"' ;;
   # Command Code receives the typed launch envelope after -- as its initial
   # message. --yolo bypasses permission prompts, --trust skips the folder-trust
   # prompt of a fresh worktree, and --skip-onboarding skips taste onboarding.
@@ -7855,7 +7855,16 @@ if [ -n "$WORKER_ACCOUNT" ]; then
 elif [ "$HARNESS" = claude ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
   LAUNCH="CLAUDE_CONFIG_DIR=$(shell_quote "$CLAUDE_CONFIG_DIR") $LAUNCH"
 fi
-if [ "$KIND" = secondmate ]; then
+# Every launch names its home and clears this process's overrides: a pane
+# otherwise inherits the long-lived tmux/herdr server's global environment,
+# which can carry another home's FM_HOME (a secondmate's workers would get the
+# primary's). A secondmate's home is its own; a ship or scout's is this one,
+# set by an export statement so it also reaches a compound template or raw
+# launch command.
+LAUNCH_HOME_ENV='FM_ROOT_OVERRIDE= FM_STATE_OVERRIDE= FM_DATA_OVERRIDE= FM_PROJECTS_OVERRIDE= FM_CONFIG_OVERRIDE='
+if [ "$KIND" != secondmate ]; then
+  LAUNCH="export $LAUNCH_HOME_ENV FM_HOME=$(shell_quote "$FM_HOME"); $LAUNCH"
+else
   sq_home=$(shell_quote "$PROJ_ABS")
   sq_primary_home=$(shell_quote "$FM_HOME")
   # Keep this in step with fm_supervision_model (bin/fm-wake-lib.sh): Claude's
@@ -7876,7 +7885,7 @@ if [ "$KIND" = secondmate ]; then
   # not enable them across the launch boundary (bin/fm-trace-context-lib.sh header).
   # Reuse the single frozen decision from the carrier resolution above so the
   # injected carrier and this on/off snapshot are guaranteed to agree.
-  LAUNCH="FM_ROOT_OVERRIDE= FM_STATE_OVERRIDE= FM_DATA_OVERRIDE= FM_PROJECTS_OVERRIDE= FM_CONFIG_OVERRIDE= FM_PUBLIC_FOLLOWUP_PRIMARY_HOME=$sq_primary_home FM_HOME=$sq_home FM_TRACE_CONTEXT=$SPAWN_TRACE_EFFECTIVE FM_SUPERVISION_MODEL=$supervision_model $LAUNCH"
+  LAUNCH="$LAUNCH_HOME_ENV FM_PUBLIC_FOLLOWUP_PRIMARY_HOME=$sq_primary_home FM_HOME=$sq_home FM_TRACE_CONTEXT=$SPAWN_TRACE_EFFECTIVE FM_SUPERVISION_MODEL=$supervision_model $LAUNCH"
 fi
 # Implement the launch-delivery contract in this script's header. The full
 # home-identity hash isolates equal task ids across homes, and the spawn token in
@@ -8032,12 +8041,15 @@ if [ "$BACKEND" = t3code ]; then
   if [ -n "$SPAWN_TRACEPARENT" ] && spawn_record_traceparent; then
     T3CODE_ENV+=("TRACEPARENT=$SPAWN_TRACEPARENT")
   fi
+  # The launch-home prefix above, value for value; a secondmate also gets the
+  # supervisor identity its own away daemon cannot discover from a T3 thread.
+  read -r -a t3_launch_home_env <<<"$LAUNCH_HOME_ENV"
+  T3CODE_ENV+=("${t3_launch_home_env[@]}")
   if [ "$KIND" = secondmate ]; then
-    # The secondmate launch prefix above, value for value, plus the supervisor
-    # identity its own away daemon cannot discover from inside a T3 thread.
-    T3CODE_ENV+=(FM_ROOT_OVERRIDE= FM_STATE_OVERRIDE= FM_DATA_OVERRIDE= FM_PROJECTS_OVERRIDE= FM_CONFIG_OVERRIDE= \
-      "FM_PUBLIC_FOLLOWUP_PRIMARY_HOME=$FM_HOME" "FM_HOME=$PROJ_ABS" "FM_TRACE_CONTEXT=$SPAWN_TRACE_EFFECTIVE" \
+    T3CODE_ENV+=("FM_PUBLIC_FOLLOWUP_PRIMARY_HOME=$FM_HOME" "FM_HOME=$PROJ_ABS" "FM_TRACE_CONTEXT=$SPAWN_TRACE_EFFECTIVE" \
       "FM_SUPERVISION_MODEL=$supervision_model" FM_SUPERVISOR_BACKEND=t3code "FM_SUPERVISOR_TARGET=$T")
+  else
+    T3CODE_ENV+=("FM_HOME=$FM_HOME")
   fi
   spawn_t3code_env_install "$HARNESS" "${T3CODE_ENV[@]}" || {
     echo "error: could not write the $HARNESS environment config for $ID into $WT" >&2

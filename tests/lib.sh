@@ -162,6 +162,12 @@ fm_test_worker_tmux_isolation() {  # <id>
   printf "unset TMUX TMUX_PANE SSH_CONNECTION SSH_CLIENT SSH_TTY; export TMUX_TMPDIR='/tmp/fm-%s/tmux'; " "$1"
 }
 
+# The home every launch names (bin/fm-spawn.sh, launch-home prefix): the
+# spawning home's FM_HOME with this process's directory overrides cleared.
+fm_test_launch_home_prefix() {  # <home>
+  printf "export FM_ROOT_OVERRIDE= FM_STATE_OVERRIDE= FM_DATA_OVERRIDE= FM_PROJECTS_OVERRIDE= FM_CONFIG_OVERRIDE= FM_HOME='%s'; " "$1"
+}
+
 # Harness argument assertions reuse the emitted prefix rather than duplicating
 # its per-spawn env-file path. The dispatch suite executes it separately to prove
 # credential preservation, hooks-path selection and invalid-count refusal.

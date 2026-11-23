@@ -928,6 +928,7 @@ test_polytoken_launch_carries_the_hybrid_contract() {
   ! grep -q '^ORCA_X=' "$envlog" || fail "the launch must clear inherited ORCA_ markers"
   ! grep -q '^FM_FOO=' "$envlog" || fail "the launch must clear inherited FM_ markers"
   grep -qx 'FM_TASK_ID=seeded-task' "$envlog" || fail "the launch must keep the launch-owned FM_TASK_ID"
+  grep -qx "FM_HOME=$HOME_DIR" "$envlog" || fail "the launch must keep the spawning home's FM_HOME"
   grep -qx "FM_TASK_INBOX=.*/$id\.inbox" "$envlog" || fail "the launch must keep its own FM_TASK_INBOX export"
   assert_not_contains "$raw" "--accept-license-terms" \
     "the launch must never auto-accept the license terms"
