@@ -1,0 +1,15 @@
+=== [HEAD] FM_HOME=<lab> fm-spawn.sh orcakimi1 <proj> kimi --backend orca
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-orca-emu.g5imi3/fm-lab.fSqXGX
+fm-kimi-turnend-hook: refused: Kimi config directory is missing or unexpected at /tmp/fm-orca-emu.g5imi3/kimi-HEAD/home/.kimi-code.
+error: refusing Kimi spawn because the global turn-end hook could not be installed safely
+[exit=]
+--- orca calls:
+status --json
+--- files under throwaway HOME:
+=== [BASE] FM_HOME=<lab> fm-spawn.sh orcakimi1 <proj> kimi --backend orca
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-orca-emu.g5imi3/fm-lab.Dk2g0X
+error: refusing Kimi spawn because backend 'orca' has no verified viewport-bounded capture; Kimi 2.0.0 gates a fresh worktree on a trust dialog that can only be answered and confirmed cleared from a scrollback-free read of the live pane
+[exit=]
+--- orca calls:
+status --json
+--- files under throwaway HOME:

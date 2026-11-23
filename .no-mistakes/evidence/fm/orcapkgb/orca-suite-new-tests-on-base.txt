@@ -1,0 +1,3 @@
+not ok - capture did not call orca terminal read --screen with terminal/limit/json (missing: 'orcaterminalread--terminalterm-123--screen--limit40--json')
+--- output ---
+orcaterminalread--terminalterm-123--limit40--json

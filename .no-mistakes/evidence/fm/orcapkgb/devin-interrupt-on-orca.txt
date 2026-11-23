@@ -1,0 +1,3 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-orca-emu.g5imi3/fm-lab.9FogGS
+error: harness devin interrupts with Escape, which the orca backend cannot deliver; refusing to send a different key
+[exit=]

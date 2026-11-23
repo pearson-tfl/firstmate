@@ -1,0 +1,6 @@
+terminal read --terminal term-live --screen --limit 40 --json
+terminal read --terminal term-unav --screen --limit 40 --json
+terminal read --terminal term-live --screen --json
+terminal read --terminal term-unav --limit 1 --json
+terminal read --terminal term-unav --screen --limit 40 --json
+terminal read --terminal term-gone --limit 1 --json

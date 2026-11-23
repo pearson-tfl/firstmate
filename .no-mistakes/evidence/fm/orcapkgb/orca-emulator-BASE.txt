@@ -1,0 +1,20 @@
+=== [BASE] S1 fm-peek.sh fm-orcalivea1 40 (Orca screen: banner cleared, indented row, spaced composer)
+Welcome to Agent v1.0 (startup banner)
+Tips: press ? for help
+Thinking…
+Thinkin g…
+│>Ready for input│[exit=0]
+=== [BASE] S2 fm-peek.sh fm-orcaunava1 40 (Orca reports screen-unavailable)
+Welcome to Agent v1.0 (startup banner)
+Tips: press ? for help
+Thinking…
+Thinkin g…
+│>Ready for input│[exit=0]
+=== [BASE] S3 viewport dispatcher: fm_backend_visible_capture orca term-live
+visible-capture supported: no
+=== [BASE] S4 fm-crew-state.sh orcaunava1 (live terminal, screen unrenderable)
+state: unknown · source: pane · harness state unavailable (unknown missing)
+[exit=0]
+=== [BASE] S4b fm-crew-state.sh orcagonea1 (terminal no longer exists)
+state: unknown · source: none · backend target gone: term-gone
+[exit=0]
