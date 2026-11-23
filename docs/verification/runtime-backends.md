@@ -2434,7 +2434,10 @@ The real lifecycle smoke proved spawn, metadata, nested-subshell worktree discov
 
 ## Orca
 
-Real readiness was verified against `/usr/local/bin/orca` with `/Applications/Orca.app` bundle version 1.4.116.
+[`docs/orca-backend.md`](../orca-backend.md) marks each claim it makes with the kind of proof behind it; the real-Orca marks point here.
+No Firstmate CI lane runs real Orca.
+
+Real readiness was first verified against `/usr/local/bin/orca` with `/Applications/Orca.app` bundle version 1.4.116.
 
 ```sh
 orca status --json
@@ -2458,6 +2461,73 @@ tests/fm-bootstrap.test.sh
 ```
 
 The fake-Orca suite covers readiness, registration, create response parsing, metadata routing, popup-safe submit, and path-matched release refusal.
+
+### Orca 1.4.271 readiness and CLI
+
+Re-read on 2026-11-23 against the running macOS desktop app, with read-only commands only.
+
+```sh
+ls -l /usr/local/bin/orca
+orca --version
+orca status --json
+orca terminal read --help
+orca terminal send --help
+```
+
+Observed:
+
+```text
+/usr/local/bin/orca -> /Applications/Orca.app/Contents/Resources/bin/orca
+1.4.271
+result.runtime.state=ready
+result.runtime.reachable=true
+result.runtime.appVersion=1.4.271
+```
+
+Neither `brew list --formula` nor `brew list --cask` listed an `orca` package on that Mac; the CLI came with the app.
+`orca terminal read --help` states that the default read "returns accumulated terminal output with escape sequences stripped, not the rendered screen", that "--screen" reads "what the terminal actually renders", and that the default "is unsuitable for verifying rendered output".
+`orca terminal send --help` states that "Without --enter, --text is written to the PTY verbatim, so control bytes pass through".
+
+### Orca 1.4.271 adapter building blocks
+
+Verified on 2026-11-23 on macOS by a separate Orca evaluation, not by Firstmate CI, at Firstmate commit `64519898`.
+It ran a separate headless runtime from the installed 1.4.271 app under a scratch profile, apart from the desktop app's own workspaces:
+
+```sh
+orca serve --port 6871 --bind 127.0.0.1 --no-pairing --json
+```
+
+That runtime reported `orcad 0.1.0+38b7f81b9c78`.
+The adapter functions were sourced from `bin/backends/orca.sh` and called directly against a scratch git repository; `fm-spawn.sh`, `fm-send.sh`, and `fm-teardown.sh` were not run.
+Stand-in shell programs played the agent; no agent was signed in, and Pi 1.2.0 and Oh My Pi 19.1.0 ran only their version checks in an Orca terminal.
+
+| Check | Observed |
+|---|---|
+| `fm_backend_orca_tool_check`, `fm_backend_orca_runtime_check`, `fm_backend_orca_repo_ensure`, `fm_backend_orca_worktree_create`, `fm_backend_orca_worktree_path`, `fm_backend_orca_terminal_create` | each `rc=0`; no startup terminal returned, so the adapter created one |
+| The created worktree | listed by `git worktree list` on a new branch named for the task; its `.git` is a file (linked worktree) |
+| `fm_backend_orca_send_text_line` then `fm_backend_orca_capture` | `hello-orca-42` and the worktree path read back |
+| `fm_backend_orca_send_key C-c` against a running `sleep` | `rc=0`; `kill -0` on the process then returned 1 |
+| `fm_backend_orca_send_key Escape` | `error: unsupported Orca key 'Escape'`, `rc=1` |
+| `fm-control.sh <id> interrupt` for a `harness=claude`, `backend=orca` task in a scratch home | `rc=1`, `error: harness claude interrupts with Escape, which the orca backend cannot deliver; refusing to send a different key` |
+| `orca terminal send --text` with the bytes `\x1b`, `\x15`, `\x07` and no `--enter` | `od -An -tx1` in the terminal read `1b  15  07` |
+| `fm_backend_orca_capture` against `orca terminal read --screen` after `clear` and `echo alpha beta gamma` | capture: 13 lines, `source: stream`, including startup lines the `clear` had removed; screen read: 3 lines, `source: screen` |
+| The same capture after a typed command line | read back as `sleep300; echosleep-ended-rc=$?`, its spaces dropped |
+| `orca terminal close --terminal <handle> --json` with `sleep 313` running | `{"ptyKilled":true}`; status then `exited`; `kill -0` returned 1 |
+| `orca worktree rm --worktree id:<id> --force --json`, the adapter's release | `{"removed":true}`; folder gone; task branch still listed by `git branch` |
+| The same with `--delete-branch` added | `{"removed":true}`; folder and branch both gone |
+| Environment inside a new terminal | `HOME` was the user's real home and `SHELL=/bin/zsh` with the user's own startup output, though the runtime ran under a scratch profile; `ORCA_TERMINAL_HANDLE` and `ORCA_WORKTREE_ID` were set |
+| A variable exported where the runtime started | reached a newly created terminal |
+| A program that exited with status 7 | `orca terminal wait --for exit` reported `"status":"exited","exitCode":0`, so this runtime's exit codes are not evidence |
+| A read of a terminal handle after the headless runtime restarted | `terminal_handle_stale`; the worktree was still listed |
+| The desktop app quitting and restarting | its terminal service process kept running and re-attached both existing sessions, per that service's own log |
+
+In the same evaluation, with `tasks-axi` 0.2.6 on the PATH, `tests/fm-backend-orca.test.sh` passed 52 of 52 at that commit.
+
+### Orca whole-task proof
+
+Not yet proved.
+No real agent has run a whole Firstmate task on Orca: spawn through `fm-spawn.sh`, steering through `fm-send.sh`, landing, and cleanup through `fm-teardown.sh`.
+When that run happens, record it here: the date, Orca version, macOS version, harness and version, Firstmate commit, the exact commands, and their output.
 
 ### Orca environment source
 
