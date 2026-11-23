@@ -1702,7 +1702,11 @@ The flag is read only for ship and scout spawns, secondmate charters never take 
 
 The optional local, gitignored `config/launch-env-allowlist` limits the ambient environment passed to newly launched workers, scouts, and secondmates, including relaunches.
 T3 Code starts the provider from the server's environment and cannot apply this command boundary, so `backend=t3code` refuses when the file exists; [`t3code-backend.md`](t3code-backend.md#active-limits) owns that backend limit.
-With no file, ambient inheritance remains unfiltered: selected harness markers are cleared, while the provider, long-lived terminal daemon, and shell initialization determine which other variables reach the worker.
+With no file, ambient inheritance remains unfiltered except for Firstmate's explicit launch assignments and harness-marker cleanup; the provider, long-lived terminal daemon, and shell initialization determine which other variables reach the worker.
+
+On every backend, `fm-spawn.sh` explicitly sets a ship or scout worker's `FM_HOME` to the spawning home and a secondmate's `FM_HOME` to its own home, so a long-lived terminal server's inherited home cannot select another fleet's private data.
+It clears `FM_ROOT_OVERRIDE`, `FM_STATE_OVERRIDE`, `FM_DATA_OVERRIDE`, `FM_PROJECTS_OVERRIDE`, and `FM_CONFIG_OVERRIDE` at that launch boundary rather than passing the spawning process's directory overrides to the agent.
+This also applies to raw worker launch commands and relaunches; [the launch-home regression](../tests/fm-spawn-launch-home.test.sh) exercises workers launched from primary and secondmate homes against a conflicting tmux global environment.
 
 Do not assume every worker inherits the invoking Firstmate process's current environment.
 The file is inherited into secondmate homes through the [primary-authoritative configuration contract](../.agents/skills/secondmate-provisioning/SKILL.md).
