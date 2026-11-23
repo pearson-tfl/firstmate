@@ -125,8 +125,12 @@ test_capture_refuses_reads_not_from_the_drawn_screen() {
     [ "$status" -ne 0 ] || fail "capture should refuse a read with source $case_name, got '$out'"
     assert_not_contains "$out" "stale banner" "capture must not print the text of a $case_name read"
     assert_contains "$out" "drawn screen" "capture should name the missing drawn-screen read for source $case_name"
+    printf '%s\n' "${resp/stale banner/│ > │}" > "$RESP/2.out"
+    out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+      bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_composer_state term-abc' "$ROOT" 2>/dev/null )
+    [ "$out" = unknown ] || fail "composer state on a $case_name read should be unknown, got '$out'"
   done
-  pass "fm_backend_orca_capture: refuses stream, screen-unavailable, and source-less reads"
+  pass "fm_backend_orca_capture: refuses stream, screen-unavailable, and source-less reads; composer reads unknown"
 }
 
 # The viewport-only read is the whole drawn frame: --screen with no --limit,
@@ -154,6 +158,38 @@ test_target_exists_accepts_live_terminal_without_a_rendered_screen() {
   status=$?
   [ "$status" -eq 0 ] || fail "fm_backend_target_exists should accept a live terminal whose screen is unavailable"
   pass "fm_backend_target_exists: orca liveness does not depend on a rendered screen"
+}
+
+# The capture is the drawn screen, not accumulated output: after a `clear`,
+# the rows Orca reports on screen are all that comes back, a row whose spaces
+# the program drew by moving the cursor keeps every one of them, and a screen
+# read never pages history with --cursor.
+test_capture_returns_cleared_screen_rows_with_spaces() {
+  local out
+  orca_case capture-cleared-screen
+  printf '%s\n' '{"ok":true,"result":{"terminal":{"source":"screen","tail":["➜  fm-t1 git:(fm-t1) echo alpha beta gamma","alpha beta gamma","│ >               │"]}}}' > "$RESP/1.out"
+  out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_capture term-123 40' "$ROOT" )
+  [ "$out" = $'➜  fm-t1 git:(fm-t1) echo alpha beta gamma\nalpha beta gamma\n│ >               │' ] \
+    || fail "capture should return exactly the drawn screen rows with their spaces, got '$out'"
+  assert_not_contains "$(cat "$LOG")" $'\x1f''--cursor' "a screen read has no history to page"
+  pass "fm_backend_orca_capture: returns only the cleared screen's rows, spaces intact, never --cursor"
+}
+
+# Orca's drawn-screen read omits blank rows (docs/verification/runtime-backends.md
+# "Orca drawn-screen read"), so an empty bordered composer whose footer sat one
+# blank row below it arrives with the footer directly under the box. That is
+# still an empty composer; a stale box with transcript below it is not.
+test_composer_state_empty_box_with_elided_footer_gap() {
+  local out
+  orca_case composer-elided-footer
+  printf '%s\n' '{"ok":true,"result":{"terminal":{"source":"screen","tail":["╭──────────────────╮","│ >                │","╰──────────────────╯","  ? for shortcuts"]}}}' > "$RESP/1.out"
+  printf '%s\n' '{"ok":true,"result":{"terminal":{"source":"screen","tail":["╭──────────────────╮","│ permissions: YOLO│","╰──────────────────╯","line one","line two","line three"]}}}' > "$RESP/2.out"
+  out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_composer_state term-123; printf " "; fm_backend_orca_composer_state term-123' "$ROOT" )
+  [ "$out" = "empty unknown" ] \
+    || fail "an empty box above an elided-gap footer should read empty and a stale box above transcript unknown, got '$out'"
+  pass "fm_backend_orca_composer_state: empty box with its blank footer gap elided reads empty; stale box stays unknown"
 }
 
 test_capture_fails_on_orca_error_json() {
@@ -1412,6 +1448,8 @@ test_capture_reads_terminal_tail_json
 test_capture_refuses_reads_not_from_the_drawn_screen
 test_visible_capture_reads_the_whole_drawn_screen
 test_target_exists_accepts_live_terminal_without_a_rendered_screen
+test_capture_returns_cleared_screen_rows_with_spaces
+test_composer_state_empty_box_with_elided_footer_gap
 test_capture_fails_on_orca_error_json
 test_runtime_check_accepts_ready_orca_status
 test_runtime_check_refuses_unready_orca_status

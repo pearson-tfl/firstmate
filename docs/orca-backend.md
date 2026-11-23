@@ -83,6 +83,7 @@ That stream is a bounded tail of everything printed, not the drawn screen: it re
 Orca's own help calls that stream read unsuitable for verifying rendered output (Orca help).
 A read Orca reports as anything other than the drawn screen, including `screen-unavailable`, is refused rather than used, while the terminal-exists probe uses a plain read so an unrenderable screen does not mark a live terminal gone (fake Orca).
 The drawn screen has no scrollback, and Orca omits its blank rows, so a capture longer than the screen returns only the screen (real Orca).
+The composer read declares those omitted blank rows to the shared classifier (`blanks=elided` in `bin/fm-composer-lib.sh`), so a footer that sat one blank row below an empty composer does not make it read stale (fake Orca).
 Without a row limit that read is the viewport, so Orca serves the viewport-only read the Kimi trust gate and the interrupt screen checks require (fake Orca).
 An ordinary metadata-routed `fm-send.sh` text steer becomes a durable steering-inbox record, and only its best-effort constant doorbell passes through Orca's submit machinery (fake Orca).
 On the typed plane, `fm-send.sh` verifies composer clearance through the fleet-wide classifier in `bin/fm-composer-lib.sh`, retrying Enter without retyping when a slash popup first fills an argument placeholder (fake Orca).

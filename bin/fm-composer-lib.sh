@@ -46,6 +46,12 @@
 #               shape Cortex's identity could change. A probe answering
 #               `cortex` then proves it, as cortex=1 does. Other callers
 #               never see this sentinel for a titled box.
+#   blanks=elided the capture omits blank rows (orca's drawn-screen read), so
+#               the blank row that separates an envelope from its footer is
+#               gone. Without a cursor, an envelope whose following rows run
+#               to the screen's end, number at most
+#               FM_COMPOSER_ELIDED_FOOTER_MAX, and carry no box edge or agent
+#               glyph keeps those rows as footer instead of reading stale.
 #   rows=<n>    the capture's bounded row count (informational).
 #
 # THE STRICT BLANK-ROW RULE (captain decision blank-row-injection-posture,
@@ -2121,12 +2127,32 @@ _fm_composer_select_cursorless() {
     raw=$(_fm_composer_screen_row "$next" "$plain")
     trimmed=$raw
     fm_composer_normalize_trim_var trimmed
-    if [ -n "$trimmed" ] && ! fm_composer_row_has_edge "$trimmed"; then
+    if [ -n "$trimmed" ] && ! fm_composer_row_has_edge "$trimmed" \
+       && ! { [ "${FM_COMPOSER_BLANKS_ELIDED:-0}" = 1 ] \
+              && _fm_composer_elided_footer_tail "$plain" "$next"; }; then
       FM_COMPOSER_SELECTED_KIND=
       return 1
     fi
   fi
   [ -n "$FM_COMPOSER_SELECTED_KIND" ]
+}
+
+# _fm_composer_elided_footer_tail: whether the rows from <start> are an
+# envelope's footer on a blanks=elided capture (rule in the header).
+FM_COMPOSER_ELIDED_FOOTER_MAX=2
+_fm_composer_elided_footer_tail() {  # <plain> <start>
+  local plain=$1 row=$2 trimmed glyph n=0
+  while :; do
+    trimmed=$(_fm_composer_screen_row "$row" "$plain")
+    fm_composer_normalize_trim_var trimmed
+    [ -n "$trimmed" ] || break
+    n=$((n + 1))
+    [ "$n" -le "$FM_COMPOSER_ELIDED_FOOTER_MAX" ] || return 1
+    fm_composer_row_has_edge "$trimmed" && return 1
+    fm_composer_leading_agent_glyph_var glyph "$trimmed" && return 1
+    row=$((row + 1))
+  done
+  [ "$n" -ge 1 ]
 }
 
 fm_composer_extract_selected_content() {  # <caps> <screen>
@@ -2287,6 +2313,8 @@ fm_composer_dialog_sink_release() {
 fm_composer_classify_screen() {  # <caps> <screen> [cursor_row] [identity]
   local caps=$1 screen=$2 cy=${3:-} identity=${4:-}
   local styled=0 cursor=0 has_identity=0 cortex_proven=0 cortex_ask=0 kv plain
+  # Dynamically scoped for _fm_composer_select_cursorless; see its staleness probe.
+  local FM_COMPOSER_BLANKS_ELIDED=0
   # Note the dialog before any early return so a pending picker is still named.
   fm_composer_note_blocking_dialog "$screen" || true
   while IFS= read -r kv; do
@@ -2296,6 +2324,7 @@ fm_composer_classify_screen() {  # <caps> <screen> [cursor_row] [identity]
       identity=1) has_identity=1 ;;
       cortex=1) cortex_proven=1 ;;
       cortex=ask) cortex_ask=1 ;;
+      blanks=elided) FM_COMPOSER_BLANKS_ELIDED=1 ;;
     esac
   done <<EOF
 $caps

@@ -311,9 +311,10 @@ fm_backend_orca_composer_capture() {  # <terminal-id> [expected-label]
 # capability model in bin/fm-composer-lib.sh). Orca's `terminal read` returns
 # plain text; whether it can emit ANSI is unverified (orca is not installed
 # on the verification machine), so styled stays 0 - the conservative
-# degradation - until a live capture proves otherwise.
+# degradation - until a live capture proves otherwise. The drawn-screen read
+# omits blank rows, which blanks=elided declares.
 fm_backend_orca_composer_caps() {
-  printf 'styled=0\ncursor=0\nidentity=0\nrows=%s\n' "$FM_COMPOSER_CAPTURE_LINES"
+  printf 'styled=0\ncursor=0\nidentity=0\nblanks=elided\nrows=%s\n' "$FM_COMPOSER_CAPTURE_LINES"
 }
 
 # fm_backend_orca_composer_state: thin adapter - capture plus capabilities in,
