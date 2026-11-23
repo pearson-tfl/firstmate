@@ -539,6 +539,7 @@ test_cli_resolves_orca_ide_and_paired_server_install() {
   orca_free=$(fm_test_base_path_sans "$PATH" orca orca-ide)
 
   orca_case cli-orca-ide-on-path
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/2.out"
   mv "$FB/orca" "$FB/orca-ide"
   PATH="$FB:$orca_free" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_kill term-123' "$ROOT"
@@ -547,6 +548,7 @@ test_cli_resolves_orca_ide_and_paired_server_install() {
     "orca-ide on PATH was not used when orca is absent"
 
   orca_case cli-both-on-path
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/2.out"
   mv "$FB/orca" "$FB/orca-ide"
   printf '#!/bin/sh\necho ran >> "%s"\nexit 1\n' "$CASE_DIR/bare-orca-ran" > "$FB/orca"
   chmod +x "$FB/orca"
@@ -556,6 +558,7 @@ test_cli_resolves_orca_ide_and_paired_server_install() {
   [ ! -e "$CASE_DIR/bare-orca-ran" ] || fail "orca should not win over orca-ide in the same PATH directory"
 
   orca_case cli-bare-orca-only
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/2.out"
   rm "$FB/orca-ide"
   out=$( PATH="$FB:$orca_free" FM_BACKEND_ORCA_BUNDLE_BIN="$CASE_DIR/no-bundle/orca-ide" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_runtime_check && fm_backend_orca_kill term-123' "$ROOT" 2>&1 )
@@ -564,6 +567,7 @@ test_cli_resolves_orca_ide_and_paired_server_install() {
   assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''close' "a bare orca on PATH was not used as the last resort"
 
   orca_case cli-paired-server-install
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/2.out"
   mv "$FB/orca" "$FB/orca-ide"
   out=$( PATH="$orca_free" FM_BACKEND_ORCA_BUNDLE_BIN="$FB/orca-ide" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_runtime_check && fm_backend_orca_kill term-123' "$ROOT" 2>&1 )
@@ -580,6 +584,7 @@ test_paired_server_install_beats_a_non_orca_orca_on_path() {
   local orca_free gnome out
   orca_free=$(fm_test_base_path_sans "$PATH" orca orca-ide)
   orca_case cli-gnome-orca-on-path
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/2.out"
   mv "$FB/orca" "$FB/orca-ide"
   gnome="$CASE_DIR/gnome-bin"
   mkdir -p "$gnome"
