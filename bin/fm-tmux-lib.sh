@@ -75,17 +75,22 @@ fm_tmux_strip_ghost() { fm_composer_strip_ghost; }
 # a hit bound returns 124 with a message on stderr.
 FM_TMUX_SEND_TIMEOUT=${FM_TMUX_SEND_TIMEOUT:-10}
 
-fm_tmux_send_keys_unbounded() {  # <target> <send-keys args...>
-  local target=$1 depth
-  shift
-  depth=$(tmux display-message -p -t "$target" '#{pane_in_mode}' 2>/dev/null) || depth=0
+fm_tmux_pane_mode_depth() {  # <target> -> stacked mode count, 0 when unreadable
+  local depth
+  depth=$(tmux display-message -p -t "$1" '#{pane_in_mode}' 2>/dev/null) || depth=0
   case "$depth" in ''|*[!0-9]*) depth=0 ;; esac
-  while [ "$depth" -gt 0 ]; do
-    tmux send-keys -t "$target" -X cancel 2>/dev/null || {
-      printf 'error: tmux pane %s is in a mode that refuses cancel; nothing typed\n' "$target" >&2
-      return 1
-    }
-    depth=$((depth - 1))
+  printf '%s' "$depth"
+}
+
+fm_tmux_send_keys_unbounded() {  # <target> <send-keys args...>
+  local target=$1
+  shift
+  # Re-read after each cancel, so a mode the user leaves meanwhile is no refusal.
+  while [ "$(fm_tmux_pane_mode_depth "$target")" -gt 0 ]; do
+    tmux send-keys -t "$target" -X cancel 2>/dev/null && continue
+    [ "$(fm_tmux_pane_mode_depth "$target")" -gt 0 ] || break
+    printf 'error: tmux pane %s is in a mode that refuses cancel; nothing typed\n' "$target" >&2
+    return 1
   done
   tmux send-keys -t "$target" "$@"
 }

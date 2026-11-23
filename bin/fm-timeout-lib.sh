@@ -119,8 +119,8 @@ fm_run_bash_timeout() {
     exit "$command_rc"
   ) &
   child_pid=$!
-  # The watchdog's sleep is the system one: a PATH sleep (a test's instant
-  # fake) would expire the bound at once.
+  # The watchdog sleeps with the system sleep, so no sleep earlier on PATH can
+  # shorten or lengthen the bound.
   (
     set +m
     command -p sleep "$seconds"
