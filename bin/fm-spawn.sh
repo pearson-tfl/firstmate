@@ -6727,9 +6727,12 @@ BUSY_GEN=
     fi
     hooks_json="\"hooks\":{${session_start_entry}\"UserPromptSubmit\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_submit\"}]}],${stop_entry}\"StopFailure\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_stopfail\"}]}],\"SessionEnd\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"$j_sessionend\"}]}]}"
     if [ "$KIND" = secondmate ]; then
-      session_keys='"feedbackDrafts":"off",'
+      # disableAgentView: a seat must stay in its pane to be rotated, and Claude
+      # Code (2.1.330) backgrounds an idle session on a Left arrow otherwise; it
+      # takes effect only at launch, so a running seat is guarded from its next one.
+      session_keys='"feedbackDrafts":"off","disableAgentView":true,'
       if [ "$KEEP_AI_TRAILERS" != 1 ]; then
-        session_keys='"feedbackDrafts":"off","attribution":{"commit":"","pr":"","sessionUrl":false},'
+        session_keys=$session_keys'"attribution":{"commit":"","pr":"","sessionUrl":false},'
       fi
       printf '{%s%s}\n' "$session_keys" "$hooks_json" >"$STATE_REAL/$ID.claude-settings.json"
       if [ "$RAW_LAUNCH" -eq 0 ] && [ "$BACKEND" != t3code ]; then
