@@ -90,6 +90,8 @@ export PS1
 exec /bin/sh -i
 SH
 chmod +x "$SB/bin/orca" "$SB/bin/fm-orca-live-shell"
+# The adapter prefers `orca-ide`, so the wrapper must shadow a host install under that name too.
+ln -s orca "$SB/bin/orca-ide"
 export SHELL="$SB/bin/fm-orca-live-shell" PATH="$SB/bin:$PATH"
 
 VERSION=$(orca --version 2>/dev/null | head -1)
