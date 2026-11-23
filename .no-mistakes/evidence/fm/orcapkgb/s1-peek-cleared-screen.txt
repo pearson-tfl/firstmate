@@ -1,0 +1,14 @@
+$ fm-peek.sh fm-orcapeek1 10   # HEAD (this change)
+name      value
+➜  fm-pkgb git:(fm-pkgb)[exit 0]
+
+$ fm-peek.sh fm-orcapeek1 10   # base 2ba34144 (before)
+➜  fm-pkgb git:(fm-pkgb) printf 'STALE STARTUP BANNER\n'; seq 1 5; clear; printtf 'name\033[6Cvalue\n'
+STALE STARTUP BANNER
+1
+2
+3
+4
+5
+namevalue
+➜  fm-pkgb git:(fm-pkgb) [exit 0]

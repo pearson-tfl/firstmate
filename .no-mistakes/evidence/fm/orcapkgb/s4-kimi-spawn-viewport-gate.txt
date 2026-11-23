@@ -1,0 +1,46 @@
+===== HEAD: fm-spawn.sh kimispawn1 <proj> kimi --backend orca
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-orcaemu.r3fbkD/kimi/lab-HEAD
+fm-kimi-turnend-hook: refused: Kimi config directory is missing or unexpected at /tmp/fm-orcaemu.r3fbkD/kimi/home/.kimi-code.
+error: refusing Kimi spawn because the global turn-end hook could not be installed safely
+[exit ]
+orca terminal sends: 0
+===== base: fm-spawn.sh kimispawn1 <proj> kimi --backend orca
+error: refusing Kimi spawn because backend 'orca' has no verified viewport-bounded capture; Kimi 2.0.0 gates a fresh worktree on a trust dialog that can only be answered and confirmed cleared from a scrollback-free read of the live pane
+[exit ]
+orca terminal sends: 0
+===== HEAD: fm-spawn.sh kimispawn1 <proj> kimi --backend orca (with a throwaway Kimi config)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-orcaemu.r3fbkD/kimi/lab-HEAD
+warning: kimi has no verified skill invocation; ship kimispawn1 launches with its plain brief
+warning: /tmp/fm-orcaemu.r3fbkD/kimi/lab-HEAD/data/kimispawn1/launch-brief.md records no ship branch; defaulting to legacy branch fm/kimispawn1
+warning: /tmp/fm-orcaemu.r3fbkD/kimi/lab-HEAD/data/kimispawn1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: orca worktree create did not return a path for fm-kimispawn1
+[exit ]
+orca calls:
+  orca status --json
+  orca repo show --repo path:/tmp/fm-orcaemu.r3fbkD/kimi/HEAD/proj --json
+  orca repo add --path /tmp/fm-orcaemu.r3fbkD/kimi/HEAD/proj --json
+  orca worktree create --repo id:repo-k --name fm-kimispawn1 --no-parent --setup skip --json
+  orca terminal close --terminal term-k --json
+  orca worktree rm --worktree id:wt-k::/orca/wt-k --force --json
+===== HEAD retry with the worktree path present
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-orcaemu.r3fbkD/kimi/lab-HEAD
+error: orca worktree create did not return a path for fm-kimispawn1
+[exit ]
+orca calls:
+  orca status --json
+  orca repo show --repo path:/tmp/fm-orcaemu.r3fbkD/kimi/HEAD/proj --json
+  orca repo add --path /tmp/fm-orcaemu.r3fbkD/kimi/HEAD/proj --json
+  orca worktree create --repo id:repo-k --name fm-kimispawn1 --no-parent --setup skip --json
+  orca terminal close --terminal term-k --json
+  orca worktree rm --worktree id:wt-k::/orca/wt-k --force --json
+===== HEAD retry with the Orca worktree path present
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-orcaemu.r3fbkD/kimi/lab-HEAD
+error: orca worktree create did not return a path for fm-kimispawn1
+[exit ]
+orca calls:
+  orca status --json
+  orca repo show --repo path:/tmp/fm-orcaemu.r3fbkD/kimi/HEAD/proj --json
+  orca repo add --path /tmp/fm-orcaemu.r3fbkD/kimi/HEAD/proj --json
+  orca worktree create --repo id:repo-k --name fm-kimispawn1 --no-parent --setup skip --json
+  orca terminal close --terminal term-k --json
+  orca worktree rm --worktree id:wt-k::/orca/wt-k --force --json

@@ -1,0 +1,34 @@
+===== terminal c-empty — screen as Orca returns it (blank rows omitted):
+    transcript line from the agent
+    ╭──────────────────────────────╮
+    │ >                            │
+    ╰──────────────────────────────╯
+      ? for shortcuts
+  HEAD: composer state=empty | inbox held text=[rc 0]
+  base: composer state=unknown | inbox held text=[rc 1]
+===== terminal c-text — screen as Orca returns it (blank rows omitted):
+    transcript line from the agent
+    ╭──────────────────────────────╮
+    │ > : doorbell line x          │
+    ╰──────────────────────────────╯
+      ? for shortcuts
+  HEAD: composer state=pending | inbox held text=: doorbell line x[rc 0]
+  base: composer state=unknown | inbox held text=[rc 1]
+===== terminal c-exit — screen as Orca returns it (blank rows omitted):
+    transcript line from the agent
+    ╭──────────────────────────────╮
+    │ >                            │
+    ╰──────────────────────────────╯
+    Error: session ended
+    ➜  fm-pkgb git:(fm-pkgb)
+  HEAD: composer state=unknown | inbox held text=[rc 1]
+  base: composer state=unknown | inbox held text=[rc 1]
+===== terminal c-resume — screen as Orca returns it (blank rows omitted):
+    transcript line from the agent
+    ╭──────────────────────────────╮
+    │ >                            │
+    ╰──────────────────────────────╯
+    Resume this session with:
+    claude --resume 1234
+  HEAD: composer state=unknown | inbox held text=[rc 1]
+  base: composer state=unknown | inbox held text=[rc 1]

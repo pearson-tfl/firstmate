@@ -1,0 +1,24 @@
+== Orca host answers --screen with source=stream
+$ fm-peek.sh fm-orcapeek1 10
+error: orca terminal read returned source stream, not the drawn screen
+[exit 3]
+$ fm-crew-state.sh orcapeek1
+state: unknown · source: pane · harness state unavailable (unknown missing)
+
+== Orca host answers --screen with source=screen-unavailable
+$ fm-peek.sh fm-orcapeek1 10
+error: orca terminal read returned source screen-unavailable, not the drawn screen
+[exit 3]
+$ fm-crew-state.sh orcapeek1
+state: unknown · source: pane · harness state unavailable (unknown missing)
+
+== Orca host answers --screen with source=legacy
+$ fm-peek.sh fm-orcapeek1 10
+error: orca terminal read returned source (none), not the drawn screen
+[exit 3]
+$ fm-crew-state.sh orcapeek1
+state: unknown · source: pane · harness state unavailable (unknown missing)
+
+== terminal closed (stale handle)
+$ fm-crew-state.sh gone1
+state: unknown · source: none · backend target gone: term-gone
