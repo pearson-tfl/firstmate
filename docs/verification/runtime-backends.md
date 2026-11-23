@@ -2560,7 +2560,7 @@ env -i HOME="$HOME" PATH=/usr/local/bin:/usr/bin:/bin bash -c '. bin/fm-backend.
 Observed output:
 
 ```text
-/Users/johnp/.orca/cli/bin/orca-ide
+<home>/.orca/cli/bin/orca-ide
 runtime-ready
 tool-available
 ```

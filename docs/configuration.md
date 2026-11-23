@@ -2233,7 +2233,7 @@ Every session-provider-only backend (`tmux`, `herdr`, `zellij`, `cmux`, `paseo`,
 Backend tool availability uses the adapter's own executable resolver, so bootstrap and spawn agree on supported non-`PATH` locations such as cmux's bundled CLI and the Rex server bundle's `rex`.
 An unknown resolved backend emits `BACKEND_INVALID` and blocks dispatch instead of silently dropping its dependency delta or falling back to tmux.
 
-Orca provides both the task worktree and terminal endpoint (see "Runtime backend" above), so `backend=orca` requires only `orca` on top of the universal toolchain and skips both `treehouse` and every other backend's session CLI.
+Orca provides both the task worktree and terminal endpoint (see "Runtime backend" above), so `backend=orca` requires only the Orca CLI (`orca`, or `orca-ide` on Linux) on top of the universal toolchain and skips both `treehouse` and every other backend's session CLI.
 A herdr, zellij, cmux, paseo, rex, t3code, or tern home is therefore never told `tmux` is missing, and the `treehouse` durable-lease upgrade check runs only for the backends that actually use treehouse.
 
 **Feature-specific requirements**

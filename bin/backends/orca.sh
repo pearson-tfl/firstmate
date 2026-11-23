@@ -15,20 +15,24 @@
 . "$(dirname -- "${BASH_SOURCE[0]}")/../fm-credential-source-lib.sh"
 
 # fm_backend_orca_bin: resolve the Orca CLI. macOS names it `orca`; Linux names
-# it `orca-ide` because GNOME's screen reader owns `orca`. Prefer PATH
-# (respects an operator's own setup), then the CLI a paired Orca server's
-# install leaves in ~/.orca/cli/bin, off PATH (seen on the Dell's paired
-# server), so a home on that machine drives its runtime with no PATH change.
-# shortcut: `orca` wins over `orca-ide`, so a Linux host with GNOME's screen
-# reader on PATH fails the readiness check; prefer orca-ide on Linux if one does.
+# it `orca-ide` because GNOME's screen reader owns `orca`. The first PATH
+# directory holding either wins, preferring `orca-ide` within a directory, so a
+# stub put ahead on PATH still shadows a real install. Then the CLI a paired
+# Orca server's install leaves in ~/.orca/cli/bin, off PATH, so a home on that
+# machine drives its runtime with no PATH change.
+# shortcut: GNOME's `orca` in an earlier PATH directory than `orca-ide` still
+# wins and fails the readiness check; reorder PATH, or skip `orca` on Linux if seen.
 FM_BACKEND_ORCA_BUNDLE_BIN="${FM_BACKEND_ORCA_BUNDLE_BIN:-${HOME:-}/.orca/cli/bin/orca-ide}"
 fm_backend_orca_bin() {
-  local name
-  for name in orca orca-ide; do
-    if command -v "$name" >/dev/null 2>&1; then
-      printf '%s' "$name"
-      return 0
-    fi
+  local dir name dirs
+  IFS=: read -ra dirs <<< "${PATH:-}"
+  for dir in "${dirs[@]}"; do
+    for name in orca-ide orca; do
+      if [ -f "${dir:-.}/$name" ] && [ -x "${dir:-.}/$name" ]; then
+        printf '%s' "${dir:-.}/$name"
+        return 0
+      fi
+    done
   done
   if [ -x "$FM_BACKEND_ORCA_BUNDLE_BIN" ]; then
     printf '%s' "$FM_BACKEND_ORCA_BUNDLE_BIN"

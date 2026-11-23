@@ -486,7 +486,7 @@ test_kill_refuses_when_the_orca_cli_is_absent() {
 
 # Linux names the Orca CLI orca-ide, and a paired Orca server's install leaves
 # it in ~/.orca/cli/bin off PATH; every adapter call must reach whichever the
-# host has, with a PATH `orca` still winning where both exist.
+# host has, with `orca-ide` winning where one PATH directory holds both.
 test_cli_resolves_orca_ide_and_paired_server_install() {
   local orca_free out
   orca_free=$(fm_test_base_path_sans "$PATH" orca orca-ide)
@@ -504,8 +504,8 @@ test_cli_resolves_orca_ide_and_paired_server_install() {
   PATH="$FB:$orca_free" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     bash -c '. "$0/bin/backends/orca.sh"; fm_backend_orca_kill term-123' "$ROOT"
   case "$(cat "$LOG")" in
-    orca$'\x1f'terminal*) ;;
-    *) fail "orca on PATH should win over orca-ide, got: $(cat "$LOG")" ;;
+    orca-ide$'\x1f'terminal*) ;;
+    *) fail "orca-ide should win over orca in the same PATH directory, got: $(cat "$LOG")" ;;
   esac
 
   orca_case cli-paired-server-install
@@ -515,7 +515,7 @@ test_cli_resolves_orca_ide_and_paired_server_install() {
   expect_code 0 $? "runtime check and kill should succeed through the paired-server install: $out"
   assert_contains "$(cat "$LOG")" $'orca-ide\x1f''status' "the paired-server install did not answer the readiness check"
   assert_contains "$(cat "$LOG")" $'orca-ide\x1f''terminal'$'\x1f''close' "the paired-server install was not used off PATH"
-  pass "fm_backend_orca_bin: reaches orca, then orca-ide, then the paired-server install"
+  pass "fm_backend_orca_bin: reaches orca-ide or orca on PATH, then the paired-server install"
 }
 
 test_remove_worktree_refuses_empty_id() {
