@@ -1,0 +1,66 @@
+### case=success (host: emulated Darwin + emulated Keychain)
+### config/launch-env-vault: {"API_TOKEN":{"source":"macos-keychain","service":"svc-token"},"OTHER":{"source":"macos-keychain","service":"svc-token","account":"w"}}
+### $ FM_HOME=<lab> fm-spawn.sh vault-success <project> --mode direct-PR --backend orca --harness probe
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <tmp>/success/home
+warning: <tmp>/success/home/data/vault-success/launch-brief.md records no ship branch; defaulting to legacy branch fm/vault-success
+warning: <tmp>/success/home/data/vault-success/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode direct-PR - confirm its definition of done matches
+notice: vault-success ships mode=direct-PR while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned vault-success harness=sh kind=ship mode=direct-PR yolo=off window=fm-vault-success worktree=<tmp>/success/orca-worktrees/fm-vault-success
+### exit=0
+### tmux invoked: no
+### orca worktree allocated: yes
+### lines of Orca terminal input containing the key: 0
+### staged launch file mode: 600
+### worker env after sourcing staged file (API_TOKEN, OTHER, GIT_CONFIG_NOSYSTEM), ambient API_TOKEN=ambient OTHER=ambient:
+tok-SECRET-success
+tok-SECRET-success
+1
+### staged file removed after sourcing: yes
+
+### case=real-linux-host (host: real Linux, no security CLI)
+### config/launch-env-vault: {"API_TOKEN":{"source":"macos-keychain","service":"svc-token"},"OTHER":{"source":"macos-keychain","service":"svc-token","account":"w"}}
+### $ FM_HOME=<lab> fm-spawn.sh vault-real-linux-host <project> --mode direct-PR --backend orca --harness probe
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <tmp>/real-linux-host/home
+error: config/launch-env-vault source macos-keychain for API_TOKEN cannot run on this host; refusing Orca launch
+### exit=1
+### tmux invoked: no
+### orca worktree allocated: no
+
+### case=undeclared (host: emulated Darwin + emulated Keychain)
+### config/launch-env-vault: {"API_TOKEN":{"source":"macos-keychain","service":"svc-token"}}
+### $ FM_HOME=<lab> fm-spawn.sh vault-undeclared <project> --mode direct-PR --backend orca --harness probe
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <tmp>/undeclared/home
+error: config/launch-env-vault declares no source for allowlisted name OTHER; refusing Orca launch
+### exit=1
+### tmux invoked: no
+### orca worktree allocated: no
+
+### case=inline-value (host: emulated Darwin + emulated Keychain)
+### config/launch-env-vault: {"API_TOKEN":{"source":"macos-keychain","service":"svc-token","value":"tok-SECRET-inline"},"OTHER":{"source":"macos-keychain","service":"svc-token"}}
+### $ FM_HOME=<lab> fm-spawn.sh vault-inline-value <project> --mode direct-PR --backend orca --harness probe
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <tmp>/inline-value/home
+error: config/launch-env-vault: API_TOKEN has unknown field value (allowed: source, service, account); credential values do not belong in this file; refusing Orca launch
+### exit=1
+### tmux invoked: no
+### orca worktree allocated: no
+
+### case=no-source (host: emulated Darwin + emulated Keychain)
+### config/launch-env-vault: <absent>
+### $ FM_HOME=<lab> fm-spawn.sh vault-no-source <project> --mode direct-PR --backend orca --harness probe
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <tmp>/no-source/home
+warning: backend=orca resolves config/launch-env-allowlist names from the Orca terminal's own environment, not this home's; set config/launch-env-vault or config/launch-env-tmux-session to take them from a scoped source
+warning: <tmp>/no-source/home/data/vault-no-source/launch-brief.md records no ship branch; defaulting to legacy branch fm/vault-no-source
+warning: <tmp>/no-source/home/data/vault-no-source/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode direct-PR - confirm its definition of done matches
+notice: vault-no-source ships mode=direct-PR while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned vault-no-source harness=sh kind=ship mode=direct-PR yolo=off window=fm-vault-no-source worktree=<tmp>/no-source/orca-worktrees/fm-vault-no-source
+### exit=0
+### tmux invoked: no
+### orca worktree allocated: yes
+### lines of Orca terminal input containing the key: 0
+### staged launch file mode: 600
+### worker env after sourcing staged file (API_TOKEN, OTHER, GIT_CONFIG_NOSYSTEM), ambient API_TOKEN=ambient OTHER=ambient:
+ambient
+unset
+unset
+### staged file removed after sourcing: no
+

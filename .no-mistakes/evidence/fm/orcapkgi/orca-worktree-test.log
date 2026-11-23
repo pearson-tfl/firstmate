@@ -1,0 +1,35 @@
+ok - real tmux preserves absent/C locale values and reported raw bytes, rejects missing/phantom names and excludes the automatic SSH agent
+ok - Orca refuses source=absent before allocating resources
+ok - Orca source/allowlist=enabled preserves controlled values, clears ambient credentials and keeps values off terminal input
+ok - Orca source/allowlist=empty preserves controlled values, clears ambient credentials and keeps values off terminal input
+ok - Orca refuses source=unavailable before allocating resources
+ok - Orca refuses source=malformed before allocating resources
+ok - Orca refuses source=nonregular before allocating resources
+ok - Orca refuses source=missing before allocating resources
+ok - Orca removes the credential launch file when the launch cannot be delivered
+ok - Orca vault source delivers declared keys through the private launch file with no tmux, clearing ambient credentials
+ok - Orca vault source refuses both before allocating resources, without tmux or leaking a key
+ok - Orca vault source refuses no-allowlist before allocating resources, without tmux or leaking a key
+ok - Orca vault source refuses undeclared before allocating resources, without tmux or leaking a key
+ok - Orca vault source refuses unreadable before allocating resources, without tmux or leaking a key
+ok - Orca vault source refuses malformed before allocating resources, without tmux or leaking a key
+ok - Orca vault source refuses value-field before allocating resources, without tmux or leaking a key
+ok - Orca vault source refuses unsupported before allocating resources, without tmux or leaking a key
+ok - Orca warns when allowlisted names would resolve from the Orca terminal, and stays quiet for an empty allowlist
+ok - an Orca spawn waits for a slow pane to consume its launch file before a later failure
+ok - an Orca spawn reclaims a launch file its pane never ran and fails visibly
+ok - an Orca spawn interrupted by TERM during the consume step reclaims its launch file and refuses the worker
+ok - an Orca spawn interrupted by HUP during the consume step reclaims its launch file and refuses the worker
+ok - an Orca spawn interrupted by INT during the consume step reclaims its launch file and refuses the worker
+ok - an Orca spawn interrupted by TERM during the enter step reclaims its launch file and refuses the worker
+ok - an Orca spawn interrupted by HUP during the enter step reclaims its launch file and refuses the worker
+ok - an Orca spawn interrupted by INT during the enter step reclaims its launch file and refuses the worker
+ok - an Orca spawn interrupted by TERM before sending the launch command removes its launch file
+ok - an Orca spawn interrupted by HUP before sending the launch command removes its launch file
+ok - an Orca spawn interrupted by INT before sending the launch command removes its launch file
+ok - an Orca pane that cannot remove its launch file refuses the worker and keeps its terminal
+ok - an Orca spawn treats a launch file the pane unlinked at the deadline as consumed
+ok - the Orca snapshot passes through bytes tmux reports even when they are not valid UTF-8
+ok - an Orca-backed fresh spawn enters the worktree Orca created for it, instead of hard-refusing on the post-launch proof
+ok - a relaunch against an Orca-backed task is refused before the RELAUNCH+orca worktree carve-out could run
+# all fm-spawn-orca-worktree tests passed
