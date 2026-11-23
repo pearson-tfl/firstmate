@@ -408,6 +408,10 @@ fm_backend_required_tool_available() {  # <backend> <tool>
       fm_backend_source rex >/dev/null 2>&1 || return 1
       fm_backend_rex_bin >/dev/null 2>&1
       ;;
+    orca:orca)
+      fm_backend_source orca >/dev/null 2>&1 || return 1
+      fm_backend_orca_bin >/dev/null 2>&1
+      ;;
     *) command -v "$tool" >/dev/null 2>&1 ;;
   esac
 }

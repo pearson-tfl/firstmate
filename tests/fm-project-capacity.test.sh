@@ -607,6 +607,7 @@ printf 'orca %s\n' "$*" >> "$FM_FAKE_CALL_LOG"
 exit 1
 SH
   chmod +x "$case_dir/fakebin/orca"
+  ln -sf orca "$case_dir/fakebin/orca-ide"
   git clone -q "$(git -C "$case_dir/project" remote get-url origin)" "$case_dir/project-2"
   declare_capacity "$home" "project 1"
 

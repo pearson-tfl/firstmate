@@ -14,14 +14,36 @@
 # shellcheck source=bin/fm-credential-source-lib.sh
 . "$(dirname -- "${BASH_SOURCE[0]}")/../fm-credential-source-lib.sh"
 
+# fm_backend_orca_bin: resolve the Orca CLI. macOS names it `orca`; Linux names
+# it `orca-ide` because GNOME's screen reader owns `orca`. Lookup order:
+# `orca-ide` on PATH, then the CLI a paired Orca server's install leaves in
+# ~/.orca/cli/bin off PATH, then a bare `orca` on PATH last, so a GNOME `orca`
+# never masks either Orca install. A test stub
+# shadows any real install only when it sits ahead on PATH as `orca-ide` too.
+FM_BACKEND_ORCA_BUNDLE_BIN="${FM_BACKEND_ORCA_BUNDLE_BIN:-${HOME:-}/.orca/cli/bin/orca-ide}"
+fm_backend_orca_bin() {
+  command -v orca-ide && return 0
+  if [ -x "$FM_BACKEND_ORCA_BUNDLE_BIN" ]; then
+    printf '%s' "$FM_BACKEND_ORCA_BUNDLE_BIN"
+    return 0
+  fi
+  command -v orca
+}
+
+fm_backend_orca_cli() {  # <orca args...>
+  local bin
+  bin=$(fm_backend_orca_bin) || return 127
+  "$bin" "$@"
+}
+
 fm_backend_orca_tool_check() {
-  command -v orca >/dev/null 2>&1 || { echo "error: backend=orca selected but the 'orca' CLI is not installed" >&2; return 1; }
+  fm_backend_orca_bin >/dev/null 2>&1 || { echo "error: backend=orca selected but the Orca CLI was not found: neither 'orca' nor 'orca-ide' is on PATH and $FM_BACKEND_ORCA_BUNDLE_BIN is absent" >&2; return 1; }
 }
 
 fm_backend_orca_runtime_check() {
   fm_backend_orca_tool_check || return 1
   local out
-  out=$(orca status --json 2>/dev/null) || {
+  out=$(fm_backend_orca_cli status --json 2>/dev/null) || {
     echo "error: backend=orca selected but 'orca status --json' failed; start Orca and wait for the runtime to be ready" >&2
     return 1
   }
@@ -200,12 +222,12 @@ fm_backend_orca_run_json() {
 fm_backend_orca_repo_ensure() {  # <project-path>
   local project=$1 out repo_id
   fm_backend_orca_tool_check || return 1
-  out=$(orca repo show --repo "path:$project" --json 2>/dev/null || true)
+  out=$(fm_backend_orca_cli repo show --repo "path:$project" --json 2>/dev/null || true)
   if repo_id=$(printf '%s' "$out" | fm_backend_orca_json_get repo-id 2>/dev/null); then
     printf '%s' "$repo_id"
     return 0
   fi
-  out=$(orca repo add --path "$project" --json) || return 1
+  out=$(fm_backend_orca_cli repo add --path "$project" --json) || return 1
   repo_id=$(printf '%s' "$out" | fm_backend_orca_json_get repo-id) || {
     echo "error: orca repo add did not return a repo id for $project" >&2
     return 1
@@ -216,7 +238,7 @@ fm_backend_orca_repo_ensure() {  # <project-path>
 fm_backend_orca_worktree_create() {  # <project-path> <name>
   local project=$1 name=$2 repo_id out wt_id wt_path terminal
   repo_id=$(fm_backend_orca_repo_ensure "$project") || return 1
-  out=$(orca worktree create --repo "id:$repo_id" --name "$name" --no-parent --setup skip --json) || return 1
+  out=$(fm_backend_orca_cli worktree create --repo "id:$repo_id" --name "$name" --no-parent --setup skip --json) || return 1
   wt_id=$(printf '%s' "$out" | fm_backend_orca_json_get worktree-id) || {
     echo "error: orca worktree create did not return a worktree id for $name" >&2
     return 1
@@ -242,7 +264,7 @@ fm_backend_orca_worktree_create() {  # <project-path> <name>
 fm_backend_orca_terminal_create() {  # <worktree-id> <title>
   local worktree_id=$1 title=$2 out terminal
   fm_backend_orca_tool_check || return 1
-  out=$(orca terminal create --worktree "id:$worktree_id" --title "$title" --json) || return 1
+  out=$(fm_backend_orca_cli terminal create --worktree "id:$worktree_id" --title "$title" --json) || return 1
   terminal=$(printf '%s' "$out" | fm_backend_orca_json_get terminal-handle) || {
     echo "error: orca terminal create did not return a terminal handle for $title" >&2
     return 1
@@ -253,27 +275,27 @@ fm_backend_orca_terminal_create() {  # <worktree-id> <title>
 fm_backend_orca_send_text_line() {  # <terminal-id> <text>
   local terminal=$1 text=$2
   fm_backend_orca_tool_check || return 1
-  fm_backend_orca_run_json orca terminal send --terminal "$terminal" --text "$text" --enter --json
+  fm_backend_orca_run_json fm_backend_orca_cli terminal send --terminal "$terminal" --text "$text" --enter --json
 }
 
 fm_backend_orca_send_literal() {  # <terminal-id> <text>
   local terminal=$1 text=$2
   fm_backend_orca_tool_check || return 1
-  fm_backend_orca_run_json orca terminal send --terminal "$terminal" --text "$text" --json
+  fm_backend_orca_run_json fm_backend_orca_cli terminal send --terminal "$terminal" --text "$text" --json
 }
 
 fm_backend_orca_remove_worktree() {  # <worktree-id>
   local worktree_id=${1:-}
   [ -n "$worktree_id" ] || { echo "error: missing Orca worktree id; cannot remove worktree" >&2; return 1; }
   fm_backend_orca_tool_check || return 1
-  fm_backend_orca_run_json orca worktree rm --worktree "id:$worktree_id" --force --json
+  fm_backend_orca_run_json fm_backend_orca_cli worktree rm --worktree "id:$worktree_id" --force --json
 }
 
 fm_backend_orca_worktree_path() {
   local worktree_id=${1:-} out path
   [ -n "$worktree_id" ] || { echo "error: missing Orca worktree id; cannot resolve worktree path" >&2; return 1; }
   fm_backend_orca_tool_check || return 1
-  out=$(orca worktree show --worktree "id:$worktree_id" --json) || return 1
+  out=$(fm_backend_orca_cli worktree show --worktree "id:$worktree_id" --json) || return 1
   path=$(printf '%s' "$out" | fm_backend_orca_json_get worktree-path) || {
     echo "error: orca worktree show did not return a path for $worktree_id" >&2
     return 1
@@ -293,7 +315,7 @@ fm_backend_orca_screen_read() {  # <terminal-id> [orca read args...]
   local terminal=$1 out
   shift
   fm_backend_orca_tool_check || return 1
-  out=$(orca terminal read --terminal "$terminal" --screen "$@" --json) || return 1
+  out=$(fm_backend_orca_cli terminal read --terminal "$terminal" --screen "$@" --json) || return 1
   fm_backend_orca_json_text "$out"
 }
 
@@ -313,7 +335,7 @@ fm_backend_orca_visible_capture() {  # <terminal-id> [expected-label]
 # terminal whose screen Orca cannot render is not reported gone.
 fm_backend_orca_target_ready() {  # <terminal-id>
   fm_backend_orca_tool_check || return 1
-  fm_backend_orca_run_json orca terminal read --terminal "$1" --limit 1 --json
+  fm_backend_orca_run_json fm_backend_orca_cli terminal read --terminal "$1" --limit 1 --json
 }
 
 fm_backend_orca_json_text() {  # <json>
@@ -371,18 +393,18 @@ fm_backend_orca_send_key() {  # <terminal-id> <key>
   fm_backend_orca_tool_check || return 1
   case "$key" in
     C-c|ctrl+c|Ctrl-c|Ctrl-C)
-      fm_backend_orca_run_json orca terminal send --terminal "$terminal" --interrupt --json
+      fm_backend_orca_run_json fm_backend_orca_cli terminal send --terminal "$terminal" --interrupt --json
       ;;
     Enter|enter)
-      fm_backend_orca_run_json orca terminal send --terminal "$terminal" --text "" --enter --json
+      fm_backend_orca_run_json fm_backend_orca_cli terminal send --terminal "$terminal" --text "" --enter --json
       ;;
     # Without --enter Orca writes --text to the PTY verbatim, so a control byte
     # is the key itself (orca terminal send --help, Orca 1.4.271).
     Escape|escape)
-      fm_backend_orca_run_json orca terminal send --terminal "$terminal" --text $'\x1b' --json
+      fm_backend_orca_run_json fm_backend_orca_cli terminal send --terminal "$terminal" --text $'\x1b' --json
       ;;
     C-u|ctrl+u|Ctrl-u|Ctrl-U)
-      fm_backend_orca_run_json orca terminal send --terminal "$terminal" --text $'\x15' --json
+      fm_backend_orca_run_json fm_backend_orca_cli terminal send --terminal "$terminal" --text $'\x15' --json
       ;;
     *)
       echo "error: unsupported Orca key '$key'" >&2
@@ -415,5 +437,5 @@ fm_backend_orca_send_text_submit() {  # <terminal-id> <text> <retries> <enter-sl
 # "Endpoint close").
 fm_backend_orca_kill() {  # <terminal-id>
   fm_backend_orca_tool_check || return 1
-  orca terminal close --terminal "$1" --json >/dev/null 2>&1 || true
+  fm_backend_orca_cli terminal close --terminal "$1" --json >/dev/null 2>&1 || true
 }

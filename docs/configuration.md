@@ -1739,7 +1739,7 @@ The command shell and worker may still create their own variables.
 Unless the Orca environment source below is configured, allowed values come from the destination pane at execution time; they are neither copied from the invoking Firstmate process nor written into the launch command.
 Listing a name does not provision it in a daemon's environment or transfer credentials to another machine.
 
-On the Orca backend the destination is an Orca terminal whose environment comes from the Orca app and your shell startup files, not from Firstmate or its tmux session.
+On the Orca backend the destination is an Orca terminal whose environment comes from the Orca runtime (the macOS app or a Linux Orca server) and your shell startup files, not from Firstmate or its tmux session.
 Allowlisted names there resolve to whatever that terminal has, often your personal credentials or nothing, so a spawn with a nonempty allowlist prints a warning unless an Orca environment source below is configured.
 
 ### Orca environment source (config/launch-env-vault, config/launch-env-tmux-session)
@@ -2230,10 +2230,10 @@ The per-backend delta is required only for the backend resolved from `FM_BACKEND
 The JSON-emitting adapters (`herdr`, `zellij`, `cmux`, `paseo`, `rex`, `tern`) need `jq` because their spawn and liveness paths parse backend JSON.
 Every session-provider-only backend (`tmux`, `herdr`, `zellij`, `cmux`, `paseo`, `rex`, `t3code`, `tern`) uses `treehouse` for worktrees.
 
-Backend tool availability uses the adapter's own executable resolver, so bootstrap and spawn agree on supported non-`PATH` locations such as cmux's bundled CLI and the Rex server bundle's `rex`.
+Backend tool availability uses the adapter's own executable resolver, so bootstrap and spawn agree on supported non-`PATH` locations such as cmux's bundled CLI, the Rex server bundle's `rex`, and a paired Orca server's `~/.orca/cli/bin/orca-ide`.
 An unknown resolved backend emits `BACKEND_INVALID` and blocks dispatch instead of silently dropping its dependency delta or falling back to tmux.
 
-Orca provides both the task worktree and terminal endpoint (see "Runtime backend" above), so `backend=orca` requires only `orca` on top of the universal toolchain and skips both `treehouse` and every other backend's session CLI.
+Orca provides both the task worktree and terminal endpoint (see "Runtime backend" above), so `backend=orca` requires only the Orca CLI ([`orca-backend.md`](orca-backend.md#setup) owns its names and lookup order) on top of the universal toolchain and skips both `treehouse` and every other backend's session CLI.
 A herdr, zellij, cmux, paseo, rex, t3code, or tern home is therefore never told `tmux` is missing, and the `treehouse` durable-lease upgrade check runs only for the backends that actually use treehouse.
 
 **Feature-specific requirements**

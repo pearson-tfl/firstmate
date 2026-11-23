@@ -634,9 +634,10 @@ test_orca_delivers_an_escape_harness_interrupt() {
 #!/bin/sh
 printf '%s\n' "$*" | od -An -c | tr -s ' \n' ' ' >> "$FM_FAKE_DIR/orca-calls"
 printf '\n' >> "$FM_FAKE_DIR/orca-calls"
-printf '{"ok":true,"result":{"terminal":{"handle":"term-1","status":"running","tail":["ready"]}}}\n'
+printf '{"ok":true,"result":{"terminal":{"handle":"term-1","status":"running","source":"screen","tail":["ready"]}}}\n'
 SH
   chmod +x "$dir/fakebin/orca"
+  ln -sf orca "$dir/fakebin/orca-ide"
   out=$(run_control "$dir" t1 interrupt); rc=$?
   expect_code 0 "$rc" "an Escape harness on orca should deliver Escape"
   assert_contains "$out" "interrupt-delivered t1 harness=claude backend=orca" "interrupt should report delivery on orca"
@@ -644,23 +645,27 @@ SH
   assert_contains "$(cat "$dir/fake/orca-calls")" "033" "interrupt did not send the raw Escape byte"
   pass "fm-control interrupt: an Escape harness on orca gets a raw Escape byte"
 
-  # Devin's second Escape needs a viewport read, which Orca lacks: refuse unpressed.
+  # Devin's second Escape waits on Orca's drawn-screen viewport read: a screen
+  # without the armed hint gets exactly one press, never the revert-picker pair.
   sed -e 's|^window=.*|window=fm-t1|' -e 's|^harness=.*|harness=devin|' "$dir/home/state/t1.meta.new" > "$dir/home/state/t1.meta"
   : > "$dir/fake/orca-calls"
   out=$(run_control "$dir" t1 interrupt); rc=$?
-  expect_code 1 "$rc" "a Devin interrupt on orca should refuse"
-  assert_contains "$out" "no verified viewport read" "refusal should name the missing viewport read"
-  [ ! -s "$dir/fake/orca-calls" ] || fail "a refused Devin interrupt must not send any key to orca"
-  pass "fm-control interrupt: a Devin interrupt on orca refuses before any press"
+  expect_code 0 "$rc" "a Devin interrupt on orca should deliver its first Escape"
+  assert_contains "$out" "cancel=not-running" "an unarmed Devin interrupt on orca must say no running turn was cancelled"
+  [ "$(grep -c '033' "$dir/fake/orca-calls")" = 1 ] \
+    || fail "an unarmed Devin on orca must receive exactly one Escape, got: $(grep -c '033' "$dir/fake/orca-calls")"
+  pass "fm-control interrupt: an unarmed Devin on orca gets exactly one Escape, never the revert-picker pair"
 
-  # Command Code's single Escape still needs a screen read for its rewind picker.
+  # Command Code's single Escape is checked on the same viewport read for its
+  # rewind picker; a screen without the picker gets no dismissing press.
   sed -e 's|^window=.*|window=fm-t1|' -e 's|^harness=.*|harness=commandcode|' "$dir/home/state/t1.meta.new" > "$dir/home/state/t1.meta"
   : > "$dir/fake/orca-calls"
   out=$(run_control "$dir" t1 interrupt); rc=$?
-  expect_code 1 "$rc" "a Command Code interrupt on orca should refuse"
-  assert_contains "$out" "no verified viewport read" "refusal should name the missing viewport read"
-  [ ! -s "$dir/fake/orca-calls" ] || fail "a refused Command Code interrupt must not send any key to orca"
-  pass "fm-control interrupt: a Command Code interrupt on orca refuses before any press"
+  expect_code 0 "$rc" "a Command Code interrupt on orca should deliver its Escape"
+  assert_contains "$out" "interrupt-delivered t1 harness=commandcode backend=orca" "Command Code interrupt should report delivery on orca"
+  [ "$(grep -c '033' "$dir/fake/orca-calls")" = 1 ] \
+    || fail "Command Code on orca with no rewind picker must receive exactly one Escape, got: $(grep -c '033' "$dir/fake/orca-calls")"
+  pass "fm-control interrupt: a Command Code interrupt on orca gets one Escape and no picker dismissal"
 }
 
 test_unverified_state_backends_refuse_stop_verbs() {

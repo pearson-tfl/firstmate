@@ -143,6 +143,7 @@ esac
 exit 0
 SH
   chmod +x "$fb/orca"
+  ln -sf orca "$fb/orca-ide"
   printf '%s\n' "$fb"
 }
 

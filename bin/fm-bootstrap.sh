@@ -863,7 +863,7 @@ secondmate_handoff_detect() {
 
 install_cmd() {
   case "$1" in
-    tmux|node|git|gh|curl|jq|orca|zellij) echo "brew install $1  # or the platform's package manager" ;;
+    tmux|node|git|gh|curl|jq|zellij) echo "brew install $1  # or the platform's package manager" ;;
     cmux) echo "brew install --cask cmux  # or see https://cmux.com" ;;
     treehouse) echo "curl -fsSL https://kunchenguid.github.io/treehouse/install.sh | sh" ;;
     no-mistakes) echo "curl -fsSL https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh | sh" ;;
@@ -889,6 +889,7 @@ upgrade_cmd() {
 manual_install_url() {
   case "$1" in
     herdr) echo "https://herdr.dev" ;;
+    orca) echo "docs/orca-backend.md (orca-ide or a paired Orca server on Linux, never GNOME's orca)" ;;
     paseo) echo "https://paseo.sh" ;;
     rex) echo "https://www.superlogical.com/rex" ;;
     tern) echo "https://stencil.so/tern" ;;
