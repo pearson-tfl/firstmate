@@ -1,0 +1,36 @@
+(macOS Keychain stand-in on PATH: uname -s reports Darwin, security reads items from a scratch dir)
+
+=== allowlisted OTHER_KEY not declared in vault
+$ fm-spawn.sh vault-undeclared <project> --mode direct-PR --yolo off --backend orca --harness <probe>
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <lab>
+error: config/launch-env-vault declares no source for allowlisted name OTHER_KEY; refusing Orca launch
+exit=1
+tmux called: no
+meta published: no
+orca worktrees allocated: 0
+
+=== keychain lacks OTHER_KEY's item
+$ fm-spawn.sh vault-missing <project> --mode direct-PR --yolo off --backend orca --harness <probe>
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <lab>
+error: cannot read OTHER_KEY from its config/launch-env-vault source; refusing Orca launch
+exit=1
+tmux called: no
+meta published: no
+orca worktrees allocated: 0
+
+=== vault declares both keys and keychain holds them
+$ fm-spawn.sh vault-ok <project> --mode direct-PR --yolo off --backend orca --harness <probe>
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <lab>
+warning: <lab>/data/vault-ok/launch-brief.md records no ship branch; defaulting to legacy branch fm/vault-ok
+warning: <lab>/data/vault-ok/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode direct-PR - confirm its definition of done matches
+notice: vault-ok ships mode=direct-PR while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned vault-ok harness=sh kind=ship mode=direct-PR yolo=off window=fm-vault-ok worktree=<spy>/orca-worktrees/fm-vault-ok
+exit=0
+tmux called: no
+meta published: yes
+orca worktrees allocated: 1
+
+--- vault secrets in Orca terminal input: 0 lines
+--- staged launch file mode: 600; removed after the pane consumed it: yes
+--- worker launched from staged file sees (caller pane had GH_TOKEN=ambient-personal-secret):
+GH_TOKEN=vault-gh-token-123 OTHER_KEY=vault-other-456 GIT_CONFIG_NOSYSTEM=1

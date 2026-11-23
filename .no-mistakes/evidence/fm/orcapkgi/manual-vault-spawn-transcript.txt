@@ -1,0 +1,74 @@
+=== vault declared; this real Linux host has no macOS Keychain adapter
+$ fm-spawn.sh vault-linux <proj> --mode direct-PR --yolo off --backend orca --harness <probe>
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <lab>
+error: config/launch-env-vault source macos-keychain for GH_TOKEN cannot run on this host; refusing Orca launch
+exit=1
+tmux called: no
+meta published: no
+orca worktrees allocated: 0
+
+=== vault and tmux-session both set
+$ fm-spawn.sh vault-both <proj> --mode direct-PR --yolo off --backend orca --harness <probe>
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <lab>
+error: config/launch-env-tmux-session and config/launch-env-vault are alternative Orca environment sources; keep only one
+exit=1
+tmux called: no
+meta published: no
+orca worktrees allocated: 0
+
+=== vault without allowlist
+$ fm-spawn.sh vault-noallow <proj> --mode direct-PR --yolo off --backend orca --harness <probe>
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <lab>
+error: config/launch-env-vault requires config/launch-env-allowlist; refusing Orca launch
+exit=1
+tmux called: no
+meta published: no
+orca worktrees allocated: 0
+
+=== allowlisted OTHER_KEY not declared in vault
+$ fm-spawn.sh vault-undeclared <proj> --mode direct-PR --yolo off --backend orca --harness <probe>
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <lab>
+error: config/launch-env-vault source macos-keychain for GH_TOKEN cannot run on this host; refusing Orca launch
+exit=1
+tmux called: no
+meta published: no
+orca worktrees allocated: 0
+
+=== vault file tries to hold a value inline
+$ fm-spawn.sh vault-inline <proj> --mode direct-PR --yolo off --backend orca --harness <probe>
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <lab>
+error: config/launch-env-vault: GH_TOKEN has unknown field value (allowed: source, service, account); credential values do not belong in this file; refusing Orca launch
+exit=1
+tmux called: no
+meta published: no
+orca worktrees allocated: 0
+
+=== keychain stand-in lacks OTHER_KEY's item
+$ fm-spawn.sh vault-missing <proj> --mode direct-PR --yolo off --backend orca --harness <probe>
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <lab>
+error: cannot read OTHER_KEY from its config/launch-env-vault source; refusing Orca launch
+exit=1
+tmux called: no
+meta published: no
+orca worktrees allocated: 0
+
+=== vault declared, keychain stand-in holds both keys
+$ fm-spawn.sh vault-ok <proj> --mode direct-PR --yolo off --backend orca --harness <probe>
+fm-gate-refuse: gate agent lifecycle permitted only against lab home <lab>
+warning: <lab>/data/vault-ok/launch-brief.md records no ship branch; defaulting to legacy branch fm/vault-ok
+warning: <lab>/data/vault-ok/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode direct-PR - confirm its definition of done matches
+notice: vault-ok ships mode=direct-PR while the standing posture for proj is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+fatal: cannot change to '<spy>/project': No such file or directory
+exit=1
+tmux called: no
+meta published: no
+orca worktrees allocated: 0
+
+ugrep: warning: <spy>/terminal.log: No such file or directory
+--- vault secrets in terminal input:  lines
+sed: can't read <spy>/terminal.log: No such file or directory
+cat: .mode: No such file or directory
+--- staged launch file mode: ; removed after consumption: yes
+cp: cannot stat '.copy': No such file or directory
+--- worker sees (caller had GH_TOKEN=ambient-personal-secret):
+/bin/sh: line 1: .: : file not found

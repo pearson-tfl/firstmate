@@ -1,0 +1,40 @@
+=== vault declared, real Linux host (no macOS Keychain)
+$ fm-spawn.sh vault-linux <proj> --mode direct-PR --yolo off --backend orca --harness 'sh -c env'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.APrVkd
+error: backend=orca selected but the 'orca' CLI is not installed
+exit=1
+tmux called: no
+meta published: no
+
+=== vault and tmux-session both set
+$ fm-spawn.sh vault-both <proj> --mode direct-PR --yolo off --backend orca --harness 'sh -c env'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.APrVkd
+error: backend=orca selected but the 'orca' CLI is not installed
+exit=1
+tmux called: no
+meta published: no
+
+=== vault without allowlist
+$ fm-spawn.sh vault-noallow <proj> --mode direct-PR --yolo off --backend orca --harness 'sh -c env'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.APrVkd
+error: backend=orca selected but the 'orca' CLI is not installed
+exit=1
+tmux called: no
+meta published: no
+
+=== allowlisted OTHER_KEY not declared in vault
+$ fm-spawn.sh vault-undeclared <proj> --mode direct-PR --yolo off --backend orca --harness 'sh -c env'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.APrVkd
+error: backend=orca selected but the 'orca' CLI is not installed
+exit=1
+tmux called: no
+meta published: no
+
+=== vault file tries to hold a value inline
+$ fm-spawn.sh vault-inline <proj> --mode direct-PR --yolo off --backend orca --harness 'sh -c env'
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.APrVkd
+error: backend=orca selected but the 'orca' CLI is not installed
+exit=1
+tmux called: no
+meta published: no
+
