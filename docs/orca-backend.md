@@ -43,8 +43,11 @@ No manual repository registration is required.
 
 Open the Orca app to watch a task's terminal.
 Routine supervision uses the recorded endpoint through `bin/fm-peek.sh <id>` and `FM_HOME=<home> bin/fm-send.sh <id> '<text>'`.
-The adapter sends Enter and Ctrl-C (real Orca) and refuses Escape (real Orca).
-Orca itself writes raw control bytes such as Escape and Ctrl-U when text is sent without Enter (real Orca), but Firstmate does not use that path.
+The adapter sends text and Enter in one send and sends Ctrl-C (real Orca).
+Its separate Enter key, which the submit retries use, sends empty text with Enter (code).
+The adapter refuses Escape as a key (real Orca) and refuses Ctrl-U as a key (code).
+Orca itself writes raw control bytes such as Escape and Ctrl-U when text is sent without Enter (real Orca).
+The adapter's typed steer writes its text without Enter, so control bytes inside a steer's text pass through (code).
 
 An Orca terminal opens your normal login shell in your real home folder with your personal shell startup files, and a variable set in the environment Orca starts from reaches every new terminal (real Orca).
 `config/launch-env-allowlist` alone therefore cannot scope worker credentials on Orca, because allowlisted values resolve from the Orca terminal's own environment.
@@ -98,7 +101,7 @@ A close the CLI never attempted, because `orca` is not on the path, stops cleanu
 Reinstall the CLI and rerun; [`verification/runtime-backends.md`](verification/runtime-backends.md) "Endpoint close" owns what this arm can and cannot prove about its own close.
 
 The Orca desktop app kept its terminals when the app itself restarted (real Orca).
-A stopped Orca runtime ends its terminals and refuses their old handles as stale (real Orca), and after a reboot every agent is gone (reported).
+After a headless Orca runtime restarted, it refused the old terminal handles as stale (real Orca), and after a reboot every agent is gone (reported).
 Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ended needs manual recovery.
 
 ## Active limits
@@ -106,7 +109,7 @@ Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ende
 - The backend is explicit-only and has been exercised only on macOS.
 - The app must be running and report ready.
 - Secondmate spawns are unsupported (code).
-- The adapter refuses Escape and Ctrl-U, so `fm-control.sh interrupt` refuses a harness that interrupts with Escape (real Orca); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
+- The adapter refuses Escape (real Orca) and Ctrl-U (code), so `fm-control.sh interrupt` refuses a harness that interrupts with Escape (real Orca); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
 - Orca has no recovery-grade agent-state classifier, so `exit` and `relaunch` refuse (code).
 - Kimi is refused at spawn preflight because the backend has no viewport-only capture, and Cortex and Command Code are refused because Orca supplies no pane identity for their composers (code).
 - Firstmate checks readiness, not Orca's version (code).
