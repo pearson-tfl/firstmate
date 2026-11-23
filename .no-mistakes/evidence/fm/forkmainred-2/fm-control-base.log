@@ -1,0 +1,18 @@
+ok - fm-control exit: every verified harness gets its own verified exit command
+ok - fm-control exit: a recorded OpenCode major picks /exit (1.x) or Ctrl-U then Ctrl-C (2.x)
+ok - fm-control exit: OpenCode 2.x retries Ctrl-C exactly once while the agent is still alive
+ok - fm-control interrupt: every verified harness gets its own verified key and repeat count
+ok - fm-control Devin interrupt: second press only after the armed hint, then busy invalidated without fabricating idle
+ok - fm-control Devin interrupt: an idle agent gets one Escape and reports not-running
+ok - fm-control Devin exit: a busy record whose turn already ended never opens the revert picker
+ok - fm-control Devin interrupt: a revert picker a press opened is closed with Escape, never Enter
+ok - fm-control Devin: an open revert picker refuses every typed command
+ok - fm-control interrupt: opencode needs a double Escape, claude a single one
+ok - fm-control: a harness with no verified control mechanics is refused, not guessed at
+ok - fm-control-lib: a recorded harness resolves to its verified adapter without guessing
+ok - fm-control-lib: only a runtime's own recorded session has a relaunch resume form
+ok - fm-control: prefixed recorded harnesses reach interrupt and exit mechanics
+ok - fm-control-lib: the backend key matrix matches each adapter's real send-key surface
+ok - fm-control-lib: adapter capability is per task kind, not per adapter alone
+ok - fm-control interrupt: an Escape harness on orca gets a raw Escape byte
+not ok - a Devin interrupt on orca should refuse: expected exit 1, got 0

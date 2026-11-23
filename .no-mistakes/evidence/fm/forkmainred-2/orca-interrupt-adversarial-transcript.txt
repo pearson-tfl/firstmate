@@ -1,0 +1,12 @@
+=== $ fm-control.sh t1 interrupt   (harness=devin, backend=orca, fake Orca reports source=screen)
+error: harness devin must see its screen between interrupt presses, because a repeated Escape on an idle agent opens its revert picker, and the orca screen read has never been verified with a real devin on it, so it is no verified viewport read for this harness; refusing to press blind
+exit=1
+orca calls that sent keys: 0
+=== $ fm-control.sh t1 interrupt   (harness=commandcode, backend=orca, fake Orca reports source=screen)
+error: harness commandcode must see its screen between interrupt presses, because a repeated Escape on an idle agent opens its revert picker, and the orca screen read has never been verified with a real commandcode on it, so it is no verified viewport read for this harness; refusing to press blind
+exit=1
+orca calls that sent keys: 0
+=== $ fm-control.sh t1 interrupt   (harness=claude, backend=orca, fake Orca reports source=screen)
+interrupt-delivered t1 harness=claude backend=orca verified=endpoint cancel=unconfirmed
+exit=0
+orca calls that sent keys: 1

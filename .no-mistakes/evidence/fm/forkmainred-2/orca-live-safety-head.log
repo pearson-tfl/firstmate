@@ -1,0 +1,6 @@
+ok - orca live lane: off unless FM_ORCA_LIVE_E2E or FM_LIVE requests it
+ok - orca live lane: the runtime never sees SSH_*, TMUX or Orca identity, and a run in its own shell completes and stops the runtime
+ok - orca live lane: its own shell still passes when Orca's read drops the space after the prompt
+ok - orca live lane: a terminal showing anything but its nonce prompt (agent composer or plain login shell) gets no key, and the run still releases and stops
+ok - orca live lane: when the CLI reaches any runtime but its own, nothing is registered, created or sent
+bash tests/fm-backend-orca-live-safety.test.sh  6.24s user 4.29s system 72% cpu 14.550 total

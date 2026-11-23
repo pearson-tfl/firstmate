@@ -1,0 +1,2 @@
+ok - orca live lane: off unless FM_ORCA_LIVE_E2E or FM_LIVE requests it
+not ok - own-shell lane run (stderr: not ok - Orca 9.9.9-fake: refusing to send - terminal term_fake is not this guard's own idle shell (last row: '')): expected exit 0, got 1
