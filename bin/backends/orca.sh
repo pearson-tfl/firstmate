@@ -273,19 +273,8 @@ fm_backend_orca_terminal_create() {  # <worktree-id> <title>
   printf '%s' "$terminal"
 }
 
-# fm_backend_orca_fresh_shell_verdict: classify one drawn screen of a terminal
-# spawn has just created and not yet typed into. Prints one word:
-#   shell    a few rows and no program chrome: what a just-started shell draws
-#   empty    nothing drawn yet
-#   tmux     a tmux status row (`[session] 0:win`, ` 1:win `, first or last
-#            row) or a tmux tree-picker row (`(0) + session: 1 windows`)
-#   foreign  box-drawing chrome or more than
-#            FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS rows: another program's screen
-# Orca starts the operator's login shell and sets no prompt Firstmate controls,
-# so the live lane's nonce prompt cannot apply here; these are screen shapes.
-FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS=${FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS:-4}
-fm_backend_orca_fresh_shell_verdict() {  # <screen>
-  local row first='' last='' rows=0
+fm_backend_orca_fresh_shell_verdict() {
+  local expected=${2##*/} row first='' last='' rows=0
   local status_re='^ *(\[[^]]*\] +)?[0-9]+:[^ ]' picker_re='^\([0-9]+\) +[-+] '
   while IFS= read -r row; do
     case "$row" in *[![:space:]]*) ;; *) continue ;; esac
@@ -301,8 +290,18 @@ fm_backend_orca_fresh_shell_verdict() {  # <screen>
   done <<<"$1"
   [ "$rows" -gt 0 ] || { printf 'empty'; return 0; }
   if [[ $first =~ $status_re ]] || [[ $last =~ $status_re ]]; then printf 'tmux'; return 0; fi
-  [ "$rows" -le "$FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS" ] || { printf 'foreign'; return 0; }
-  printf 'shell'
+  local arrow_re='^➜[[:space:]]+' suffix_re='^([[:space:]]+git:\([^()[:space:]]+\))?[[:space:]]*$'
+  local plain_re='[[:space:]]*[$#%][[:space:]]*$' prompt=$last
+  [ "$rows" -eq 1 ] && [ -n "$expected" ] || { printf 'foreign'; return 0; }
+  if [[ $prompt =~ $arrow_re ]]; then
+    prompt=${prompt#"${BASH_REMATCH[0]}"}
+    if [[ $prompt == "$expected"* ]] && [[ ${prompt#"$expected"} =~ $suffix_re ]]; then
+      printf 'shell'; return 0
+    fi
+  elif [[ $prompt == "$expected"* ]] && [[ ${prompt#"$expected"} =~ ^$plain_re ]]; then
+    printf 'shell'; return 0
+  fi
+  printf 'foreign'
 }
 
 # fm_backend_orca_fresh_shell: before spawn types its first key into a new
@@ -314,8 +313,8 @@ fm_backend_orca_fresh_shell_verdict() {  # <screen>
 # screen, and after FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S on an empty, unreadable,
 # or unsettled one. Sends nothing in every case.
 FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S=${FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S:-20}
-fm_backend_orca_fresh_shell() {  # <terminal-id>
-  local terminal=$1 screen prev='' verdict=unreadable i tries
+fm_backend_orca_fresh_shell() {
+  local terminal=$1 expected=$2 screen prev='' verdict=unreadable i tries
   tries=$((FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S * 2))
   for ((i = 0; i <= tries; i++)); do
     [ "$i" -eq 0 ] || sleep 0.5
@@ -323,7 +322,7 @@ fm_backend_orca_fresh_shell() {  # <terminal-id>
       verdict=unreadable prev=''
       continue
     fi
-    verdict=$(fm_backend_orca_fresh_shell_verdict "$screen")
+    verdict=$(fm_backend_orca_fresh_shell_verdict "$screen" "$expected")
     case "$verdict" in
       tmux | foreign) break ;;
       shell)

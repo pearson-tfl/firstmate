@@ -99,8 +99,8 @@ case "$cmd" in
   "terminal create")
     case "$mode" in
       own | own-orca) prompt > "$S/screen" ;;
-      foreign) printf '● Kneading…\n❯ \n' > "$S/screen" ;;
-      login) printf 'bash-3.2$ \n' > "$S/screen" ;;
+      foreign | spawn-foreign) printf '● Kneading…\n❯ \n' > "$S/screen" ;;
+      login | spawn-hidden-tmux) printf 'bash-3.2$ \n' > "$S/screen" ;;
       spawn-shell) printf '➜  %s git:(%s)\n' "${worktree##*/}" "${worktree##*/}" > "$S/screen" ;;
       spawn-tmux) printf 'johnp@mac ~ %% \n 1:andrew-assistant \n' > "$S/screen" ;;
       spawn-picker) printf '(0) + andrew-new-website: 1 windows\n(1) + firstmate: 29 windows\n' > "$S/screen" ;;
@@ -135,6 +135,7 @@ case "$cmd" in
 esac
 FAKE
   chmod +x "$dir/bin/orca"
+  ln -s orca "$dir/bin/orca-ide"
 }
 
 run_guard() {  # <fake-dir> -> sets OUT, ERR, RC
@@ -230,11 +231,15 @@ spawn_case() {
   RC=$?
 }
 
-for mode in spawn-tmux spawn-picker; do
+for mode in spawn-tmux spawn-picker spawn-foreign spawn-hidden-tmux; do
   spawn_case "$mode" "orca-guard-${mode#spawn-}"
   assert_not_equals 0 "$RC" "spawn into a $mode terminal must fail"$'\n'"$OUT"
   assert_contains "$OUT" "refusing to send to Orca terminal term_fake" "a $mode refusal must name the terminal"
-  assert_contains "$OUT" "verdict: tmux" "a $mode screen must be read as a tmux client"
+  case "$mode" in
+    spawn-tmux | spawn-picker) verdict=tmux ;;
+    *) verdict=foreign ;;
+  esac
+  assert_contains "$OUT" "verdict: $verdict" "a $mode screen must be refused"
   assert_grep 'orca terminal read --terminal term_fake --screen' "$D/state/log" "spawn must read the $mode screen before deciding"
   ! grep -q 'terminal send' "$D/state/log" || fail "spawn typed into a $mode terminal: $(grep 'terminal send' "$D/state/log")"
   assert_grep 'terminal close' "$D/state/log" "a refused $mode spawn must close the terminal it created"
