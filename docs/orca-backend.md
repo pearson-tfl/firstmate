@@ -59,7 +59,7 @@ To scope worker credentials, configure an [Orca environment source](configuratio
 That login shell runs your startup files before Firstmate types anything, so a startup rule such as `exec tmux attach` can turn a new terminal into a client of another session whose pane would receive the launch keys (real Orca).
 Before its first key, spawn checks terminal placement, listed agents, and screen shape; it accepts a candidate shell only when all of these checks pass, and otherwise refuses, typing nothing (fake Orca):
 
-- `orca terminal show` places the terminal in the worktree spawn just created.
+- `orca terminal show` places the terminal in the task worktree or secondmate home entry selected by spawn.
 - `orca agent list` names no agent on the terminal's pane.
 - The drawn screen reads the same twice in a row, has one or two nonblank rows, and shows no tmux status or session-picker row, no box-drawn chrome, and no agent composer the shared classifier recognizes.
 
@@ -142,7 +142,7 @@ Retiring the second mate closes its terminal and never asks Orca to remove the h
 Steering doorbells reach the seat through the recorded terminal with the same agent-state, busy, and composer checks as any Orca worker (code).
 The recovery sweep relaunches a seat that reads missing only when Orca reports its terminal exited, or still lists the home's entry with no live terminal in it, because the desktop app re-attaches terminals under new handles after a restart (code).
 
-Away mode accepts a seat running in an Orca terminal: supervisor discovery reads the `ORCA_TERMINAL_HANDLE` Orca sets in each terminal, after tmux, Herdr, and Rex, so a multiplexer nested inside the terminal stays innermost (fake Orca).
+Away mode accepts a seat running in an Orca terminal; [supervisor backend configuration](configuration.md#away-mode-supervisor-backend-fm_supervisor_backend--fm_supervisor_target) owns endpoint discovery and its nested-multiplexer precedence (fake Orca).
 The away daemon then injects through Orca's agent listing for busy and the shared composer classifier, as for any Orca endpoint (code).
 Away mode's `start` has no hidden-terminal launch on Orca, so the daemon runs there only as a harness's own tracked background job (`start-native`) (code).
 The host hand-back retry in `bin/fm-supervision-handoff.sh` types into the seat's Orca terminal only when Orca lists an idle agent on it, the session holds its terminal's foreground, and the composer reads empty; like its tmux path, it stays inert until #5138 restores session ownership (code).
