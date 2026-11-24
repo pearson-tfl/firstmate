@@ -103,6 +103,7 @@ case "$1 $2" in
     exit 0
     ;;
   "terminal send")
+    [ -z "${FM_TEST_ORCA_SEND_LOG:-}" ] || printf '%s\n' "$*" >> "$FM_TEST_ORCA_SEND_LOG"
     if [ -n "${FM_TEST_ORCA_LOG:-}" ]; then
       prev=
       for a in "$@"; do
@@ -1181,6 +1182,52 @@ test_orca_pinned_claude_relaunch_preserves_existing_work() {
   assert_absent "$case_dir/claude-worker" "a refused relaunch must not run a worker"
   pass "Orca refuses a pinned Claude relaunch while preserving existing metadata and unlanded work"
 }
+
+
+test_orca_control_pinned_relaunch_refuses_before_stop() {
+  local pin case_dir home id fb out status before brief_before
+  for pin in ordinary root override rules; do
+    id="orca-control-pin-$pin"
+    case_dir=$(orca_relaunch_case "$id" "$id")
+    home="$case_dir/home"
+    fb=$(make_orca_fakebin "$case_dir")
+    fm_test_cswap_fakes "$fb" "$case_dir"
+    mkdir -p "$case_dir/user-home/.claude" "$case_dir/pinned"
+    printf '{}\n' > "$case_dir/user-home/.claude/.credentials.json"
+    printf '{}\n' > "$case_dir/pinned/.credentials.json"
+    case "$pin" in
+      ordinary) printf 'ordinary\n' > "$home/config/claude-account" ;;
+      root) printf '%s\n' "$case_dir/pinned" > "$home/config/claude-account" ;;
+      override)
+        fm_test_cswap_accounts "$case_dir" 1 1:0:0 2:0:0
+        printf 'account_override=cswap:2\n' >> "$home/state/$id.meta"
+        ;;
+      rules)
+        fm_test_cswap_accounts "$case_dir" 1 1:10:10 2:0:0
+        printf 'project proj 2\n' > "$home/config/account-rules"
+        ;;
+    esac
+    before=$(cat "$home/state/$id.meta")
+    brief_before=$(cat "$home/data/$id/brief.md")
+    out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$case_dir/user-home" \
+      FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+      FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+      FM_TEST_ORCA_DIR="$case_dir" FM_TEST_ORCA_SEND_LOG="$case_dir/terminal.log" PATH="$fb:$PATH" \
+      bash "$ROOT/bin/fm-control.sh" "$id" relaunch --harness claude --note 'Preserve the running worker' 2>&1)
+    status=$?
+    expect_code 1 "$status" "control must refuse a $pin pin before stopping: $out"
+    assert_contains "$out" 'backend=orca cannot guarantee the Claude worker account pin' "control must report the compatibility refusal"
+    [ "$(cat "$home/state/$id.meta")" = "$before" ] || fail "control changed metadata"
+    [ "$(cat "$home/data/$id/brief.md")" = "$brief_before" ] || fail "control changed the brief"
+    [ "$(cat "$case_dir/wt/unlanded.txt")" = unlanded ] || fail "control changed unlanded work"
+    assert_absent "$case_dir/terminal.log" "control must not send stop commands or keys"
+    assert_absent "$case_dir/terminal-closed" "control must not close the old worker terminal"
+    assert_absent "$case_dir/terminal-created" "control must not create a replacement terminal"
+  done
+  pass "control rejects every Orca Claude pin source before stopping the worker"
+}
+
+test_orca_control_pinned_relaunch_refuses_before_stop
 
 test_orca_pinned_claude_relaunch_preserves_existing_work
 test_orca_refuses_claude_account_pins_before_provisioning

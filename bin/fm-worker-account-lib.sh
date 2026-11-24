@@ -56,6 +56,14 @@
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fm-timeout-lib.sh"
 
+fm_worker_account_backend_check() {
+  if [ "$1" = orca ] && [ "$2" = claude ] && [ -n "$3" ]; then
+    echo "error: backend=orca cannot guarantee the Claude worker account pin (${3%%$'\t'*}) because Orca manages the terminal's Claude profile; refusing to launch on a potentially different account; choose another backend to honor the pin" >&2
+    return 1
+  fi
+  return 0
+}
+
 FM_WORKER_ACCOUNT_CHECK_SECONDS=${FM_WORKER_ACCOUNT_CHECK_SECONDS:-30}
 
 # Credentials Claude Code ranks above the /login stored in its config root
