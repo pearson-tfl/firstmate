@@ -567,6 +567,15 @@ test_profile_choice_by_usage_exhaustion_rules_and_pin() {
   printf 'cswap:1 %s 0 test\n' "$(( $(date +%s) + 3600 ))" > "$world/exhausted"
   out=$(select_profile sm)
   case "$out" in *"recorded exhausted; launching on spare by usage instead"*spare$'\t'usage) ;; *) fail "an exhausted pin must yield to the usage pick and say so: $out" ;; esac
+  # An exhausted pin cannot fall back to itself when no profile has a login.
+  make_omp_profile "$world/no-logins" spent || fail "fixture db"
+  printf 'spent\n' > "$config/secondmate-accounts/sm/omp-profile"
+  printf 'omp:spent %s 0 test\n' "$(( $(date +%s) + 3600 ))" > "$world/exhausted"
+  if out=$(PATH="$fakebin:$PATH" FM_OMP_ROOT="$world/no-logins" FM_EXHAUSTED_LOGINS="$world/exhausted" bash -c '
+      . "$1/bin/fm-omp-profile-lib.sh"; fm_omp_profile_select omp "$2" sm "" proj' _ "$ROOT" "$config" 2>&1); then
+    fail "an exhausted pin with no replacement must refuse, got: $out"
+  fi
+  case "$out" in *"refusing to launch on an exhausted login"*) ;; *) fail "the refusal must explain why the pin cannot be used: $out" ;; esac
   # No profile at all keeps the ambient launch.
   [ -z "$(PATH="$fakebin:$PATH" FM_OMP_ROOT="$world/none" bash -c '. "$1/bin/fm-omp-profile-lib.sh"; fm_omp_profile_select omp /nonexistent "" "" p' _ "$ROOT")" ] \
     || fail "a machine with no omp profile must keep the ambient launch"

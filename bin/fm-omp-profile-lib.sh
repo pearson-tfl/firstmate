@@ -195,6 +195,8 @@ fm_omp_profile_select() {
       printf '%s\tusage\n' "$picked"
       return 0
     fi
+    echo "error: $cfg pins omp profile $name, whose login $login is recorded exhausted, and no replacement profile has a readable Anthropic login; refusing to launch on an exhausted login" >&2
+    return 1
   fi
   printf '%s\tpin\n' "$name"
 }
