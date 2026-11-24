@@ -20,15 +20,11 @@ The serial hint table was refreshed on 2026-11-23 from the `fm-test-timing-porta
 Every one of the 287 serial members succeeded in every run that contained it; `tests/fm-backend-orca-live-safety.test.sh` and `tests/fm-backend-orca-live-e2e.test.sh` have one sample each because only the newest run contained them.
 The native-Windows-only `tests/fm-pi-windows-shell-invocation.test.sh` retains its separate 5121 ms measurement from 2026-09-06T21:02Z instead of its 155 ms portable capability skip.
 Likewise, `tests/fm-supervision-host-hook.test.sh`, `tests/fm-supervision-host.test.sh`, `tests/fm-supervision-host-park.test.sh`, and the #5138 cases of `tests/fm-host-mirror.test.sh` currently skip through `skip_5138` in `tests/lib.sh` until issue #5138 is fixed, so the table keeps their earlier non-skipped CI-scaled hints (403793, 435581, 329326, and 11587 ms) instead of their skip-time samples, and the split keeps headroom once those tests run again.
-The table it replaced had drifted: `tests/fm-remote-secondmate-lifecycle-e2e.test.sh` measured 645041 ms against a 345655 ms hint, `tests/fm-teardown.test.sh` 366420 ms against 202132 ms, and `tests/fm-watch-arm.test.sh` 266916 ms against 113076 ms, and all three had packed into serial 9.
-Those runs measured serial 9's jobs at 1437-1766 s while the other shards stayed at or below 1405 s, and on [PR 64](https://github.com/pearson-tfl/firstmate/pull/64) serial 9 was cancelled at the 30-minute job cap twice, once after all 26 of its scripts had passed in 1787933 ms.
-With the refreshed table, eleven shards would model a largest shard of 1146619 ms, and with the real #5138-suite weights twelve shards would model 1149718 ms, each within a minute of the 1200000 ms packing target, so the serial lane grew to thirteen shards; read the current packing from `--check-coverage`.
+The serial lane uses thirteen shards to leave margin below the modeled packing budget while retaining the non-skipped weights above.
+Read the current packing from `--check-coverage`; the modeled budget and observed maxima do not guarantee future job headroom.
 
 The supervision-host suite is four serial members so no one file occupies a whole CI shard: `tests/fm-supervision-host-drain.test.sh` (report, dispatch, BRANCH OUTCOMES), `tests/fm-supervision-host-hook.test.sh` (Claude Stop-hook re-arm and hand-back), `tests/fm-supervision-host.test.sh` (host loop wakes, closes, mirror, return), and `tests/fm-supervision-host-park.test.sh` (latch, park boundary, compaction, lock ownership).
-The hook, host, and park members currently skip under #5138 and are weighted at their real cost, not their skip time.
 As one file it measured 1192918 ms in run [39642852135](https://github.com/kunchenguid/firstmate/actions/runs/39642852135), sitting alone in a serial shard, and run 39765114423 cancelled it at the 30-minute job cap.
-`test_portable_serial_packing_budget_boundary` pins every other fixture script to 1 ms, so packing exactly at the 1200000 ms budget is accepted and one millisecond above it is refused even when real serial members have no hint.
-The coverage-guard test owns modeled real-hint headroom under that budget.
 The T3 Code parallel suites carry the slowest successful Ubuntu samples from CI runs [39463576576](https://github.com/kunchenguid/firstmate/actions/runs/39463576576), [39814995718](https://github.com/kunchenguid/firstmate/actions/runs/39814995718), and [39883948163](https://github.com/kunchenguid/firstmate/actions/runs/39883948163) - 239245 ms for `tests/fm-backend-t3code.test.sh` and 57613 ms for `tests/fm-t3-mcp.test.sh`.
 `tests/fm-backend-t3code.test.sh` and `tests/fm-t3-mcp.test.sh` run in the portable parallel lanes, so those two values sit in `portable_parallel_weight_hints`: every case id the backend suite spawns carries a per-run suffix and its cleanup removes only the `/tmp/fm-<id>` directories that run created, and both suites passed running concurrently with each other and beside another parallel suite (see [`fm-test-isolation-proof.md`](fm-test-isolation-proof.md)).
 
@@ -81,7 +77,7 @@ Even so, maxima from ten runs do not establish a P95 or guarantee future headroo
 Job timeouts remain hang tripwires under the policy in [Timeouts](#timeouts) below; they are not the desired healthy duration.
 `tests/fm-ci-workflow.test.sh` compares the parsed CI matrix to the executable runner lanes, and the runner rejects parallel `--jobs` on a serial lane even when that shard has only one member.
 
-Refresh the CI-derived hints by downloading the per-shard timing artifacts from several green CI runs and replacing the `portable_serial_weight_hints` table in `bin/fm-test-run.sh` with the slowest measured `duration_ms` per `path`:
+Refresh the CI-derived hints by downloading the per-shard timing artifacts from several green CI runs and replacing the `portable_serial_weight_hints` table in `bin/fm-test-run.sh` with the slowest measured `duration_ms` per `path`, preserving the measurement exceptions in [Verification inputs](#verification-inputs):
 
 ```sh
 for run in <run-id> <run-id> <run-id>; do
