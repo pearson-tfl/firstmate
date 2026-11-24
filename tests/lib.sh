@@ -85,6 +85,9 @@ unset TASKS_AXI_FILE TASKS_AXI_BACKEND
 # operator's live Rex session. REX_BIN_DIR stays so the real-server smoke test
 # can find the CLI; a case that verifies detection sets these itself.
 unset REX_SESSION REX_BLOCK
+# Likewise the Orca terminal handle an Orca terminal exports, which supervisor
+# discovery (bin/fm-supervisor-target-lib.sh) reads as the seat's endpoint.
+unset ORCA_TERMINAL_HANDLE
 
 # Write the tracked default backlog configuration into a fixture home. Never copy
 # "$ROOT/.tasks.toml": an operator's primary checkout keeps a gitignored override

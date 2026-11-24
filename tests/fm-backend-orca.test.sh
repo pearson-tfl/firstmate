@@ -810,31 +810,98 @@ test_spawn_writes_orca_metadata_and_launches_harness() {
   pass "fm-spawn.sh --backend orca: reuses implicit terminal, records metadata, launches harness"
 }
 
-test_spawn_refuses_orca_secondmate_before_home_mutation() {
-  local home subhome data state config id out status
+test_spawn_orca_secondmate_opens_terminal_in_home() {
+  local home subhome data state config id out status log staged received
   id="orcasmz1"
-  home="$TMP_ROOT/secondmate-refusal-home"
-  subhome="$TMP_ROOT/secondmate-refusal-subhome"
+  home="$TMP_ROOT/secondmate-home"
+  subhome="$TMP_ROOT/secondmate-subhome"
   data="$home/data"
   state="$home/state"
   config="$home/config"
-  mkdir -p "$data" "$state" "$config" "$subhome/bin" "$subhome/data" "$subhome/state" "$subhome/projects"
+  mkdir -p "$data" "$state" "$config" "$subhome/bin" "$subhome/data" "$subhome/state" "$subhome/config" "$subhome/projects"
   printf '%s\n' "$id" > "$subhome/.fm-secondmate-home"
   printf 'firstmate\n' > "$subhome/AGENTS.md"
-  printf 'claude\n' > "$config/crew-harness"
+  printf '# Charter\n\nSecondmate charter for %s.\n' "$id" > "$subhome/data/charter.md"
+  printf 'projects/\nstate/\ndata/\nconfig/\n.no-mistakes/\n' > "$subhome/.gitignore"
+  git -C "$subhome" init -q -b main
+  subhome=$(cd "$subhome" && pwd -P)
   touch "$state/.last-watcher-beat"
+  : > "$config/launch-env-allowlist"
+  cat > "$subhome/bin/seat-env" <<'SH'
+#!/bin/sh
+printf '%s\n' "${ORCA_TERMINAL_HANDLE:-missing}" "${ORCA_WORKTREE_ID:-missing}" "${FM_TEST_PRIVATE_ENV:-unset}"
+SH
+  orca_case secondmate-spawn
+  log="$LOG"
+  # Orca does not know the home yet, registers it as a folder project, and
+  # resolves the project root entry; then a fresh terminal there passes the
+  # same pre-key guard as any spawn.
+  printf '1\n' > "$RESP/1.exit"
+  printf '{"ok":true,"result":{"repo":{"id":"repo-home","kind":"folder"}}}\n' > "$RESP/2.out"
+  printf '{"ok":true,"result":{"worktree":{"id":"repo-home::%s","path":"%s"}}}\n' "$subhome" "$subhome" > "$RESP/3.out"
+  printf '{"ok":true,"result":{"terminal":{"handle":"term-seat"}}}\n' > "$RESP/4.out"
+  printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["seat$"]}}}\n' | tee "$RESP/5.out" > "$RESP/6.out"
+  printf '{"ok":true,"result":{"terminal":{"handle":"term-seat","worktreeId":"repo-home::%s","tabId":"tab-1","leafId":"leaf-1"}}}\n' "$subhome" > "$RESP/7.out"
+  printf '{"ok":true,"result":{"agents":[]}}\n' > "$RESP/8.out"
   set +e
-  out=$( FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
+  out=$( HOME="$SPAWN_HOME" CLAUDE_CONFIG_DIR='' PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_SPAWN_NO_GUARD=1 \
-    "$ROOT/bin/fm-spawn.sh" "$id" "$subhome" claude --backend orca --secondmate 2>&1 )
+    "$ROOT/bin/fm-spawn.sh" "$id" "$subhome" "sh '$subhome/bin/seat-env'" --backend orca --secondmate 2>&1 )
   status=$?
   set +e
-  [ "$status" -ne 0 ] || fail "backend=orca --secondmate should be refused"
-  assert_contains "$out" "backend=orca does not support --secondmate spawns yet" \
-    "orca secondmate refusal should happen at backend selection"
-  assert_absent "$subhome/config/crew-harness" \
-    "orca secondmate refusal should not propagate inherited local material into the secondmate home"
-  pass "fm-spawn.sh --backend orca --secondmate: refuses before secondmate-home mutation"
+  expect_code 0 "$status" "backend=orca --secondmate should spawn with fake Orca"$'\n'"$out"
+  assert_contains "$(cat "$log")" $'orca\x1f''repo'$'\x1f''add'$'\x1f''--path'$'\x1f'"$subhome"$'\x1f''--kind'$'\x1f''folder'$'\x1f''--json' \
+    "a secondmate home should be registered as an Orca folder project"
+  assert_contains "$(cat "$log")" $'orca\x1f''terminal'$'\x1f''create'$'\x1f''--worktree'$'\x1f'"id:repo-home::$subhome" \
+    "the seat terminal should open in the home's project root entry"
+  assert_not_contains "$(cat "$log")" $'orca\x1f''worktree'$'\x1f''create' \
+    "a secondmate spawn must not create an Orca worktree"
+  assert_grep "kind=secondmate" "$state/$id.meta" "meta missing kind=secondmate"
+  assert_grep "backend=orca" "$state/$id.meta" "meta missing backend=orca"
+  assert_grep "terminal=term-seat" "$state/$id.meta" "meta missing the seat terminal"
+  assert_grep "orca_worktree_id=repo-home::$subhome" "$state/$id.meta" "meta missing the home's Orca entry"
+  staged=$(tr '\037' '\n' < "$log" | sed -n "s/^\. '\([^']*\)'$/\1/p" | tail -1)
+  [ -n "$staged" ] && [ -f "$staged" ] || fail "seat launch command was not staged"
+  received=$(ORCA_TERMINAL_HANDLE=term-seat ORCA_WORKTREE_ID="repo-home::$subhome" \
+    FM_TEST_PRIVATE_ENV=private bash "$staged")
+  expect_code 0 $? "filtered seat launch should execute"
+  [ "$received" = "$(printf '%s\n' term-seat "repo-home::$subhome" unset)" ] \
+    || fail "filtered seat launch lost destination identity or leaked private environment: $received"
+  pass "fm-spawn.sh --backend orca --secondmate: opens one terminal in the home's Orca folder project"
+}
+
+test_spawn_orca_secondmate_refuses_a_mismatched_home_entry() {
+  local home subhome data state config id out status
+  id="orcasmz2"
+  home="$TMP_ROOT/secondmate-mismatch-home"
+  subhome="$TMP_ROOT/secondmate-mismatch-subhome"
+  data="$home/data"
+  state="$home/state"
+  config="$home/config"
+  mkdir -p "$data" "$state" "$config" "$subhome/bin" "$subhome/data" "$subhome/state" "$subhome/config" "$subhome/projects"
+  printf '%s\n' "$id" > "$subhome/.fm-secondmate-home"
+  printf 'firstmate\n' > "$subhome/AGENTS.md"
+  printf '# Charter\n\nSecondmate charter for %s.\n' "$id" > "$subhome/data/charter.md"
+  printf 'projects/\nstate/\ndata/\nconfig/\n.no-mistakes/\n' > "$subhome/.gitignore"
+  git -C "$subhome" init -q -b main
+  touch "$state/.last-watcher-beat"
+  orca_case secondmate-mismatch
+  printf '{"ok":true,"result":{"repo":{"id":"repo-other"}}}\n' > "$RESP/1.out"
+  printf '{"ok":true,"result":{"worktree":{"id":"repo-other::/elsewhere","path":"/elsewhere"}}}\n' > "$RESP/2.out"
+  set +e
+  out=$( HOME="$SPAWN_HOME" CLAUDE_CONFIG_DIR='' PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
+    FM_PROJECTS_OVERRIDE="$home/projects" FM_SPAWN_NO_GUARD=1 \
+    "$ROOT/bin/fm-spawn.sh" "$id" "$subhome" "sh -c 'exit 0'" --backend orca --secondmate 2>&1 )
+  status=$?
+  set +e
+  [ "$status" -ne 0 ] || fail "a home Orca resolves to another path should refuse"
+  assert_contains "$out" "refusing to open a seat there" "the mismatch refusal should name the seat"
+  assert_not_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''create' \
+    "no terminal should open after the home entry mismatch"
+  assert_absent "$state/$id.meta" "a refused seat spawn should publish no record"
+  pass "fm-spawn.sh --backend orca --secondmate: refuses a home entry at another path before opening a terminal"
 }
 
 test_spawn_refuses_orca_when_runtime_not_ready() {
@@ -1329,6 +1396,35 @@ test_teardown_removes_orca_worktree_when_path_missing() {
     "teardown did not remove the recorded Orca worktree when the path was absent"
   assert_absent "$state/$id.meta" "successful helper cleanup should remove task metadata"
   pass "fm-teardown.sh backend=orca: releases terminal/worktree when path is absent"
+}
+
+test_teardown_retires_orca_secondmate_closing_only_its_terminal() {
+  local home mate state id out rc
+  id="orcasmretirez1"
+  home="$TMP_ROOT/retire-home"
+  mate="$TMP_ROOT/retire-mate"
+  state="$home/state"
+  mkdir -p "$state" "$home/data" "$home/config" "$mate/state" "$mate/data" "$mate/config"
+  printf '%s\n' "$id" > "$mate/.fm-secondmate-home"
+  touch "$state/.last-watcher-beat"
+  fm_write_meta "$state/$id.meta" \
+    "window=fm-$id" "endpoint_task_id=$id" "terminal=term-seat" "worktree=$mate" "project=$mate" "home=$mate" \
+    "harness=claude" "kind=secondmate" "mode=secondmate" "yolo=off" "projects=" \
+    "backend=orca" "orca_worktree_id=repo-home::$mate"
+  orca_case retire-secondmate
+  printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n' > "$RESP/2.out"
+  set +e
+  out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
+    FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
+    "$ROOT/bin/fm-teardown.sh" "$id" --force 2>&1 )
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "retiring an Orca secondmate should succeed"$'\n'"$out"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''close'$'\x1f''--terminal'$'\x1f''term-seat'$'\x1f''--json' \
+    "retirement did not close the seat's Orca terminal"
+  assert_not_contains "$(cat "$LOG")" $'orca\x1f''worktree'$'\x1f''rm' \
+    "retirement must never ask Orca to remove the home's project root"
+  pass "fm-teardown.sh backend=orca: retiring a secondmate closes its terminal and leaves its home's Orca entry"
 }
 
 test_teardown_preserves_metadata_when_orca_remove_error_json() {
@@ -1860,7 +1956,8 @@ test_worktree_and_terminal_helpers_parse_json
 test_worktree_create_removes_worktree_when_path_missing
 test_spawn_preserves_orca_metadata_when_pathless_worktree_cleanup_fails
 test_spawn_writes_orca_metadata_and_launches_harness
-test_spawn_refuses_orca_secondmate_before_home_mutation
+test_spawn_orca_secondmate_opens_terminal_in_home
+test_spawn_orca_secondmate_refuses_a_mismatched_home_entry
 test_spawn_refuses_orca_when_runtime_not_ready
 test_spawn_refuses_orca_nonisolated_worktree
 test_spawn_removes_orca_worktree_when_terminal_create_fails
@@ -1876,6 +1973,7 @@ test_crew_state_keeps_live_orca_terminal_without_a_rendered_screen
 test_scout_teardown_removes_orca_worktree_via_helper
 test_scout_teardown_refuses_orca_id_path_mismatch
 test_teardown_removes_orca_worktree_when_path_missing
+test_teardown_retires_orca_secondmate_closing_only_its_terminal
 test_teardown_preserves_metadata_when_orca_remove_error_json
 test_scout_teardown_refuses_orca_missing_report_when_path_missing
 test_ship_teardown_refuses_orca_missing_worktree_path

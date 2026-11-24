@@ -3996,6 +3996,9 @@ elif [ "$BACKEND" = rex ] && [ "$KIND" = secondmate ] && [ "$TEARDOWN_WINDOWLESS
   ( unset FM_ROOT_OVERRIDE; FM_HOME="$HOME_PATH" FM_ROOT="$HOME_PATH" STATE="$HOME_PATH/state" \
     fm_backend_kill "$BACKEND" "$T" "" "fm-$ID" ) \
     || endpoint_close_refusal "$ID" "$BACKEND" "$T" 1 || exit 1
+elif [ "$BACKEND" = orca ] && [ "$KIND" = secondmate ] && [ "$TEARDOWN_WINDOWLESS" != 1 ]; then
+  # A seat's Orca entry is its home's project root, which stays; only its terminal closes.
+  fm_backend_kill orca "$T" || endpoint_close_refusal "$ID" orca "$T" 1 || exit 1
 elif [ "$BACKEND" != orca ] && [ "$BACKEND" != t3code ] && [ "$TEARDOWN_WINDOWLESS" != 1 ]; then
   # Undo Firstmate's own opt-in Rex attention mark, progress, and tint first
   # (bin/fm-rex-marks.sh), so a pane the close cannot reach is not left showing

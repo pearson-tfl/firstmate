@@ -841,6 +841,49 @@ test_remote_poll_probe_unreachable_preserves_route() {
   pass "poll probe: unreachable or inconclusive remote reads preserve the route"
 }
 
+# A stale Orca handle reads missing, but after an Orca desktop restart the seat
+# can live on under a new handle; only Orca listing no live terminal in the
+# home's entry lets the sweep relaunch it.
+test_orca_missing_seat_relaunches_only_when_proven_gone() {
+  local w meta fb mode out
+  w=$(new_world orca-missing-seat)
+  meta="$w/sm1.meta"
+  fb="$w/orca-fakebin"
+  mkdir -p "$fb"
+  printf 'window=fm-sm1\nendpoint_task_id=sm1\nharness=claude\nkind=secondmate\nbackend=orca\nterminal=term-old\norca_worktree_id=repo-home::/homes/sm1\n' > "$meta"
+  # A stand-in Orca: the seat's terminal reads exited or its handle stale, and
+  # the home's entry lists FM_FAKE_ORCA_LIVE live terminals.
+  cat > "$fb/orca-ide" <<'SH'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "terminal read")
+    if [ "$FM_FAKE_ORCA_MODE" = exited ]; then
+      printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n'
+    else
+      printf '{"ok":false,"error":{"code":"terminal_handle_stale"}}\n'
+    fi ;;
+  "worktree show") printf '{"ok":true,"result":{"worktree":{"id":"repo-home::/homes/sm1","path":"/homes/sm1"}}}\n' ;;
+  "terminal list")
+    if [ "$FM_FAKE_ORCA_LIVE" = 0 ]; then printf '{"ok":true,"result":{"terminals":[]}}\n'
+    else printf '{"ok":true,"result":{"terminals":[{"handle":"term-new"}]}}\n'; fi ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "$fb/orca-ide"
+  for mode in exited:0 stale:0 stale:1; do
+    out=$(PATH="$fb:$PATH" FM_FAKE_ORCA_MODE=${mode%%:*} FM_FAKE_ORCA_LIVE=${mode#*:} bash -c '
+      . "$1/bin/fm-secondmate-liveness-lib.sh"
+      fm_secondmate_liveness_probe "$2" sm1 poll
+      printf "%s|%s" "$FM_SM_LIVE_STATUS" "$FM_SM_LIVE_STATE"
+    ' _ "$ROOT" "$meta")
+    case "$mode" in
+      stale:1) [ "$out" = 'skipped|ambiguous' ] || fail "a stale seat whose home still has a live terminal must be left untouched, got: $out" ;;
+      *) [ "$out" = 'relaunchable|missing' ] || fail "a seat Orca proves gone ($mode) should be relaunchable, got: $out" ;;
+    esac
+  done
+  pass "poll probe: a missing Orca seat is relaunched only when Orca proves its terminal gone"
+}
+
 test_tmux_agent_state_classifies
 test_tmux_agent_state_rejects_malformed_targets_before_probe
 test_herdr_agent_state_preserves_husk_classifier
@@ -864,5 +907,6 @@ test_relaunch_waits_for_other_mates_relaunch_lock
 test_sweep_refuses_relaunch_on_ledger_errors
 test_remote_poll_probe_maps_states
 test_remote_poll_probe_unreachable_preserves_route
+test_orca_missing_seat_relaunches_only_when_proven_gone
 
 echo "# all fm-secondmate-liveness tests passed"

@@ -43,6 +43,9 @@ fm_supervisor_in_rex() {
 #      block's process tree; compose the "<session-uuid>:<block-uuid>" target
 #      bin/backends/rex.sh records (both ids without their kind prefix).
 #      Checked after tmux and herdr, whose nested panes rewrite TERM_PROGRAM.
+#   4a. $ORCA_TERMINAL_HANDLE - Orca sets it in every terminal it opens, and it
+#      is the terminal handle bin/backends/orca.sh records. Checked after tmux,
+#      herdr, and rex so a multiplexer nested in an Orca terminal stays innermost.
 #   4b. The live T3 thread running in this home (discover_supervisor_t3code_thread)
 #      - T3 puts nothing into the agent's environment, so this is a cwd match
 #      over T3's live threads, consulted only when t3code is explicitly
@@ -65,6 +68,10 @@ discover_supervisor_target() {
   fi
   if fm_supervisor_in_rex; then
     printf '%s:%s' "${REX_SESSION#session:}" "${REX_BLOCK#block:}"
+    return 0
+  fi
+  if [ -n "${ORCA_TERMINAL_HANDLE:-}" ]; then
+    printf '%s' "$ORCA_TERMINAL_HANDLE"
     return 0
   fi
   if t3_thread=$(discover_supervisor_t3code_thread); then
@@ -99,6 +106,7 @@ discover_supervisor_t3code_thread() {
 #   2. $TMUX_PANE set - tmux.
 #   3. $HERDR_ENV=1 (with $HERDR_PANE_ID present) - herdr.
 #   4. TERM_PROGRAM=rex (with $REX_SESSION and $REX_BLOCK present) - rex.
+#   4a. $ORCA_TERMINAL_HANDLE set - orca.
 #   4b. A live T3 thread in this home - t3code (stderr quiet here; the target
 #      resolver reports an ambiguity once).
 #   5. FM_SUPERVISOR_BACKEND_DEFAULT (tmux) - matches the target fallback. Returns 1.
@@ -117,6 +125,10 @@ discover_supervisor_backend() {
   fi
   if fm_supervisor_in_rex; then
     printf 'rex'
+    return 0
+  fi
+  if [ -n "${ORCA_TERMINAL_HANDLE:-}" ]; then
+    printf 'orca'
     return 0
   fi
   if discover_supervisor_t3code_thread >/dev/null 2>&1; then
