@@ -3828,7 +3828,7 @@ $ OMP_PROFILE=neon omp --model antigravity-cli/gemini-4-neon --thinking xhigh --
 ```
 
 A secondmate spawned and then relaunched through Firstmate, in a scratch primary home with `config/secondmate-harness` reading `omp antigravity-cli/gemini-4-neon xhigh` and `config/secondmate-accounts/sm/omp-profile` reading `neon`, on a private tmux socket, answered its charter without that error.
-The scratch home's `AGENTS.md` alone held the proof token, so the reply shows that `--system-prompt` replaces only omp's static prompt and the home's context file still loads:
+The scratch home's `AGENTS.md` alone held the proof token, so the reply confirms that the home's context file still loads with the replacement prompt:
 
 ```text
 $ bin/fm-spawn.sh sm <scratch>/sm --secondmate
