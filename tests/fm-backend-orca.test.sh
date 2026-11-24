@@ -722,8 +722,11 @@ test_spawn_writes_orca_metadata_and_launches_harness() {
   printf '1\n' > "$RESP/1.exit"
   printf '{"ok":true,"result":{"repo":{"id":"repo-spawn"}}}\n' > "$RESP/2.out"
   printf '{"ok":true,"result":{"worktree":{"id":"wt-spawn::/orca/wt-spawn","path":"%s"},"terminal":{"handle":"term-spawn"}}}\n' "$wt" > "$RESP/3.out"
-  # A matching prompt remains unproven shell ownership.
+  # Two settled reads of a bare prompt, then Orca places the terminal in the
+  # new worktree and lists no agent on its pane: spawn's proof before its first key.
   printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["➜  %s git:(task)"]}}}\n' "${wt##*/}" | tee "$RESP/4.out" > "$RESP/5.out"
+  printf '{"ok":true,"result":{"terminal":{"handle":"term-spawn","worktreeId":"wt-spawn::/orca/wt-spawn","tabId":"tab-1","leafId":"leaf-1"}}}\n' > "$RESP/6.out"
+  printf '{"ok":true,"result":{"agents":[]}}\n' > "$RESP/7.out"
   out=$( HOME="$SPAWN_HOME" CLAUDE_CONFIG_DIR='' PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
     FM_PROJECTS_OVERRIDE="$TMP_ROOT/unused-projects" FM_SPAWN_NO_GUARD=1 \
@@ -924,6 +927,8 @@ test_spawn_releases_orca_resources_when_metadata_write_fails() {
   printf '{"ok":true,"result":{"worktree":{"id":"wt-meta-fail::/orca/wt-meta-fail","path":"%s"}}}\n' "$wt" > "$RESP/3.out"
   printf '{"ok":true,"result":{"terminal":{"handle":"term-meta-fail"}}}\n' > "$RESP/4.out"
   printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["➜  %s git:(task)"]}}}\n' "${wt##*/}" | tee "$RESP/5.out" > "$RESP/6.out"
+  printf '{"ok":true,"result":{"terminal":{"handle":"term-meta-fail","worktreeId":"wt-meta-fail::/orca/wt-meta-fail","tabId":"tab-1","leafId":"leaf-1"}}}\n' > "$RESP/7.out"
+  printf '{"ok":true,"result":{"agents":[]}}\n' > "$RESP/8.out"
   out=$( HOME="$SPAWN_HOME" CLAUDE_CONFIG_DIR='' PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
     FM_PROJECTS_OVERRIDE="$TMP_ROOT/unused-projects" FM_SPAWN_NO_GUARD=1 \

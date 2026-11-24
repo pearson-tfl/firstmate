@@ -273,7 +273,19 @@ fm_backend_orca_terminal_create() {  # <worktree-id> <title>
   printf '%s' "$terminal"
 }
 
-fm_backend_orca_fresh_shell_verdict() {
+# fm_backend_orca_fresh_shell_verdict: classify one drawn screen of a terminal
+# spawn has just created and not yet typed into. Prints one word:
+#   shell    a bare prompt: at most FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS rows,
+#            none of the shapes below
+#   empty    nothing drawn yet
+#   tmux     a tmux status row (`[session] 0:win`, ` 1:win `, first or last
+#            row) or a tmux session-picker row (`(0) + session: 1 windows`)
+#   foreign  box-drawing chrome, an agent composer the shared classifier
+#            recognizes (`❯`, `›` ...), or more rows than a bare prompt draws
+# The screen alone never proves ownership: fm_backend_orca_fresh_shell pairs
+# it with Orca's own account of the terminal.
+FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS=${FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS:-2}
+fm_backend_orca_fresh_shell_verdict() {  # <screen>
   local row first='' last='' rows=0
   local status_re='^ *(\[[^]]*\] +)?[0-9]+:[^ ]' picker_re='^\([0-9]+\) +[-+] '
   while IFS= read -r row; do
@@ -290,33 +302,68 @@ fm_backend_orca_fresh_shell_verdict() {
   done <<<"$1"
   [ "$rows" -gt 0 ] || { printf 'empty'; return 0; }
   if [[ $first =~ $status_re ]] || [[ $last =~ $status_re ]]; then printf 'tmux'; return 0; fi
-  printf 'foreign'
+  [ "$rows" -le "$FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS" ] || { printf 'foreign'; return 0; }
+  case "$(fm_composer_classify_screen "$(fm_backend_orca_composer_caps)" "$1")" in
+    empty | pending | pending-unproven) printf 'foreign'; return 0 ;;
+  esac
+  printf 'shell'
+}
+
+# fm_backend_orca_owner: Orca's own account of a new terminal. Prints `owned`
+# when `orca terminal show` places it in <worktree-id> and `orca agent list`
+# names no agent on its pane; otherwise a short reason.
+fm_backend_orca_owner() {  # <terminal-id> <worktree-id>
+  local terminal=$1 expected=$2 out pane worktree state
+  out=$(fm_backend_orca_cli terminal show --terminal "$terminal" --json 2>/dev/null) || { printf 'show-failed'; return 0; }
+  pane=$(printf '%s' "$out" | fm_backend_orca_agent_json pane 2>/dev/null) || { printf 'show-unreadable'; return 0; }
+  worktree=${pane%%$'\t'*}
+  pane=${pane#*$'\t'}
+  [ "$worktree" = "$expected" ] || { printf 'other-worktree'; return 0; }
+  out=$(fm_backend_orca_cli agent list --worktree "id:$worktree" --json 2>/dev/null) || { printf 'agent-list-failed'; return 0; }
+  state=$(printf '%s' "$out" | fm_backend_orca_agent_json state "$pane" 2>/dev/null) || { printf 'agent-list-unreadable'; return 0; }
+  [ "$state" = none ] || { printf 'agent-%s' "$state"; return 0; }
+  printf 'owned'
 }
 
 # fm_backend_orca_fresh_shell: before spawn types its first key into a new
-# terminal, prove the terminal still shows only the shell Orca started in it.
-# A login profile can exec a tmux client with hidden status and the same
-# prompt as the expected shell. Screen text cannot prove shell ownership.
-# Until Orca supplies independent ownership evidence, refuse even a bare
-# prompt. Never send a challenge into a terminal whose ownership is unknown.
+# terminal, require Orca to vouch for it and its screen to be a bare prompt.
+# A login profile can exec something else first - an ssh-keyed `tmux attach`
+# once turned a new Orca terminal into a client of a live tmux session, and
+# every key typed went to that session's pane. Orca offers no process facts
+# and spawn sets no prompt, so the live lane's nonce cannot apply; the proof is
+# Orca's placement and agent listing (fm_backend_orca_owner) plus the same
+# `shell` screen read twice in a row. Refuses at once on tmux, a foreign
+# screen, or an Orca account that is not `owned`, and after
+# FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S on an empty, unreadable or unsettled
+# screen. Sends nothing in every case.
 FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S=${FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S:-20}
-fm_backend_orca_fresh_shell() {
-  local terminal=$1 expected=$2 screen verdict=unreadable i tries
+fm_backend_orca_fresh_shell() {  # <terminal-id> <orca-worktree-id>
+  local terminal=$1 expected=$2 screen='' prev='' verdict=unreadable i tries owner=unchecked
   tries=$((FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S * 2))
   for ((i = 0; i <= tries; i++)); do
     [ "$i" -eq 0 ] || sleep 0.5
     if ! screen=$(fm_backend_orca_screen_read "$terminal" 2>/dev/null); then
-      verdict=unreadable
+      verdict=unreadable prev=''
       continue
     fi
-    verdict=$(fm_backend_orca_fresh_shell_verdict "$screen" "$expected")
+    verdict=$(fm_backend_orca_fresh_shell_verdict "$screen")
     case "$verdict" in
       tmux | foreign) break ;;
+      shell)
+        if [ "$screen" = "$prev" ]; then
+          owner=$(fm_backend_orca_owner "$terminal" "$expected")
+          [ "$owner" != owned ] || return 0
+          break
+        fi
+        prev=$screen
+        ;;
+      *) prev='' ;;
     esac
   done
+  [ "$verdict" != shell ] || [ "$owner" != unchecked ] || verdict='shell, never settled'
   local row=${screen:-}
   row=${row##*$'\n'}
-  echo "error: refusing to send to Orca terminal $terminal: shell ownership cannot be established from its screen (verdict: $verdict; last row: '${row:0:80}'); nothing was typed" >&2
+  echo "error: refusing to send to Orca terminal $terminal: it is not proven to be the plain shell spawn just created (screen: $verdict; orca: $owner; last row: '${row:0:80}'); nothing was typed" >&2
   return 1
 }
 

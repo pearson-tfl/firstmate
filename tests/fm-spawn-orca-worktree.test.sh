@@ -72,8 +72,17 @@ case "$1 $2" in
     exit 0
     ;;
   "terminal read")
-    # A shell-looking screen cannot prove ownership to the spawn guard.
+    # A bare prompt in the new worktree, which spawn requires before its first key.
     printf '{"ok":true,"result":{"terminal":{"handle":"term-1","status":"running","source":"screen","tail":["➜  %s git:(task)"]}}}\n' "$(cat "$DIR/worktree-name")"
+    exit 0
+    ;;
+  "terminal show")
+    name=$(cat "$DIR/worktree-name")
+    printf '{"ok":true,"result":{"terminal":{"handle":"term-1","worktreeId":"wt-%s","tabId":"tab-1","leafId":"leaf-1"}}}\n' "$name"
+    exit 0
+    ;;
+  "agent list")
+    printf '{"ok":true,"result":{"agents":[]}}\n'
     exit 0
     ;;
   "terminal close")

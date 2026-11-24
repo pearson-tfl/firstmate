@@ -5556,7 +5556,7 @@ EOF
     T="$ORCA_TERMINAL"
     # Prove the terminal is still the shell Orca started before the first key;
     # a refusal closes it and releases the worktree through the abort cleanup.
-    fm_backend_orca_fresh_shell "$T" "$WT" || exit 1
+    fm_backend_orca_fresh_shell "$T" "$ORCA_WORKTREE_ID" || exit 1
     ;;
   t3code)
     # Validate the project policy before the first T3 or Treehouse mutation;

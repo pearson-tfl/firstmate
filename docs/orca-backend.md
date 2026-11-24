@@ -19,7 +19,7 @@ The [whole-task proof](verification/runtime-backends.md#orca-whole-task-proof) s
 
 ## Setup
 
-Orca provides Orca-managed worktrees and terminals instead of Treehouse plus a session multiplexer; production launches are currently blocked by the [shell-ownership guard](#shell-ownership).
+Pick Orca when you already use Orca and want Orca-managed worktrees and terminals instead of Treehouse plus a session multiplexer.
 Orca is explicit-only and does not support secondmate spawns (code).
 Firstmate's Orca backend has run its adapter building blocks only on macOS (real Orca); on Linux only the CLI lookup and readiness check have run against a paired Orca server (real Orca).
 
@@ -56,10 +56,15 @@ To scope worker credentials, configure an [Orca environment source](configuratio
 
 ## Shell ownership
 
-That login shell runs your startup files before Firstmate types anything, so a startup rule such as `exec tmux attach` can turn a new terminal into a client of another session whose pane would receive the launch keys.
-Before its first key, spawn reads the new terminal's drawn screen and refuses, typing nothing: even a matching directory prompt can belong to a hidden-status tmux client, so screen text alone cannot establish shell ownership.
+That login shell runs your startup files before Firstmate types anything, so a startup rule such as `exec tmux attach` can turn a new terminal into a client of another session whose pane would receive the launch keys (real Orca).
+Before its first key, spawn requires Orca to vouch for the new terminal and its screen to be a bare prompt, and otherwise refuses, typing nothing (fake Orca):
+
+- `orca terminal show` places the terminal in the worktree spawn just created.
+- `orca agent list` names no agent on the terminal's pane.
+- The drawn screen reads the same twice in a row, has at most two rows, and shows no tmux status or session-picker row, no box-drawn chrome, and no agent composer the shared classifier recognizes.
+
 A refused spawn closes that terminal and releases the worktree it just created, like any other failed Orca spawn (code).
-`bin/backends/orca.sh` (`fm_backend_orca_fresh_shell`) owns that refusal and the screen-read wait.
+`bin/backends/orca.sh` (`fm_backend_orca_fresh_shell`) owns those checks and the screen-read wait.
 The real-Orca test lane's nonce prompt cannot be used here, because spawn chooses neither the shell nor the prompt Orca starts.
 Orca 1.4.271's `orca terminal create` has no option to set or clear a terminal's environment, so spawn cannot open a terminal without inherited `SSH_*` or `TMUX` (Orca help): `--command` is typed into the login shell after its startup files ran, and `--shell` applies only on Windows hosts.
 Keep those variables out of the environment the Orca runtime starts from, since every terminal inherits it.
@@ -85,8 +90,7 @@ Orca returns `orca_worktree_id=` as that composite of the Orca repo id and the w
 
 ## Current lifecycle and safety
 
-Spawn registers the repository, creates an independent worktree, and reuses only the verified `result.terminal.handle` returned by Orca or creates a terminal explicitly.
-It then reaches the [shell-ownership guard](#shell-ownership), which currently aborts before hooks, metadata, or the harness launch.
+Spawn registers the repository, creates an independent worktree, reuses only the verified `result.terminal.handle` returned by Orca or creates a terminal explicitly, passes the [shell-ownership check](#shell-ownership), installs harness hooks, records metadata, and launches the selected harness.
 Registration, worktree creation, and terminal creation work against real Orca (real Orca); the full spawn, including hooks and the harness launch, has not run there.
 Exact command flags and response parsing are owned by `bin/backends/orca.sh` and script help.
 
@@ -147,7 +151,7 @@ Waiting for input is unsupported for Pi on Orca; its busy, idle, and gone states
 - Orca's agent state is not among the backends whose state `fm-control.sh` trusts to prove an agent stopped, so `exit` and `relaunch` refuse (code).
 - Cortex and Command Code are refused because Orca supplies no pane identity for their composers (code).
 - Firstmate checks readiness, not Orca's version (code).
-- Production spawn is subject to the [shell-ownership refusal](#shell-ownership).
+- The [shell-ownership check](#shell-ownership) cannot see inside a terminal: Orca reports no process for it, so a tmux client with its status row off whose attached pane shows only a bare prompt would pass, and a prompt the shared classifier reads as an agent composer (a lone `❯`, as some themes draw) or one drawn over more than two rows refuses (code).
 - Only the verified terminal-handle and worktree result fields are accepted; speculative response shapes are rejected (fake Orca).
 - Orca's linked worktree has the shape the spawn-time Claude workspace-trust check in `bin/fm-claude-trust.sh` requires (real Orca), but that check has not run against an Orca worktree.
 - No real agent has run a whole task on Orca.
