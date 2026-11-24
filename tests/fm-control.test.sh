@@ -663,6 +663,100 @@ SH
   done
 }
 
+# orca_exit_case <name> <mode>: a Claude task on a stateful fake Orca. The
+# fake keeps the terminal status (fake/orca-status), the listed agent state
+# (fake/orca-agent, `none` for no listing), and the composer text. A typed
+# `/exit` submitted with Enter acts per <mode>: routeA ends the terminal with
+# the agent, shell drops the listing but leaves the shell running, and stubborn
+# changes nothing.
+orca_exit_case() {
+  local dir
+  dir=$(new_case "$1")
+  add_task "$dir" t1 claude ship orca "term-1"
+  {
+    cat "$dir/home/state/t1.meta"
+    echo "terminal=term-1"
+    echo "orca_worktree_id=wt-1::/orca/wt-1"
+  } > "$dir/home/state/t1.meta.new"
+  sed 's|^window=.*|window=fm-t1|' "$dir/home/state/t1.meta.new" > "$dir/home/state/t1.meta"
+  printf running > "$dir/fake/orca-status"
+  printf 'done' > "$dir/fake/orca-agent"
+  printf '%s' "$2" > "$dir/fake/orca-mode"
+  : > "$dir/fake/orca-composer"
+  cat > "$dir/fakebin/orca" <<'SH'
+#!/usr/bin/env bash
+D=$FM_FAKE_DIR
+text= enter=0 prev=
+for a in "$@"; do
+  [ "$prev" = --text ] && text=$a
+  [ "$a" = --enter ] && enter=1
+  prev=$a
+done
+case "$1 $2" in
+  "terminal read")
+    st=$(cat "$D/orca-status")
+    row=$(printf '│ > %-10s │' "$(cat "$D/orca-composer")")
+    printf '{"ok":true,"result":{"terminal":{"handle":"term-1","status":"%s","source":"screen","tail":["╭──────────────╮","%s","╰──────────────╯"]}}}\n' "$st" "$row" ;;
+  "terminal show")
+    printf '{"ok":true,"result":{"terminal":{"handle":"term-1","worktreeId":"wt-1::/orca/wt-1","tabId":"tab-1","leafId":"leaf-1"}}}\n' ;;
+  "agent list")
+    ag=$(cat "$D/orca-agent")
+    if [ "$ag" = none ]; then printf '{"ok":true,"result":{"agents":[]}}\n'
+    else printf '{"ok":true,"result":{"agents":[{"kind":"terminal","agent":"claude","state":"%s","paneKey":"tab-1:leaf-1"}]}}\n' "$ag"; fi ;;
+  "terminal send")
+    [ "$(cat "$D/orca-status")" = running ] || { printf '{"ok":false,"error":{"code":"terminal_not_writable"}}\n'; exit 1; }
+    printf '%s\n' "$text" >> "$D/literal"
+    [ -z "$text" ] || printf '%s' "$text" > "$D/orca-composer"
+    if [ "$enter" = 1 ] && [ "$(cat "$D/orca-composer")" = /exit ]; then
+      : > "$D/orca-composer"
+      case "$(cat "$D/orca-mode")" in
+        routeA) printf exited > "$D/orca-status"; printf none > "$D/orca-agent" ;;
+        shell) printf none > "$D/orca-agent" ;;
+      esac
+    fi
+    printf '{"ok":true}\n' ;;
+  "terminal wait")
+    printf '{"ok":true,"result":{"wait":{"status":"%s"}}}\n' "$(cat "$D/orca-status")" ;;
+  "terminal close")
+    touch "$D/orca-closed"; printf exited > "$D/orca-status"; printf none > "$D/orca-agent"
+    printf '{"ok":true,"result":{"close":{"ptyKilled":true}}}\n' ;;
+  *) printf '{"ok":true,"result":{}}\n' ;;
+esac
+SH
+  chmod +x "$dir/fakebin/orca"
+  ln -sf orca "$dir/fakebin/orca-ide"
+  printf '%s\n' "$dir"
+}
+
+test_orca_exit_types_the_exit_command_and_waits_for_the_terminal() {
+  local dir out rc
+  dir=$(orca_exit_case orca-exit routeA)
+  out=$(run_control "$dir" t1 exit); rc=$?
+  expect_code 0 "$rc" "exit on orca should stop the agent"$'\n'"$out"
+  assert_contains "$out" "stopped t1 harness=claude backend=orca" "exit should report the stop"
+  assert_contains "$(literals "$dir")" "/exit" "exit should type the harness exit command"
+  [ ! -e "$dir/fake/orca-closed" ] || fail "an agent that ended its terminal must not have the terminal closed on it"
+  out=$(run_control "$dir" t1 exit); rc=$?
+  expect_code 0 "$rc" "a second exit on orca should succeed"$'\n'"$out"
+  assert_contains "$out" "endpoint-gone t1" "the exited terminal should read as gone"
+  pass "fm-control exit on orca types the exit command, waits for the terminal to exit, and is idempotent"
+}
+
+test_orca_exit_closes_only_an_agentless_shell() {
+  local dir out rc
+  dir=$(orca_exit_case orca-exit-shell shell)
+  out=$(run_control "$dir" t1 exit); rc=$?
+  expect_code 0 "$rc" "exit should close the shell the agent left"$'\n'"$out"
+  assert_contains "$out" "stopped t1" "exit should report the stop"
+  [ -e "$dir/fake/orca-closed" ] || fail "the agentless shell was not closed"
+  dir=$(orca_exit_case orca-exit-stubborn stubborn)
+  out=$(run_control "$dir" t1 exit); rc=$?
+  expect_code 1 "$rc" "exit must not claim a stop while Orca still lists the agent"$'\n'"$out"
+  assert_contains "$out" "exit=unconfirmed" "the refusal should say the stop is unconfirmed"
+  [ ! -e "$dir/fake/orca-closed" ] || fail "exit closed a terminal Orca still lists an agent on"
+  pass "fm-control exit on orca closes a terminal only once Orca lists no agent on it"
+}
+
 test_unverified_state_backends_refuse_stop_verbs() {
   local dir out rc backend
   for backend in zellij cmux tern; do
@@ -752,8 +846,9 @@ test_state_verified_backends_are_exactly_tmux_herdr_and_rex() {
   fm_control_backend_state_verified tmux || fail "tmux has a recovery-grade classifier"
   fm_control_backend_state_verified herdr || fail "herdr has a recovery-grade classifier"
   fm_control_backend_state_verified rex || fail "rex has a recovery-grade classifier"
+  fm_control_backend_state_verified orca || fail "orca has a recovery-grade classifier"
   local backend
-  for backend in zellij orca cmux paseo tern; do
+  for backend in zellij cmux paseo tern; do
     fm_control_backend_state_verified "$backend" \
       && fail "$backend has no recovery-grade classifier and must not claim one"
   done
@@ -1347,6 +1442,8 @@ test_prefixed_recorded_harness_reaches_each_control_verb
 test_backend_key_capability_matrix
 test_harness_kind_capability
 test_orca_delivers_an_escape_harness_interrupt
+test_orca_exit_types_the_exit_command_and_waits_for_the_terminal
+test_orca_exit_closes_only_an_agentless_shell
 test_unverified_state_backends_refuse_stop_verbs
 test_commandcode_relaunch_off_tmux_and_herdr_refuses_before_stopping
 test_state_verified_backends_are_exactly_tmux_herdr_and_rex

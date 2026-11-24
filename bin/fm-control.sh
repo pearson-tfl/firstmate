@@ -67,6 +67,11 @@
 #              otherwise this verb cannot tell a destroyed window from one on a
 #              tmux server it cannot address, and it will not claim a stop it
 #              cannot see.
+#              On Orca the agent ends its own terminal, so the stop is Orca
+#              reporting the terminal exited (`orca terminal wait --for exit`);
+#              a terminal still running once Orca lists no agent on it holds
+#              only the agent's leftover shell and is closed as a last resort.
+#              Orca's absence proof is in fm_control_endpoint_absence_verdict.
 #              Refused on t3code before anything is sent: T3's `/mcp` tools
 #              have no session stop (bin/fm-control-lib.sh
 #              fm_control_backend_exit_supported); interrupt ends its turn.
@@ -75,8 +80,9 @@
 #              still exists - on the same or a newly chosen
 #              harness/model/effort - so switching harness is one ordinary use
 #              of this verb. When the recorded endpoint is instead proven gone -
-#              a Herdr pane or workspace destroyed in churn, or a Rex block or
-#              session gone with its server - the launch owner re-creates one in
+#              a Herdr pane or workspace destroyed in churn, a Rex block or
+#              session gone with its server, or an Orca terminal that ended
+#              with its agent or in an Orca restart - the launch owner re-creates one in
 #              that worktree, in the herdr session the record names (Rex: the
 #              recorded session while it survives, otherwise the ordinary Rex
 #              placement), and the task's record rebinds to it; that is how a task
@@ -160,9 +166,9 @@
 #     is refused rather than guessed at.
 #   - A backend that cannot deliver the harness's interrupt key is refused.
 #   - `exit` and `relaunch` require a backend with a recovery-grade agent-state
-#     classifier (tmux, herdr, rex, or t3code), because without one the "the
-#     agent stopped" postcondition cannot be proven. Relaunch also requires
-#     replacement support, which t3code lacks. zellij, orca, cmux, paseo, and tern are
+#     classifier (tmux, herdr, rex, t3code, or orca), because without one the
+#     "the agent stopped" postcondition cannot be proven. Relaunch also requires
+#     replacement support, which t3code lacks. zellij, cmux, paseo, and tern are
 #     refused rather than reported as successful blind.
 #   - An ambiguous or unreadable endpoint state refuses; only a positively
 #     classified state acts (a Rex `unreadable` first goes through the absence
@@ -443,6 +449,8 @@ fm_control_harness_supported "$HARNESS" \
 FM_COMPOSER_HARNESS=$HARNESS
 
 fm_backend_validate "$BACKEND" || exit 1
+# Orca's stop postcondition reads its adapter directly (agent_gone below).
+[ "$BACKEND" != orca ] || fm_backend_source orca || exit 1
 if [ "$BACKEND" = t3code ]; then
   fm_backend_runtime_check t3code || exit 1
 fi
@@ -476,6 +484,38 @@ wait_agent_state() {  # <timeout> <wanted>...
   done
   printf '%s' "$state"
   return 1
+}
+
+# agent_gone: exit's postcondition. Orca never reads `dead`: its agent ends its
+# terminal (route A in bin/backends/orca.sh), so a stop there is Orca
+# reporting the recorded terminal exited.
+agent_gone() {
+  if [ "$BACKEND" = orca ]; then
+    [ "$(fm_backend_orca_terminal_status "$T")" = exited ]
+  else
+    [ "$(agent_state)" = dead ]
+  fi
+}
+
+# wait_agent_gone <timeout>: wait for agent_gone; Orca through
+# `orca terminal wait --for exit`.
+wait_agent_gone() {  # <timeout>
+  if [ "$BACKEND" = orca ]; then
+    fm_backend_orca_wait_exit "$T" "$1"
+  else
+    wait_agent_state "$1" dead >/dev/null
+  fi
+}
+
+# close_orca_agentless_terminal: Orca's last resort once the exit command did
+# not end the terminal. Exit acts only on an agent Orca lists, so a terminal
+# Orca still runs with no agent listed on it holds only the shell the agent
+# left (a launch without route A's trailing `exit`); the checked close ends
+# that shell and nothing else. A terminal with a listed agent is never closed.
+close_orca_agentless_terminal() {
+  [ "$BACKEND" = orca ] || return 1
+  [ "$(fm_backend_orca_agent_probe "$T")" = none ] || return 1
+  fm_backend_kill orca "$T" >/dev/null 2>&1
 }
 
 require_state_verified_backend() {  # <verb>
@@ -802,6 +842,7 @@ do_exit() {
     busy*)
       cancel=$(deliver_interrupt) || return $?
       state=$(agent_state)
+      [ "$state" != missing ] || ! agent_gone || state=dead
       case "$state" in
         dead)
           retire_busy_incarnation
@@ -855,7 +896,7 @@ do_exit() {
         || die "the exit key could not be sent to task $ID on $BACKEND"
       fm_backend_send_key "$BACKEND" "$T" C-c "$LABEL" \
         || die "the exit key could not be sent to task $ID on $BACKEND"
-      if ! wait_agent_state "$SETTLE_WAIT" dead >/dev/null; then
+      if ! wait_agent_gone "$SETTLE_WAIT"; then
         fm_backend_send_key "$BACKEND" "$T" C-c "$LABEL" \
           || die "the exit key could not be sent to task $ID on $BACKEND"
       fi
@@ -870,13 +911,14 @@ do_exit() {
       # same text behind; that is not a prompt still waiting.
       if [ -s "${FM_COMPOSER_DIALOG_SINK:-}" ]; then
         dialog=$(cat "$FM_COMPOSER_DIALOG_SINK")
-        if [ "$(agent_state)" != dead ]; then
+        if ! agent_gone; then
           refuse_blocking_prompt "$dialog"
         fi
       fi
       ;;
   esac
-  state=$(wait_agent_state "$EXIT_WAIT" dead) || {
+  wait_agent_gone "$EXIT_WAIT" || close_orca_agentless_terminal || {
+    state=$(agent_state)
     # A submit can return before any read sees the picker: a native busy
     # verdict needs no composer read, and a cleared composer can be read
     # before the picker renders. Read the screen once more here.
@@ -1073,6 +1115,9 @@ resolve_relaunch_profile() {
   # transaction, where nothing has changed yet.
   fm_control_harness_supports_kind "$TARGET_HARNESS" "$KIND" \
     || die "'$TARGET_HARNESS' is not verified to run a $KIND task, so relaunching $ID onto it would stop the running agent for a launch that must be refused; choose an adapter verified for this kind"
+  # The same pre-stop rule for bin/fm-spawn.sh's Command Code backend refusal.
+  [ "$TARGET_HARNESS" != commandcode ] || [ "$BACKEND" = tmux ] || [ "$BACKEND" = herdr ] \
+    || die "commandcode is verified on the tmux and herdr backends only, so relaunching $ID onto it on $BACKEND would stop the running agent for a launch that must be refused; choose another adapter"
   # The launch owner refuses a non-ship workflow brief whose skill opener the
   # target adapter cannot render; ships fall back to their plain brief.
   if [ "$KIND" != ship ]; then

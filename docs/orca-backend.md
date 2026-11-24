@@ -129,7 +129,7 @@ Reinstall the CLI and rerun; [`verification/runtime-backends.md`](verification/r
 
 The Orca desktop app kept its terminals when the app itself restarted (real Orca).
 After a headless Orca runtime restarted, it refused the old terminal handles as stale (real Orca), and after a reboot every agent is gone (reported).
-Firstmate cannot relaunch an agent on Orca (code), so a task whose terminal ended needs manual recovery.
+A task whose terminal ended, including in an Orca restart, is recovered with `fm-control.sh <task> relaunch`, which opens a fresh terminal in the same worktree ("Exit and relaunch" below).
 
 ## Agent state
 
@@ -148,6 +148,16 @@ That classification does not prove a safe close for cleanup; the cleanup rules a
 The [agent-state verification](verification/runtime-backends.md#orca-agent-state) records the real Claude, Pi, and Oh My Pi checks.
 Waiting for input is unsupported for Pi on Orca; its busy, idle, and gone states are verified (real Orca).
 
+## Exit and relaunch
+
+`fm-control.sh exit` types the harness's exit command, then waits with `orca terminal wait --for exit` until Orca reports the terminal exited, because the agent ends its own terminal (fake Orca).
+If the terminal keeps running after that wait but Orca no longer lists the agent on it, only the shell the agent left is running, and Firstmate closes that terminal as a last resort; it never closes a terminal Orca still lists an agent on (fake Orca).
+A terminal already exited reads as `endpoint-gone`, and the worktree with every uncommitted change stays untouched (code).
+`relaunch` opens one fresh terminal in the recorded worktree with `orca terminal create` and points the task record at it; the old terminal is never reused, because it ended with its agent (fake Orca).
+Before typing into that fresh terminal, relaunch runs the same placement, agent-listing, and screen checks as a first spawn, against the recorded worktree, and refuses on any failure, typing nothing (fake Orca).
+A stale handle after an Orca restart proves the terminal gone only when Orca still lists the recorded worktree and no live terminal in it, because the desktop app can re-attach its terminals under new handles; otherwise `exit` and `relaunch` refuse (code).
+A refused relaunch closes the fresh terminal it opened and never the worktree (code).
+
 ## Active limits
 
 - The backend is explicit-only.
@@ -157,7 +167,8 @@ Waiting for input is unsupported for Pi on Orca; its busy, idle, and gone states
 - The Orca runtime must be running and report ready.
 - Secondmate spawns are unsupported (code).
 - An interrupt is reported delivered with its cancellation unconfirmed unless the harness keeps its own confirmation record (muse confirms from its session log), and an interrupt for a harness that must read its screen between or after presses (Devin and Command Code) is refused because Orca's screen read has never been verified with a real Devin or Command Code on it (code); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
-- Orca's agent state is not among the backends whose state `fm-control.sh` trusts to prove an agent stopped, so `exit` and `relaunch` refuse (code).
+- `exit` and `relaunch` act only on an agent Orca lists; a running terminal with no listed agent reads unverified and refuses (code).
+- `exit` and `relaunch` have not yet run against a real agent on real Orca.
 - Cortex and Command Code are refused because Orca supplies no pane identity for their composers (code).
 - Firstmate checks readiness, not Orca's version (code).
 - The [shell-ownership check](#shell-ownership) has screen-based acceptance and prompt-compatibility limits (code).
