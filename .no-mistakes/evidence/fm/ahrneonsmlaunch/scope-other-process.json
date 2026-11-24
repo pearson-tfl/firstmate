@@ -1,0 +1,7 @@
+[
+  {
+    "pid": 78983,
+    "ppid": 67701,
+    "args": "~/.bun/bin/omp --profile neon --config {run-worktree}/.omp/fm-worker-overlay.yml --auto-approve --cwd ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/other --model google/gemini-4-neon --thinking xhigh -e ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/h/state/other.omp-ext.ts \\040-cFIRSTMATE_OP: v1 launch-brief: Reply only BOUNDARY. Do not use tools or start work."
+  }
+]

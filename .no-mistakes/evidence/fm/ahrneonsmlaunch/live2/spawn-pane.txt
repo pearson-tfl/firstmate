@@ -1,0 +1,55 @@
+
+                                                                          ████████████
+                                                                             ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                                                             ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                                                             ▒▒  ██                  █
+                                                                                 ██       v19.1.1
+
+                                                         Tip: Run `omp auth-broker serve` once and every machine pulls live
+                                                           tokens over the wire — refresh keys never leave the host; `omp
+                                                      auth-gateway` fronts it as a drop-in proxy any OpenAI-compatible client
+                                                                                      can hit
+
+
+ ⁣FIRSTMATE_OP: v1 launch-brief: For this isolated launch verification, reply exactly NEON_READY followed by the home context token from AGENTS.md. Do not use tools or start any
+ work.
+
+
+ Isolated launch verification instructions specify a charter request only, excluding fleet scripts and file modifications. The context token COPPER-COMET-9146 indicates the home
+ context. Therefore, the exact reply should be NEON_READY followed by the charter request.
+
+ NEON_READY COPPER-COMET-9146
+
+❯
+ π-neon · ◕ Gemini 4 Neon · 📁 …ce/01M87Y5E24QJM9D7GRZBS9GVZA/live2/l/s · ⑂ main ?4 · ◫ 1.1%/1M ⟲ · (sub)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

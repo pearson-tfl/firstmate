@@ -1,0 +1,55 @@
+
+                                                                          ████████████
+                                                                             ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                                                             ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                                                             ▒▒  ██                  █
+                                                                                 ██       v19.1.1
+
+                                                       Tip: Pair up live: `/collab` shares your session through an end-to-end
+                                                        encrypted relay link — a teammate runs `/join <link>` to watch tool
+                                                                calls stream and prompt the agent from their own omp
+
+
+
+ ⁣FIRSTMATE_OP: v1 launch-brief: For this isolated launch verification, reply exactly NEON_READY followed by the home context token from AGENTS.md. Do not use tools or start any
+ work.
+
+
+ The request is an isolated launch verification requiring a specific response format: "NEON_READY" followed by the home context token. The provided AGENTS.md confirms this
+ isolated context, restricting actions to the charter request. The instruction is to avoid using tools or starting work.
+
+ NEON_READY COPPER-COMET-9146
+
+ Closing session…
+
+
+❯                                                                                                                                                       ⇧⇥ to change thinking effort
+ π-neon · ◕ Gemini 4 Neon · 📁 …evidence/01M87Y5E24QJM9D7GRZBS9GVZA/l/s · ⑂ main ?4 · ◫ 0.8%/1M ⟲ · (sub)
+
+Resume this session with
+omp --profile neon --resume 01a20fea-0d95-733b-a2a7-56a8f9871e32
+➜  s git:(main) ✗ export GOTMPDIR=/tmp/fm-sm/gotmp
+export COMPACT_ADVISER_DISABLE=1
+➜  s git:(main) ✗ export COMPACT_ADVISER_DISABLE=1
+➜  s git:(main) ✗ . '/tmp/fm-sm+ac3eda9aded529112999d8dc9257f881c56b9e5c54ebbe7cdf8d38f2ce184918/launch.s1795563353.32962.31120.sh'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

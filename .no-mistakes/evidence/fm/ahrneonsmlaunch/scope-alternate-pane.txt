@@ -1,0 +1,55 @@
+compinit:527: no such file or directory: /opt/homebrew/share/zsh/site-functions/_docker
+compinit:527: no such file or directory: /opt/homebrew/share/zsh/site-functions/_docker-compose
+compinit:shift:529: shift count must be <= $#
+export GOTMPDIR=/tmp/fm-alternate/gotmp
+export COMPACT_ADVISER_DISABLE=1
+. '/tmp/fm-alternate+411e46aca5bc16d4003ed060f06d70c366109e931817bdb2023d2dad8e94c5e0/launch.s1795563475.40777.30328.sh'compinit:527: no such file or directory: /opt/homebrew/share
+/zsh/site-functions/_docker
+compinit:527: no such file or directory: /opt/homebrew/share/zsh/site-functions/_docker-compose
+compinit:shift:529: shift count must be <= $#
+
+➜  alternate export GOTMPDIR=/tmp/fm-alternate/gotmp
+export COMPACT_ADVISER_DISABLE=1
+. '/tmp/fm-alternate+411e46aca5bc16d4003ed060f06d70c366109e931817bdb2023d2dad8e94c5e0/launch.s1795563475.40777.30328.sh'
+➜  alternate export COMPACT_ADVISER_DISABLE=1
+. '/tmp/fm-alternate+411e46aca5bc16d4003ed060f06d70c366109e931817bdb2023d2dad8e94c5e0/launch.s1795563475.40777.30328.sh'
+➜  alternate . '/tmp/fm-alternate+411e46aca5bc16d4003ed060f06d70c366109e931817bdb2023d2dad8e94c5e0/launch.s1795563475.40777.30328.sh'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

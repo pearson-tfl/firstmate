@@ -1,0 +1,11 @@
+{
+  "time_utc": "2026-11-24T23:41:53.239617+00:00",
+  "scratch_paths_removed": {
+    "l": true,
+    "b": true,
+    "default-control": true,
+    "live2/l": true
+  },
+  "remaining_owned_omp_or_acp_processes": [],
+  "source_worktree_clean": true
+}

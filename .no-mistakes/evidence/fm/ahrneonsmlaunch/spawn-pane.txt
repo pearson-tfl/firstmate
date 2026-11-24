@@ -1,0 +1,55 @@
+
+                                                                          ████████████
+                                                                             ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                                                             ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                                                             ▒▒  ██                  █
+                                                                                 ██       v19.1.1
+
+                                                       Tip: Pair up live: `/collab` shares your session through an end-to-end
+                                                        encrypted relay link — a teammate runs `/join <link>` to watch tool
+                                                                calls stream and prompt the agent from their own omp
+
+
+ ⁣FIRSTMATE_OP: v1 launch-brief: For this isolated launch verification, reply exactly NEON_READY followed by the home context token from AGENTS.md. Do not use tools or start any
+ work.
+
+
+ The request is an isolated launch verification requiring a specific response format: "NEON_READY" followed by the home context token. The provided AGENTS.md confirms this
+ isolated context, restricting actions to the charter request. The instruction is to avoid using tools or starting work.
+
+ NEON_READY COPPER-COMET-9146
+
+❯
+ π-neon · ◕ Gemini 4 Neon · 📁 …evidence/01M87Y5E24QJM9D7GRZBS9GVZA/l/s · ⑂ main ?4 · ◫ 1.1%/1M ⟲ · (sub)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

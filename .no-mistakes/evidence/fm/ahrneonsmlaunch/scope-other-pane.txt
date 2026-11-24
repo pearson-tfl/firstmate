@@ -1,0 +1,55 @@
+export GOTMPDIR=/tmp/fm-other/gotmp
+export COMPACT_ADVISER_DISABLE=1
+➜  other export GOTMPDIR=/tmp/fm-other/gotmp
+export COMPACT_ADVISER_DISABLE=1
+➜  other export COMPACT_ADVISER_DISABLE=1
+➜  other git:(main) ✗ . '/tmp/fm-other+411e46aca5bc16d4003ed060f06d70c366109e931817bdb2023d2dad8e94c5e0/launch.s1795563481.59265.3695.sh'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

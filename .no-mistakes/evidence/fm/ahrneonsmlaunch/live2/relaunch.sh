@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+unset NO_MISTAKES_GATE FM_GATE_REFUSE_BYPASS FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE FM_TASK_ID FM_LOCK_HOLDER FM_LOCK_RECEIPT
+export FM_HOME=~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/live2/l/h FM_SKIP_SECONDMATE_SYNC=1 FM_SKIP_SECONDMATE_INHERIT=1 FM_BACKEND=tmux
+cd {run-worktree} || exit 2
+bash bin/fm-control.sh sm relaunch > ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/live2/relaunch.log 2>&1
+printf '%s\n' "$?" > ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/live2/relaunch.exit

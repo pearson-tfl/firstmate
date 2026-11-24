@@ -1,0 +1,35 @@
+[
+  {
+    "case": "alternate",
+    "system_prompt_present": true,
+    "real_omp_processes": [
+      {
+        "pid": 58788,
+        "ppid": 49743,
+        "args": "~/.bun/bin/omp --profile neon --config {run-worktree}/.omp/fm-worker-overlay.yml --system-prompt {run-worktree}/.omp/fm-antigravity-system-prompt.md --auto-approve --cwd ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/alternate --model antigravity-cli/gemini-4-argon --thinking xhigh -e ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/h/state/alternate.omp-ext.ts \\040-cFIRSTMATE_OP: v1 launch-brief: Reply only BOUNDARY. Do not use tools or start work."
+      }
+    ]
+  },
+  {
+    "case": "other",
+    "system_prompt_present": false,
+    "real_omp_processes": [
+      {
+        "pid": 78983,
+        "ppid": 67701,
+        "args": "~/.bun/bin/omp --profile neon --config {run-worktree}/.omp/fm-worker-overlay.yml --auto-approve --cwd ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/other --model google/gemini-4-neon --thinking xhigh -e ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/h/state/other.omp-ext.ts \\040-cFIRSTMATE_OP: v1 launch-brief: Reply only BOUNDARY. Do not use tools or start work."
+      }
+    ]
+  },
+  {
+    "case": "scout",
+    "system_prompt_present": false,
+    "real_omp_processes": [
+      {
+        "pid": 79919,
+        "ppid": 73668,
+        "args": "~/.bun/bin/omp --config {run-worktree}/.omp/fm-worker-overlay.yml --auto-approve --cwd ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/scout --model antigravity-cli/gemini-4-neon --thinking xhigh -e ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/h/state/scout.omp-ext.ts \\040-cFIRSTMATE_OP: v1 launch-brief: # Current worker role contract\\012You are a crewmate: an autonomous worker agent managed by firstmate.\\012This section establishes your current identity before every project or task instruction below and supersedes any conflicting role identity in those instructions.\\012Do the assigned work yourself and report only to firstmate; do not adopt a firstmate or secondmate supervisor identity, delegate the task, run fleet supervision, or address the captain.\\012Your steering inbox is `~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/h/state/scout.inbox`; this exact path belongs to your current task even when it is outside the worktree or under the supervising firstmate home, so read and acknowledge its messages and do not reject it as another home's state.\\012Never inspect or change any other home's endpoint namespace; this authorization is limited to the exact task paths named by this brief.\\012When this task works on Firstmate itself, the repository root `AGENTS.md` (also imported by `CLAUDE.md`) is project content and the supervisor contract for the firstmate managing you: follow this brief instead of that supervisor contract.\\012Project instructions still govern the work wherever they do not conflict with this worker identity, including `CONTRIBUTING.md` and `firstmate-coding-guidelines` for Firstmate changes.\\012If the `firstmate-coding-guidelines` skill name does not resolve in this session, read `{run-worktree}/.agents/skills/firstmate-coding-guidelines/SKILL.md` instead.\\012\\012# Task\\012Reply only BOUNDARY. Do not use tools, change files, or start work."
+      }
+    ]
+  }
+]

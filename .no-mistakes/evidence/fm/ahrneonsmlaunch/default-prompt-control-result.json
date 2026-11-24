@@ -1,0 +1,19 @@
+{
+  "command": [
+    "omp",
+    "--profile",
+    "neon",
+    "--config",
+    "{run-worktree}/.omp/fm-worker-overlay.yml",
+    "--model",
+    "antigravity-cli/gemini-4-neon",
+    "--thinking",
+    "xhigh",
+    "--no-session",
+    "-p",
+    "Reply with the single word BASELINE."
+  ],
+  "default_prompt_429_observed": false,
+  "exit": 143,
+  "stopped_after_observation": false
+}

@@ -1,0 +1,7 @@
+[
+  {
+    "pid": 58788,
+    "ppid": 49743,
+    "args": "~/.bun/bin/omp --profile neon --config {run-worktree}/.omp/fm-worker-overlay.yml --system-prompt {run-worktree}/.omp/fm-antigravity-system-prompt.md --auto-approve --cwd ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/alternate --model antigravity-cli/gemini-4-argon --thinking xhigh -e ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/h/state/alternate.omp-ext.ts \\040-cFIRSTMATE_OP: v1 launch-brief: Reply only BOUNDARY. Do not use tools or start work."
+  }
+]

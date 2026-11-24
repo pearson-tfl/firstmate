@@ -1,0 +1,7 @@
+{"case": "alternate", "model": "antigravity-cli/gemini-4-argon", "kind": "secondmate", "system_prompt": true, "spawn_exit": 0, "observed_agent_pids": [58788]}
+{"case": "other", "model": "google/gemini-4-neon", "kind": "secondmate", "system_prompt": false, "spawn_exit": 0, "observed_agent_pids": [78983]}
+Traceback (most recent call last):
+  File "~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/scope-live.py", line 62, in <module>
+    assert rc==0,(ident,'spawn exit',rc,log.read_text())
+           ^^^^^
+AssertionError: ('scout', 'spawn exit', 1, "fm-gate-refuse: gate agent lifecycle permitted only against lab home ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/h\nWARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.\nerror: relaunch did not yield an isolated worktree (resolved '~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/scout'; worktree root '~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/scout'; spawning project '~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/scout'); refusing to launch to avoid tangling the primary checkout. Inspect target lab:fm-scout\n")

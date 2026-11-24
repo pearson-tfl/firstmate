@@ -1,0 +1,2 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home ~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/live2/l/h
+spawned sm harness=omp kind=secondmate mode=secondmate yolo=off window=lab:fm-sm worktree=~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/live2/l/s omp_profile=neon

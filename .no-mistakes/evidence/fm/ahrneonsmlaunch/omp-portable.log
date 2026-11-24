@@ -1,0 +1,2 @@
+ok - omp script identity: tmux accepts the package entry; generic backend classification is unchanged
+not ok - a leaked FM_OMP_HARNESS without an omp ancestor must not relabel a claude worker, got 'codex'

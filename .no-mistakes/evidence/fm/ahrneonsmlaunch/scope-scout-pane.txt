@@ -1,0 +1,55 @@
+
+The default interactive shell is now zsh.
+To update your account to use zsh, please run `chsh -s /bin/zsh`.
+For more details, please visit https://support.apple.com/kb/HT208050.
+bash-3.2$ cd -- '~/.no-mistakes/evidence/01M87Y5E24QJM9D7GRZBS9GVZA/b/scout'
+bash-3.2$ export GOTMPDIR=/tmp/fm-scout/gotmp
+bash-3.2$ export COMPACT_ADVISER_DISABLE=1
+bash-3.2$ export FM_TASK_ID=scout
+bash-3.2$ . '/tmp/fm-scout+411e46aca5bc16d4003ed060f06d70c366109e931817bdb2023d2dad8e94c5e0/launch.s1795563537.73670.15176.sh'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

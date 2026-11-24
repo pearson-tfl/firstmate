@@ -1,0 +1,55 @@
+
+                                                                          ████████████
+                                                                             ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                                                             ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                                                             ▒▒  ██                  █
+                                                                                 ██       v19.1.1
+
+                                                      Tip: Turn on `/advisor` to attach a second model that reviews every turn
+                                                                             and quietly injects advice
+
+
+ ⁣FIRSTMATE_OP: v1 launch-brief: For this isolated launch verification, reply exactly NEON_READY followed by the home context token from AGENTS.md. Do not use tools or start any
+ work.
+
+
+ The request is a firstmate launch. Reviewing the AGENTS.md instructions indicates this should only involve charter requests, avoiding fleet scripts, supervision, and background
+ jobs. The home context token is SILVER-ORBIT-6829.
+
+ NEON_READY SILVER-ORBIT-6829
+
+❯
+ π-neon · ◕ Gemini 4 Neon · 📁 …ce/01M87Y5E24QJM9D7GRZBS9GVZA/live2/l/s · ⑂ main ?4 · ◫ 1.1%/1M ⟲ · (sub)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
