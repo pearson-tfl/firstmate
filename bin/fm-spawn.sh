@@ -1723,7 +1723,7 @@ BACKEND=
 ORCA_ABORT_CLEANUP=0
 # 1 while a relaunch's or a secondmate's fresh Orca terminal is unpublished: an
 # abort closes that terminal only, never the task's worktree or the home.
-ORCA_RELAUNCH_ABORT_CLEANUP=0
+ORCA_TERMINAL_ABORT_CLEANUP=0
 ORCA_WORKTREE_ID=
 ORCA_TERMINAL=
 T3CODE_ABORT_CLEANUP=0
@@ -1855,8 +1855,8 @@ spawn_abort_cleanup() {
     HERDR_PRESENTATION_ORDER_LOCK_HELD=0
     fm_lock_release "$HERDR_PRESENTATION_ORDER_LOCK" || true
   fi
-  if [ "$ORCA_RELAUNCH_ABORT_CLEANUP" = 1 ]; then
-    ORCA_RELAUNCH_ABORT_CLEANUP=0
+  if [ "$ORCA_TERMINAL_ABORT_CLEANUP" = 1 ]; then
+    ORCA_TERMINAL_ABORT_CLEANUP=0
     fm_backend_kill orca "$ORCA_TERMINAL" 2>/dev/null && SPAWN_ENDPOINT_CLOSED=1 || true
   fi
   if [ "$ORCA_ABORT_CLEANUP" = 1 ]; then
@@ -5189,7 +5189,7 @@ EOF
     # owns that argument). Open ONE fresh terminal in that worktree; the record
     # published below rebinds terminal= to it.
     ORCA_TERMINAL=$(fm_backend_orca_terminal_create "$ORCA_WORKTREE_ID" "$W") || exit 1
-    ORCA_RELAUNCH_ABORT_CLEANUP=1
+    ORCA_TERMINAL_ABORT_CLEANUP=1
     T=$ORCA_TERMINAL
     WT_TARGET=$T
     # The same pre-key guard as a first spawn; a refusal closes only this terminal.
@@ -5564,7 +5564,7 @@ EOF
       # entry, and an abort closes only that terminal.
       ORCA_WORKTREE_ID=$(fm_backend_orca_home_worktree "$PROJ_ABS") || exit 1
       ORCA_TERMINAL=$(fm_backend_orca_terminal_create "$ORCA_WORKTREE_ID" "$W") || exit 1
-      ORCA_RELAUNCH_ABORT_CLEANUP=1
+      ORCA_TERMINAL_ABORT_CLEANUP=1
       T=$ORCA_TERMINAL
       fm_backend_orca_fresh_shell "$T" "$ORCA_WORKTREE_ID" || exit 1
     else
@@ -7678,7 +7678,7 @@ if [ "$SPAWN_TASK_SET_LOCK_HELD" = 1 ]; then
   fm_lock_release "$SPAWN_TASK_SET_LOCK"
 fi
 "$SCRIPT_DIR/fm-home-summary-refresh.sh" --best-effort || true
-[ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0 && ORCA_RELAUNCH_ABORT_CLEANUP=0
+[ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0 && ORCA_TERMINAL_ABORT_CLEANUP=0
 
 # A resumed session already holds its brief, so its first prompt is the resume
 # prompt instead; every other launch reads the brief.

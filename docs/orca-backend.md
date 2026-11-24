@@ -140,12 +140,12 @@ Spawn refuses when Orca resolves the home to an entry at another path, and the n
 A refused seat spawn closes only that terminal (code).
 Retiring the second mate closes its terminal and never asks Orca to remove the home's entry (fake Orca).
 Steering doorbells reach the seat through the recorded terminal with the same agent-state, busy, and composer checks as any Orca worker (code).
-The recovery sweep relaunches a seat that reads missing only when Orca reports its terminal exited, or still lists the home's entry with no live terminal in it, because the desktop app re-attaches terminals under new handles after a restart (fake Orca).
+The recovery sweep relaunches a seat that reads missing only when Orca reports its terminal exited, or still lists the home's entry with no live terminal in it, because the desktop app re-attaches terminals under new handles after a restart (code).
 
 Away mode accepts a seat running in an Orca terminal: supervisor discovery reads the `ORCA_TERMINAL_HANDLE` Orca sets in each terminal, after tmux, Herdr, and Rex, so a multiplexer nested inside the terminal stays innermost (fake Orca).
 The away daemon then injects through Orca's agent listing for busy and the shared composer classifier, as for any Orca endpoint (code).
 Away mode's `start` has no hidden-terminal launch on Orca, so the daemon runs there only as a harness's own tracked background job (`start-native`) (code).
-The host hand-back retry in `bin/fm-supervision-handoff.sh` types into the seat's Orca terminal only when Orca lists an idle agent on it, the session holds its terminal's foreground, and the composer reads empty (code); like its tmux path, it stays inert until #5138 restores session ownership.
+The host hand-back retry in `bin/fm-supervision-handoff.sh` types into the seat's Orca terminal only when Orca lists an idle agent on it, the session holds its terminal's foreground, and the composer reads empty; like its tmux path, it stays inert until #5138 restores session ownership (code).
 
 ## Agent state
 

@@ -3208,7 +3208,9 @@ test_discover_supervisor_orca() {
   [ "$out" = '%3' ] || fail "tmux nested in an Orca terminal must stay innermost: $out"
   out=$(FM_SUPERVISOR_TARGET='' FM_SUPERVISOR_BACKEND='' TMUX_PANE='' HERDR_ENV=1 HERDR_PANE_ID=w1:p9 ORCA_TERMINAL_HANDLE=term-seat discover_supervisor_backend)
   [ "$out" = herdr ] || fail "herdr nested in an Orca terminal must stay innermost: $out"
-  pass "discover_supervisor_*: ORCA_TERMINAL_HANDLE selects orca and that handle, after tmux and herdr"
+  out=$(FM_SUPERVISOR_TARGET='' FM_SUPERVISOR_BACKEND='' TMUX_PANE='' HERDR_ENV='' HERDR_PANE_ID='' TERM_PROGRAM=rex REX_SESSION=session:s1 REX_BLOCK=block:b1 ORCA_TERMINAL_HANDLE=term-seat discover_supervisor_backend)
+  [ "$out" = rex ] || fail "a Rex block inside an Orca terminal must stay innermost: $out"
+  pass "discover_supervisor_*: ORCA_TERMINAL_HANDLE selects orca and that handle, after tmux, herdr, and rex"
 }
 
 # --- t3code supervisor discovery and busy verdict --------------------------

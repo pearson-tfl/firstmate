@@ -226,8 +226,10 @@ fm_secondmate_liveness_probe() {  # <meta> <id> <full|poll>
   # An Orca restart turns every old handle stale while the desktop app
   # re-attaches its terminals under new ones, so a missing seat is gone only
   # when Orca also lists no live terminal in the home's entry.
+  # fm_backend_agent_state loaded the adapter only in its own subshell.
   if [ "$backend" = orca ] && [ "$agent_state" = missing ] \
-    && [ "$(fm_backend_orca_endpoint_absence_recheck "$target" "$(fm_meta_get "$meta" orca_worktree_id)")" != gone ]; then
+    && { ! fm_backend_source orca \
+      || [ "$(fm_backend_orca_endpoint_absence_recheck "$target" "$(fm_meta_get "$meta" orca_worktree_id)")" != gone ]; }; then
     agent_state=ambiguous
   fi
   case "$harness" in
@@ -361,10 +363,13 @@ fm_secondmate_liveness_relaunch() {  # <meta> <id> [timeout-secs]
     fm_lock_release "$relaunch_lock" || true
     return "$rc"
   fi
+  # Orca is never auto-detected, so a seat recorded there is relaunched there.
+  local -a spawn_backend=()
+  [ "$(fm_backend_of_meta "$meta")" != orca ] || spawn_backend=(--backend orca)
   if [ -n "$timeout" ]; then
-    FM_SM_LIVE_OUT=$(FM_SPAWN_NO_GUARD=1 fm_run_timed "$timeout" "$FM_ROOT/bin/fm-spawn.sh" "$id" --secondmate 2>&1) || rc=$?
+    FM_SM_LIVE_OUT=$(FM_SPAWN_NO_GUARD=1 fm_run_timed "$timeout" "$FM_ROOT/bin/fm-spawn.sh" "$id" --secondmate ${spawn_backend[@]+"${spawn_backend[@]}"} 2>&1) || rc=$?
   else
-    FM_SM_LIVE_OUT=$(FM_SPAWN_NO_GUARD=1 "$FM_ROOT/bin/fm-spawn.sh" "$id" --secondmate 2>&1) || rc=$?
+    FM_SM_LIVE_OUT=$(FM_SPAWN_NO_GUARD=1 "$FM_ROOT/bin/fm-spawn.sh" "$id" --secondmate ${spawn_backend[@]+"${spawn_backend[@]}"} 2>&1) || rc=$?
   fi
   FM_SM_LIVE_RC=$rc
   if [ "$rc" -eq 0 ]; then
