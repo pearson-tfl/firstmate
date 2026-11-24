@@ -138,6 +138,8 @@ assert_equals "$(git -C "$REPO" rev-parse --path-format=absolute --git-common-di
   "Orca $VERSION: the worktree must share the project's git common dir"
 [ -n "$TERM_ID" ] || TERM_ID=$(fm_backend_orca_terminal_create "$WT_ID" fm-orca-live) ||
   fail "Orca $VERSION: terminal create failed"
+# Production spawn's pre-key check must accept a real fresh Orca shell.
+fm_backend_orca_fresh_shell "$TERM_ID" "$WT_ID" || fail "Orca $VERSION: spawn's fresh-shell check refused this guard's own new terminal"
 
 last_row() {
   fm_backend_orca_capture "$TERM_ID" 20 2>/dev/null | awk 'NF { row = $0 } END { print row }'
