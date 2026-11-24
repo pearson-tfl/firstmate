@@ -275,7 +275,7 @@ fm_backend_orca_terminal_create() {  # <worktree-id> <title>
 
 # fm_backend_orca_fresh_shell_verdict: classify one drawn screen of a terminal
 # spawn has just created and not yet typed into. Prints one word:
-#   shell    a bare prompt: at most FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS rows,
+#   shell    a bare prompt: at most two rows,
 #            none of the shapes below
 #   empty    nothing drawn yet
 #   tmux     a tmux status row (`[session] 0:win`, ` 1:win `, first or last
@@ -284,7 +284,6 @@ fm_backend_orca_terminal_create() {  # <worktree-id> <title>
 #            recognizes (`❯`, `›` ...), or more rows than a bare prompt draws
 # The screen alone never proves ownership: fm_backend_orca_fresh_shell pairs
 # it with Orca's own account of the terminal.
-FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS=${FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS:-2}
 fm_backend_orca_fresh_shell_verdict() {  # <screen>
   local row first='' last='' rows=0
   local status_re='^ *(\[[^]]*\] +)?[0-9]+:[^ ]' picker_re='^\([0-9]+\) +[-+] '
@@ -302,7 +301,7 @@ fm_backend_orca_fresh_shell_verdict() {  # <screen>
   done <<<"$1"
   [ "$rows" -gt 0 ] || { printf 'empty'; return 0; }
   if [[ $first =~ $status_re ]] || [[ $last =~ $status_re ]]; then printf 'tmux'; return 0; fi
-  [ "$rows" -le "$FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS" ] || { printf 'foreign'; return 0; }
+  [ "$rows" -le 2 ] || { printf 'foreign'; return 0; }
   case "$(fm_composer_classify_screen "$(fm_backend_orca_composer_caps)" "$1")" in
     empty | pending | pending-unproven) printf 'foreign'; return 0 ;;
   esac
