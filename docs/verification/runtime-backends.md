@@ -3817,6 +3817,33 @@ Error: Invalid OMP profile "BAD". Profile names must match ^[a-z0-9][a-z0-9._-]{
 `bin/fm-omp-profile-lib.sh` enforces the same name rule before launch, and `tests/fm-omp-harness.test.sh` pins the flag position, the profile-scoped catalog check, and the unpinned launch through a fake omp.
 Repeat these commands after an omp upgrade to refresh this record.
 
+### Antigravity system prompt
+
+Verified on 2026-11-24 against omp 19.1.1 (`~/.bun/bin/omp`, a Bun package install) on macOS arm64, with the `antigravity-cli` provider signed in under the omp profile `neon`.
+With omp's default system prompt, the route answers every request with a quota error:
+
+```text
+$ OMP_PROFILE=neon omp --model antigravity-cli/gemini-4-neon --thinking xhigh --no-session -p 'Reply with the single word PONG.'
+⚠ RESOURCE_EXHAUSTED (code 429): Resource has been exhausted (e.g. check quota).
+```
+
+A secondmate spawned and then relaunched through Firstmate, in a scratch primary home with `config/secondmate-harness` reading `omp antigravity-cli/gemini-4-neon xhigh` and `config/secondmate-accounts/sm/omp-profile` reading `neon`, on a private tmux socket, answered its charter without that error.
+The scratch home's `AGENTS.md` alone held the proof token, so the reply shows that `--system-prompt` replaces only omp's static prompt and the home's context file still loads:
+
+```text
+$ bin/fm-spawn.sh sm <scratch>/sm --secondmate
+spawned sm harness=omp kind=secondmate mode=secondmate yolo=off window=ahrneonproof:fm-sm worktree=<scratch>/sm omp_profile=neon
+# the agent process
+omp --profile neon --config <code-root>/.omp/fm-worker-overlay.yml --system-prompt <code-root>/.omp/fm-antigravity-system-prompt.md --auto-approve --cwd <scratch>/sm --model antigravity-cli/gemini-4-neon --thinking xhigh -e <scratch>/home/state/sm.omp-ext.ts ...
+# the pane, for the charter "reply NEONOK and the proof token in this home's AGENTS.md"
+NEONOK AMBER-LANTERN-47
+$ bin/fm-control.sh sm relaunch
+relaunched sm harness=omp from=omp model=antigravity-cli/gemini-4-neon effort=xhigh backend=tmux endpoint=ahrneonproof:fm-sm worktree=<scratch>/sm
+NEONOK AMBER-LANTERN-47
+```
+
+`tests/fm-omp-harness.test.sh` pins the flag on that route and its absence on another provider through a fake omp; repeat the commands above after an omp upgrade to refresh this record.
+
 ### Remote second mate on Linux
 
 Verified on 2026-10-28 against omp 18.13.3 (a Bun-compiled binary installed through mise) on Linux x86_64 with Herdr 0.9.1, driven from a macOS primary through a scratch home on both sides.
