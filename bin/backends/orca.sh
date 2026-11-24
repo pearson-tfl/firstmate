@@ -222,15 +222,15 @@ fm_backend_orca_run_json() {
 
 fm_backend_orca_repo_ensure() {  # <project-path> [folder]
   local project=$1 out repo_id
-  local -a kind=()
-  [ "${2:-}" != folder ] || kind=(--kind folder)
+  local -a repo_kind=()
+  [ "${2:-}" != folder ] || repo_kind=(--kind folder)
   fm_backend_orca_tool_check || return 1
   out=$(fm_backend_orca_cli repo show --repo "path:$project" --json 2>/dev/null || true)
   if repo_id=$(printf '%s' "$out" | fm_backend_orca_json_get repo-id 2>/dev/null); then
     printf '%s' "$repo_id"
     return 0
   fi
-  out=$(fm_backend_orca_cli repo add --path "$project" ${kind[@]+"${kind[@]}"} --json) || return 1
+  out=$(fm_backend_orca_cli repo add --path "$project" ${repo_kind[@]+"${repo_kind[@]}"} --json) || return 1
   repo_id=$(printf '%s' "$out" | fm_backend_orca_json_get repo-id) || {
     echo "error: orca repo add did not return a repo id for $project" >&2
     return 1
