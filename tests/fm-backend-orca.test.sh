@@ -811,7 +811,7 @@ test_spawn_writes_orca_metadata_and_launches_harness() {
 }
 
 test_spawn_orca_secondmate_opens_terminal_in_home() {
-  local home subhome data state config id out status log
+  local home subhome data state config id out status log staged received
   id="orcasmz1"
   home="$TMP_ROOT/secondmate-home"
   subhome="$TMP_ROOT/secondmate-subhome"
@@ -826,6 +826,11 @@ test_spawn_orca_secondmate_opens_terminal_in_home() {
   git -C "$subhome" init -q -b main
   subhome=$(cd "$subhome" && pwd -P)
   touch "$state/.last-watcher-beat"
+  : > "$config/launch-env-allowlist"
+  cat > "$subhome/bin/seat-env" <<'SH'
+#!/bin/sh
+printf '%s\n' "${ORCA_TERMINAL_HANDLE:-missing}" "${ORCA_WORKTREE_ID:-missing}" "${FM_TEST_PRIVATE_ENV:-unset}"
+SH
   orca_case secondmate-spawn
   log="$LOG"
   # Orca does not know the home yet, registers it as a folder project, and
@@ -842,7 +847,7 @@ test_spawn_orca_secondmate_opens_terminal_in_home() {
   out=$( HOME="$SPAWN_HOME" CLAUDE_CONFIG_DIR='' PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_SPAWN_NO_GUARD=1 \
-    "$ROOT/bin/fm-spawn.sh" "$id" "$subhome" "sh -c 'exit 0'" --backend orca --secondmate 2>&1 )
+    "$ROOT/bin/fm-spawn.sh" "$id" "$subhome" "sh '$subhome/bin/seat-env'" --backend orca --secondmate 2>&1 )
   status=$?
   set +e
   expect_code 0 "$status" "backend=orca --secondmate should spawn with fake Orca"$'\n'"$out"
@@ -856,6 +861,13 @@ test_spawn_orca_secondmate_opens_terminal_in_home() {
   assert_grep "backend=orca" "$state/$id.meta" "meta missing backend=orca"
   assert_grep "terminal=term-seat" "$state/$id.meta" "meta missing the seat terminal"
   assert_grep "orca_worktree_id=repo-home::$subhome" "$state/$id.meta" "meta missing the home's Orca entry"
+  staged=$(tr '\037' '\n' < "$log" | sed -n "s/^\. '\([^']*\)'$/\1/p" | tail -1)
+  [ -n "$staged" ] && [ -f "$staged" ] || fail "seat launch command was not staged"
+  received=$(ORCA_TERMINAL_HANDLE=term-seat ORCA_WORKTREE_ID="repo-home::$subhome" \
+    FM_TEST_PRIVATE_ENV=private bash "$staged")
+  expect_code 0 $? "filtered seat launch should execute"
+  [ "$received" = "$(printf '%s\n' term-seat "repo-home::$subhome" unset)" ] \
+    || fail "filtered seat launch lost destination identity or leaked private environment: $received"
   pass "fm-spawn.sh --backend orca --secondmate: opens one terminal in the home's Orca folder project"
 }
 
