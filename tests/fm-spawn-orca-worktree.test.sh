@@ -182,6 +182,8 @@ test_orca_fresh_spawn_enters_the_worktree_it_created() {
   mkdir -p "$home/data" "$home/projects" "$home/state" "$home/config"
   touch "$home/state/.last-watcher-beat"
   printf 'codex\n' > "$home/config/crew-harness"
+  # A Claude pin must not block a different harness on Orca.
+  printf 'ordinary\n' > "$home/config/claude-account"
   printf 'manual\n' > "$home/config/backlog-backend"
   fm_git_init_commit "$case_dir/project"
   mkdir -p "$home/data/$id"
@@ -1109,6 +1111,79 @@ EOF
   done
 }
 
+# An account resolved in the invoking process does not prove the account a
+# managed Orca terminal will use. Refuse every Claude pin source before creating
+# a worktree or terminal, rather than recording an account the launch may lose.
+test_orca_refuses_claude_account_pins_before_provisioning() {
+  local pin case_dir home id fb out status account_override
+  for pin in ordinary root lane rules; do
+    id="orca-pin-$pin"
+    case_dir="$TMP_ROOT/$id"
+    home="$case_dir/home"
+    fm_test_spawn_home "$home" claude
+    fm_git_init_commit "$case_dir/project"
+    fm_test_spawn_brief "$home" "$id"
+    fb=$(make_orca_fakebin "$case_dir")
+    fm_test_cswap_fakes "$fb" "$case_dir"
+    mkdir -p "$case_dir/user-home/.claude" "$case_dir/pinned"
+    printf '{}\n' > "$case_dir/user-home/.claude/.credentials.json"
+    printf '{}\n' > "$case_dir/pinned/.credentials.json"
+    account_override=
+    case "$pin" in
+      ordinary) printf 'ordinary\n' > "$home/config/claude-account" ;;
+      root) printf '%s\n' "$case_dir/pinned" > "$home/config/claude-account" ;;
+      lane) fm_test_cswap_accounts "$case_dir" 1 1:0:0 2:0:0; account_override=cswap:2 ;;
+      rules)
+        fm_test_cswap_accounts "$case_dir" 1 1:10:10 2:0:0
+        printf 'project project 2\n' > "$home/config/account-rules"
+        ;;
+    esac
+    out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$case_dir/user-home" \
+      FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+      FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+      FM_CONTROL_ACCOUNT="$account_override" FM_SPAWN_NO_GUARD=1 \
+      FM_TEST_ORCA_DIR="$case_dir" FM_TEST_ORCA_LOG="$case_dir/terminal.log" PATH="$fb:$PATH" \
+      bash "$SPAWN" "$id" "$case_dir/project" --mode no-mistakes --yolo off --backend orca 2>&1)
+    status=$?
+    expect_code 1 "$status" "Orca must refuse a $pin Claude pin: $out"
+    assert_contains "$out" 'backend=orca cannot guarantee the Claude worker account pin' "the refusal must explain the account boundary"
+    assert_contains "$out" 'choose another backend' "the refusal must give an actionable remedy"
+    assert_absent "$case_dir/orca-worktrees" "a refused pin must not provision a worktree"
+    assert_absent "$case_dir/terminal-created" "a refused pin must not create a terminal"
+    assert_absent "$case_dir/terminal.log" "a refused pin must not type into Orca"
+    assert_absent "$home/state/$id.meta" "a refused pin must not publish a task record"
+    assert_absent "$case_dir/claude-worker" "a refused pin must not run a worker"
+  done
+  pass "Orca refuses ordinary, root, lane cswap, and rules-based Claude pins before provisioning"
+}
+
+test_orca_pinned_claude_relaunch_preserves_existing_work() {
+  local case_dir home id=orca-pin-relaunch fb out status before
+  case_dir=$(orca_relaunch_case pin-relaunch "$id")
+  home="$case_dir/home"
+  printf 'ordinary\n' > "$home/config/claude-account"
+  mkdir -p "$case_dir/user-home/.claude"
+  printf '{}\n' > "$case_dir/user-home/.claude/.credentials.json"
+  fb=$(make_orca_fakebin "$case_dir")
+  fm_test_cswap_fakes "$fb" "$case_dir"
+  before=$(cat "$home/state/$id.meta")
+  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$case_dir/user-home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_SPAWN_NO_GUARD=1 FM_TEST_ORCA_DIR="$case_dir" FM_TEST_ORCA_STALE=1 PATH="$fb:$PATH" \
+    bash "$SPAWN" "$id" --relaunch --harness claude 2>&1)
+  status=$?
+  expect_code 1 "$status" "a pinned Claude relaunch on Orca must refuse: $out"
+  assert_contains "$out" 'backend=orca cannot guarantee the Claude worker account pin' "relaunch must explain the refusal"
+  [ "$(cat "$home/state/$id.meta")" = "$before" ] || fail "a refused relaunch replaced existing metadata"
+  [ "$(cat "$case_dir/wt/unlanded.txt")" = unlanded ] || fail "a refused relaunch changed unlanded work"
+  assert_absent "$case_dir/terminal-created" "a refused relaunch must not create a replacement terminal"
+  assert_absent "$case_dir/claude-worker" "a refused relaunch must not run a worker"
+  pass "Orca refuses a pinned Claude relaunch while preserving existing metadata and unlanded work"
+}
+
+test_orca_pinned_claude_relaunch_preserves_existing_work
+test_orca_refuses_claude_account_pins_before_provisioning
 test_orca_source_preserves_values_without_utf8_locale
 test_orca_launch_uses_controlled_tmux_environment
 test_orca_launch_uses_vault_without_tmux
