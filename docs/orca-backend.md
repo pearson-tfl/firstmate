@@ -124,7 +124,8 @@ Orca drops an agent from that listing when it ends, but `orca terminal show` kee
 A running terminal with no listed agent reads unverified, as before: a harness Orca does not hook, one that has not reported yet, and one that ended and left its shell look the same (code).
 
 Firstmate's Orca launch ends the terminal with the agent: the staged launch file exits the pane shell once the worker returns, while a refused launch keeps the shell (fake Orca).
-An ended terminal reads `exited`, and a handle Orca no longer knows answers `terminal_handle_stale`; both read as a gone endpoint (real Orca).
+An ended terminal reads `exited`, and a handle Orca no longer knows answers `terminal_handle_stale`; the agent-state classifier maps both to a gone endpoint (real Orca).
+That classification does not prove a safe close for cleanup; the cleanup rules above govern release.
 `orca terminal wait --for exit` reports the same end but not a trustworthy exit code (real Orca), so nothing here reads that code.
 The [agent-state verification](verification/runtime-backends.md#orca-agent-state) records the real Claude, Pi, and Oh My Pi checks.
 Waiting for input is unsupported for Pi on Orca; its busy, idle, and gone states are verified (real Orca).
