@@ -275,7 +275,7 @@ fm_backend_orca_terminal_create() {  # <worktree-id> <title>
 
 # fm_backend_orca_fresh_shell_verdict: classify one drawn screen of a terminal
 # spawn has just created and not yet typed into. Prints one word:
-#   shell    a bare prompt: at most two rows,
+#   shell    a candidate shell screen: one or two nonblank rows,
 #            none of the shapes below
 #   empty    nothing drawn yet
 #   tmux     a tmux status row (`[session] 0:win`, ` 1:win `, first or last
@@ -329,7 +329,7 @@ fm_backend_orca_owner() {  # <terminal-id> <worktree-id>
 # A login profile can exec something else first - an ssh-keyed `tmux attach`
 # once turned a new Orca terminal into a client of a live tmux session, and
 # every key typed went to that session's pane. Orca offers no process facts
-# and spawn sets no prompt, so the live lane's nonce cannot apply; the proof is
+# and spawn sets no prompt, so the live lane's nonce cannot apply; the guard is
 # Orca's placement and agent listing (fm_backend_orca_owner) plus the same
 # `shell` screen read twice in a row. Refuses at once on tmux, a foreign
 # screen, or an Orca account that is not `owned`, and after

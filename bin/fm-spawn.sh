@@ -5554,7 +5554,7 @@ EOF
       ORCA_TERMINAL=$(fm_backend_orca_terminal_create "$ORCA_WORKTREE_ID" "$W") || exit 1
     fi
     T="$ORCA_TERMINAL"
-    # Prove the terminal is still the shell Orca started before the first key;
+    # Check the new terminal against the Orca pre-key guard;
     # a refusal closes it and releases the worktree through the abort cleanup.
     fm_backend_orca_fresh_shell "$T" "$ORCA_WORKTREE_ID" || exit 1
     ;;
