@@ -1372,7 +1372,7 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
 # shared classifier and reads a structured not-found as `missing`. Zellij
 # remains unverified because
 # its secondmate ghost-tab and agent-process recovery path has not been
-# empirically validated. Orca, cmux, paseo, and tern do not support secondmate
+# empirically validated. Cmux, paseo, and tern do not support secondmate
 # spawns. The Orca adapter answers from Orca's own agent listing, which Orca's
 # status hooks feed and clear when the agent ends, rather than from a process
 # read (bin/backends/orca.sh); it never reads `dead`, because its agent ends its

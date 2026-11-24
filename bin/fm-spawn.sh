@@ -136,8 +136,10 @@
 #   (the paseo, tern, and hc markers leak into every descendant process).
 #   codex-app is not a known backend yet; docs/codex-app-backend.md owns that
 #   blocked backend contract. Default tmux spawns do not write backend= to meta;
-#   absent backend= means tmux. Orca, cmux, paseo, tern, and hc do not support
-#   --secondmate spawns.
+#   absent backend= means tmux. Cmux, paseo, tern, and hc do not support
+#   --secondmate spawns. An Orca secondmate's terminal opens in its home, which
+#   Orca lists as a folder project (fm_backend_orca_home_worktree); it records
+#   that root entry as orca_worktree_id=, which nothing ever removes.
 #   A rex crewmate or scout opens one tab in the Rex session the launching
 #   firstmate runs in when it runs directly inside Rex, otherwise in its home's
 #   own Rex session; a --secondmate launch opens its tab in that secondmate
@@ -1719,8 +1721,8 @@ spawn_remote_secondmate() {
 
 BACKEND=
 ORCA_ABORT_CLEANUP=0
-# 1 while a relaunch's fresh Orca terminal is unpublished: an abort closes that
-# terminal only, never the task's worktree.
+# 1 while a relaunch's or a secondmate's fresh Orca terminal is unpublished: an
+# abort closes that terminal only, never the task's worktree or the home.
 ORCA_RELAUNCH_ABORT_CLEANUP=0
 ORCA_WORKTREE_ID=
 ORCA_TERMINAL=
@@ -2401,10 +2403,6 @@ if [ "$RELAUNCH" -eq 0 ]; then
   fi
   fm_backend_validate_spawn "$BACKEND" || exit 1
   fm_backend_source "$BACKEND" || exit 1
-  if [ "$BACKEND" = orca ] && [ "$KIND" = secondmate ]; then
-    echo "error: backend=orca does not support --secondmate spawns yet" >&2
-    exit 1
-  fi
   if [ "$BACKEND" = cmux ] && [ "$KIND" = secondmate ]; then
     echo "error: backend=cmux does not support --secondmate spawns yet" >&2
     exit 1
@@ -5561,32 +5559,42 @@ EOF
     T="$HC_SES:$HC_TERMINAL"
     ;;
   orca)
-    set +e
-    ORCA_WT_RAW=$(fm_backend_orca_worktree_create "$PROJ_ABS" "$W")
-    ORCA_WT_STATUS=$?
-    set -e
-    if [ "$ORCA_WT_STATUS" -ne 0 ]; then
-      if [ "$ORCA_WT_STATUS" -eq 2 ] && [ -n "$ORCA_WT_RAW" ]; then
-        if parse_orca_worktree_result "$ORCA_WT_RAW" && [ -n "$ORCA_WORKTREE_ID" ]; then
-          ORCA_ABORT_CLEANUP=1
-        fi
-      fi
-      exit 1
-    fi
-    parse_orca_worktree_result "$ORCA_WT_RAW" || true
-    ORCA_ABORT_CLEANUP=1
-    if [ -z "$ORCA_WORKTREE_ID" ] || [ -z "$WT" ]; then
-      echo "error: orca did not return a worktree id/path for $W" >&2
-      exit 1
-    fi
-    validate_spawn_worktree "orca worktree create" "$W"
-    if [ -z "$ORCA_TERMINAL" ]; then
+    if [ "$KIND" = secondmate ]; then
+      # A seat has no task worktree: one fresh terminal in its home's Orca
+      # entry, and an abort closes only that terminal.
+      ORCA_WORKTREE_ID=$(fm_backend_orca_home_worktree "$PROJ_ABS") || exit 1
       ORCA_TERMINAL=$(fm_backend_orca_terminal_create "$ORCA_WORKTREE_ID" "$W") || exit 1
+      ORCA_RELAUNCH_ABORT_CLEANUP=1
+      T=$ORCA_TERMINAL
+      fm_backend_orca_fresh_shell "$T" "$ORCA_WORKTREE_ID" || exit 1
+    else
+      set +e
+      ORCA_WT_RAW=$(fm_backend_orca_worktree_create "$PROJ_ABS" "$W")
+      ORCA_WT_STATUS=$?
+      set -e
+      if [ "$ORCA_WT_STATUS" -ne 0 ]; then
+        if [ "$ORCA_WT_STATUS" -eq 2 ] && [ -n "$ORCA_WT_RAW" ]; then
+          if parse_orca_worktree_result "$ORCA_WT_RAW" && [ -n "$ORCA_WORKTREE_ID" ]; then
+            ORCA_ABORT_CLEANUP=1
+          fi
+        fi
+        exit 1
+      fi
+      parse_orca_worktree_result "$ORCA_WT_RAW" || true
+      ORCA_ABORT_CLEANUP=1
+      if [ -z "$ORCA_WORKTREE_ID" ] || [ -z "$WT" ]; then
+        echo "error: orca did not return a worktree id/path for $W" >&2
+        exit 1
+      fi
+      validate_spawn_worktree "orca worktree create" "$W"
+      if [ -z "$ORCA_TERMINAL" ]; then
+        ORCA_TERMINAL=$(fm_backend_orca_terminal_create "$ORCA_WORKTREE_ID" "$W") || exit 1
+      fi
+      T="$ORCA_TERMINAL"
+      # Check the new terminal against the Orca pre-key guard;
+      # a refusal closes it and releases the worktree through the abort cleanup.
+      fm_backend_orca_fresh_shell "$T" "$ORCA_WORKTREE_ID" || exit 1
     fi
-    T="$ORCA_TERMINAL"
-    # Check the new terminal against the Orca pre-key guard;
-    # a refusal closes it and releases the worktree through the abort cleanup.
-    fm_backend_orca_fresh_shell "$T" "$ORCA_WORKTREE_ID" || exit 1
     ;;
   t3code)
     # Validate the project policy before the first T3 or Treehouse mutation;

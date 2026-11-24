@@ -223,6 +223,13 @@ fm_secondmate_liveness_probe() {  # <meta> <id> <full|poll>
   target=$(fm_backend_target_of_meta "$meta")
   [ -n "$target" ] || target="$window"
   agent_state=$(fm_backend_agent_state "$backend" "$target" 2>/dev/null) || agent_state=unreadable
+  # An Orca restart turns every old handle stale while the desktop app
+  # re-attaches its terminals under new ones, so a missing seat is gone only
+  # when Orca also lists no live terminal in the home's entry.
+  if [ "$backend" = orca ] && [ "$agent_state" = missing ] \
+    && [ "$(fm_backend_orca_endpoint_absence_recheck "$target" "$(fm_meta_get "$meta" orca_worktree_id)")" != gone ]; then
+    agent_state=ambiguous
+  fi
   case "$harness" in
     claude|codex|opencode|pi|pi-signed|grok|kimi|omp) ;;
     *)

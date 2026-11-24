@@ -10,11 +10,13 @@
 # host stops it before taking over the arm recorded in .supervision-host-left.
 # Ack and TERM both leave that verified arm for the next park, not a second arm.
 #
-# Automatic delivery is restricted to the inherited tmux pane on Claude. Its
-# pane pid must be an ancestor of the pinned session-lock pid, that session
-# must still be in the terminal's foreground group, and its composer must be
-# empty with no busy signature. All other endpoints retain the queued wake
-# and keep watching but need a normal turn or human message to resume main.
+# Automatic delivery is restricted to the inherited tmux pane or Orca terminal
+# on Claude. A tmux pane's pid must be an ancestor of the pinned session-lock
+# pid and show no busy signature; Orca, which reports no terminal process, must
+# list an idle agent on the inherited ORCA_TERMINAL_HANDLE. Either way that
+# session must still be in the terminal's foreground group and the composer
+# must be empty. All other endpoints retain the queued wake and keep watching
+# but need a normal turn or human message to resume main.
 # No terminal text proves acknowledgement. Busy, unknown, or pending input is
 # never overwritten. The existing backend submit primitive owns Enter retries.
 # Removing the opt-in, losing the pinned session, or entering daemon-backed
@@ -81,25 +83,37 @@ session_owned() {
 }
 
 retry_delivery() {
-  local pane_pid ancestor message verdict=deferred tmp pgid tpgid
+  local pane_pid ancestor message verdict=deferred tmp pgid tpgid backend='' target=''
   # No fallback target: a guessed pane can belong to another home.
-  if [ -n "${TMUX_PANE:-}" ] && session_owned; then
-    pane_pid=$(tmux display-message -p -t "$TMUX_PANE" '#{pane_pid}' 2>/dev/null) || pane_pid=
-    ancestor=$SESSION
-    case "$pane_pid" in ''|*[!0-9]*) ancestor= ;; esac
-    while [ -n "$ancestor" ] && [ "$ancestor" != 1 ] && [ "$ancestor" != "$pane_pid" ]; do
-      ancestor=$(ps -o ppid= -p "$ancestor" 2>/dev/null | tr -d ' ')
-    done
+  if session_owned; then
+    if [ -n "${TMUX_PANE:-}" ]; then
+      pane_pid=$(tmux display-message -p -t "$TMUX_PANE" '#{pane_pid}' 2>/dev/null) || pane_pid=
+      ancestor=$SESSION
+      case "$pane_pid" in ''|*[!0-9]*) ancestor= ;; esac
+      while [ -n "$ancestor" ] && [ "$ancestor" != 1 ] && [ "$ancestor" != "$pane_pid" ]; do
+        ancestor=$(ps -o ppid= -p "$ancestor" 2>/dev/null | tr -d ' ')
+      done
+      if [ -n "$ancestor" ] && [ "$ancestor" = "$pane_pid" ] \
+        && [ "$(fm_pane_busy_state "$TMUX_PANE" claude 2>/dev/null)" = idle ]; then
+        backend=tmux target=$TMUX_PANE
+      fi
+    elif [ -n "${ORCA_TERMINAL_HANDLE:-}" ]; then
+      # Orca reports no process for a terminal, so there is no pane pid to walk
+      # to: the handle is the session's own inherited one, and Orca must list
+      # an idle agent on that terminal.
+      if [ "$(fm_backend_busy_state orca "$ORCA_TERMINAL_HANDLE" 2>/dev/null)" = idle ]; then
+        backend=orca target=$ORCA_TERMINAL_HANDLE
+      fi
+    fi
     read -r pgid tpgid < <(ps -o pgid=,tpgid= -p "$SESSION" 2>/dev/null) || pgid=
-    if [ -n "$ancestor" ] && [ "$ancestor" = "$pane_pid" ] \
+    if [ -n "$backend" ] \
       && [ -n "$pgid" ] && [ "$pgid" = "$tpgid" ] && [ "$pgid" -gt 0 ] 2>/dev/null \
       && fm_harness_pid_alive "$SESSION" \
-      && [ "$(fm_pane_busy_state "$TMUX_PANE" claude 2>/dev/null)" = idle ] \
-      && [ "$(fm_backend_composer_state tmux "$TMUX_PANE" 2>/dev/null)" = empty ] \
+      && [ "$(fm_backend_composer_state "$backend" "$target" 2>/dev/null)" = empty ] \
       && session_owned && [ "$(cat "$PENDING" 2>/dev/null)" = "$TOKEN" ]; then
       if fm_operational_record_write "$STATE" watcher \
         "check: supervision-handoff - the host hand-back is still unacknowledged. Run $(fm_wake_drain_cmd), handle its queued work, and run its exact WAKE_ACK_REQUIRED command. This is automatic supervision, not a captain return." message; then
-        verdict=$(fm_backend_send_text_submit tmux "$TMUX_PANE" "$message" 2 0.2 0.2 2>/dev/null) || verdict=unconfirmed
+        verdict=$(fm_backend_send_text_submit "$backend" "$target" "$message" 2 0.2 0.2 2>/dev/null) || verdict=unconfirmed
       fi
     fi
   fi

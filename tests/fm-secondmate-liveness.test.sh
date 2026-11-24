@@ -841,6 +841,33 @@ test_remote_poll_probe_unreachable_preserves_route() {
   pass "poll probe: unreachable or inconclusive remote reads preserve the route"
 }
 
+# A stale Orca handle reads missing, but after an Orca desktop restart the seat
+# can live on under a new handle; only Orca listing no live terminal in the
+# home's entry lets the sweep relaunch it.
+test_orca_missing_seat_relaunches_only_when_proven_gone() {
+  local w meta recheck out
+  w=$(new_world orca-missing-seat)
+  meta="$w/sm1.meta"
+  printf 'window=fm-sm1\nendpoint_task_id=sm1\nharness=claude\nkind=secondmate\nbackend=orca\nterminal=term-old\norca_worktree_id=repo-home::/homes/sm1\n' > "$meta"
+  for recheck in gone alive unproven; do
+    out=$(RECHECK=$recheck bash -c '
+      . "$1/bin/fm-secondmate-liveness-lib.sh"
+      fm_backend_agent_state() { printf missing; }
+      fm_backend_orca_endpoint_absence_recheck() {
+        [ "$1:$2" = "term-old:repo-home::/homes/sm1" ] || { printf "bad-args:%s:%s" "$1" "$2"; return 0; }
+        printf %s "$RECHECK"
+      }
+      fm_secondmate_liveness_probe "$2" sm1 poll
+      printf "%s|%s" "$FM_SM_LIVE_STATUS" "$FM_SM_LIVE_STATE"
+    ' _ "$ROOT" "$meta")
+    case "$recheck" in
+      gone) [ "$out" = 'relaunchable|missing' ] || fail "a proven-gone Orca seat should be relaunchable, got: $out" ;;
+      *) [ "$out" = 'skipped|ambiguous' ] || fail "an Orca seat the recheck reads $recheck must be left untouched, got: $out" ;;
+    esac
+  done
+  pass "poll probe: a missing Orca seat is relaunched only when Orca proves its terminal gone"
+}
+
 test_tmux_agent_state_classifies
 test_tmux_agent_state_rejects_malformed_targets_before_probe
 test_herdr_agent_state_preserves_husk_classifier
@@ -864,5 +891,6 @@ test_relaunch_waits_for_other_mates_relaunch_lock
 test_sweep_refuses_relaunch_on_ledger_errors
 test_remote_poll_probe_maps_states
 test_remote_poll_probe_unreachable_preserves_route
+test_orca_missing_seat_relaunches_only_when_proven_gone
 
 echo "# all fm-secondmate-liveness tests passed"

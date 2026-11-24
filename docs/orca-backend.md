@@ -20,7 +20,7 @@ The [whole-task proof](verification/runtime-backends.md#orca-whole-task-proof) s
 ## Setup
 
 Pick Orca when you already use Orca and want Orca-managed worktrees and terminals instead of Treehouse plus a session multiplexer.
-Orca is explicit-only and does not support secondmate spawns (code).
+Orca is explicit-only (code); a second mate runs in a terminal opened in its home ([Second-mate seats](#second-mate-seats)).
 Firstmate's Orca backend has run its adapter building blocks only on macOS (real Orca); on Linux only the CLI lookup and readiness check have run against a paired Orca server (real Orca).
 
 Prerequisites:
@@ -131,6 +131,22 @@ The Orca desktop app kept its terminals when the app itself restarted (real Orca
 After a headless Orca runtime restarted, it refused the old terminal handles as stale (real Orca), and after a reboot every agent is gone (reported).
 A task whose terminal ended, including in an Orca restart, is recovered with `fm-control.sh <task> relaunch`, which opens a fresh terminal in the same worktree ("Exit and relaunch" below).
 
+## Second-mate seats
+
+A second mate on Orca runs in one Orca terminal opened in its home rather than in a task worktree (fake Orca).
+Spawn registers the home as an Orca folder project, git or not, when Orca does not know it yet, opens the terminal in that project's root entry, and records the entry's id, `<repo id>::<home>`, as `orca_worktree_id=` (fake Orca).
+That registration, the root entry, a terminal opening in the home with `ORCA_TERMINAL_HANDLE` and `ORCA_WORKTREE_ID` set, and Orca refusing to delete a project root were [exercised on a disposable runtime](verification/runtime-backends.md#orca-second-mate-home-terminal) (real Orca).
+Spawn refuses when Orca resolves the home to an entry at another path, and the new terminal passes the same [shell-ownership check](#shell-ownership) as a task terminal before any key (fake Orca).
+A refused seat spawn closes only that terminal (code).
+Retiring the second mate closes its terminal and never asks Orca to remove the home's entry (fake Orca).
+Steering doorbells reach the seat through the recorded terminal with the same agent-state, busy, and composer checks as any Orca worker (code).
+The recovery sweep relaunches a seat that reads missing only when Orca reports its terminal exited, or still lists the home's entry with no live terminal in it, because the desktop app re-attaches terminals under new handles after a restart (fake Orca).
+
+Away mode accepts a seat running in an Orca terminal: supervisor discovery reads the `ORCA_TERMINAL_HANDLE` Orca sets in each terminal, after tmux, Herdr, and Rex, so a multiplexer nested inside the terminal stays innermost (fake Orca).
+The away daemon then injects through Orca's agent listing for busy and the shared composer classifier, as for any Orca endpoint (code).
+Away mode's `start` has no hidden-terminal launch on Orca, so the daemon runs there only as a harness's own tracked background job (`start-native`) (code).
+The host hand-back retry in `bin/fm-supervision-handoff.sh` types into the seat's Orca terminal only when Orca lists an idle agent on it, the session holds its terminal's foreground, and the composer reads empty (code); like its tmux path, it stays inert until #5138 restores session ownership.
+
 ## Agent state
 
 Agent state and busy come from Orca itself, not from the screen: `orca agent list` names each terminal agent on its pane with a state that Orca's status hooks report - working, waiting, blocked, or done - from the agent's first report until it ends (real Orca).
@@ -165,7 +181,7 @@ A refused relaunch closes the fresh terminal it opened and never the worktree (c
   To run lanes on a paired Orca server, run the Firstmate home on that server's machine; it drives that runtime through its local CLI, which is the same runtime the paired client reaches (real Orca).
   Pointing a home at another machine's runtime with `--environment` or `ORCA_ENVIRONMENT` is unsupported.
 - The Orca runtime must be running and report ready.
-- Secondmate spawns are unsupported (code).
+- No real agent has run as a second mate on Orca, and away mode's `start` has no Orca launch (code).
 - An interrupt is reported delivered with its cancellation unconfirmed unless the harness keeps its own confirmation record (muse confirms from its session log), and an interrupt for a harness that must read its screen between or after presses (Devin and Command Code) is refused because Orca's screen read has never been verified with a real Devin or Command Code on it (code); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
 - `exit` and `relaunch` act only on an agent Orca lists; a running terminal with no listed agent reads unverified and refuses (code).
 - `exit` and `relaunch` have not yet run against a real agent on real Orca.
@@ -185,6 +201,8 @@ tests/fm-spawn-orca-worktree.test.sh
 tests/fm-backend.test.sh
 tests/fm-bootstrap.test.sh
 tests/fm-teardown-endpoint-safety.test.sh
+tests/fm-daemon.test.sh
+tests/fm-secondmate-liveness.test.sh
 ```
 
 These run against the stand-in `orca`; [`verification/runtime-backends.md`](verification/runtime-backends.md#orca) records the real-Orca evidence.

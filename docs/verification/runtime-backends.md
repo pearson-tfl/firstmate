@@ -2629,6 +2629,21 @@ Each command below ran with `--json`; the table keeps the fields the adapter rea
 
 The same day the real-Orca lane below ran `fm-teardown.sh` on two scratch ship tasks against that Orca: one whose commit was merged into `main` lost its branch, and one forced over an unlanded commit kept it; both terminals read `exited` and both worktrees were gone.
 
+### Orca second-mate home terminal
+
+Verified on 2026-11-24 against Orca 1.4.271 on macOS 27.0.1, on a scratch `orca serve` runtime started with the real-Orca lane's safeguards, once with a plain folder and once with a git repository standing in for a second mate's home; each terminal ran the lane's own plain shell.
+Each command below ran with `--json`; the table keeps the fields the adapter reads.
+
+| Command | Result |
+| --- | --- |
+| `orca repo show --repo path:<home>` before registration | `ok: false`, `error.code: "repo_not_found"` |
+| `orca repo add --path <home> --kind folder`, for both homes | `ok: true`, `result.repo.kind: "folder"`, `result.repo.id: <repo id>` |
+| `orca worktree show --worktree path:<home>` | `result.worktree.id: "<repo id>::<home>"`, `result.worktree.path: "<home>"` |
+| `orca terminal create --worktree id:<repo id>::<home>` | `result.terminal.handle: term_<uuid>` |
+| `orca terminal show --terminal <handle>` | `result.terminal.worktreeId: "<repo id>::<home>"` |
+| `pwd -P`, `$ORCA_TERMINAL_HANDLE`, `$ORCA_WORKTREE_ID` typed into that terminal | the home, the terminal's own handle, and `<repo id>::<home>` |
+| `orca worktree rm --worktree id:<repo id>::<home>` | `ok: false`, `error.message: "Cannot delete the project root workspace. Remove the folder project instead."` |
+
 ### Orca whole-task proof
 
 Not yet proved.

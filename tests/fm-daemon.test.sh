@@ -85,6 +85,35 @@ test_afk_start_refuses_tern_supervisor_backend() {
   pass "fm-afk-start.sh refuses tern as an away-mode supervisor backend (unsupported; documented in docs/tern-backend.md)"
 }
 
+# A seat in an Orca terminal carries ORCA_TERMINAL_HANDLE; away mode resolves
+# the orca backend and that handle from it, passes backend validation, and
+# checks the handle with Orca itself (here Orca reads it exited, so startup
+# stops at the target check rather than at the backend refusal).
+test_afk_start_accepts_an_orca_seat() {
+  local dir state out status fb
+  dir=$(make_supercase afk-start-orca-seat)
+  state="$dir/state"
+  fb="$dir/orca-fakebin"
+  mkdir -p "$fb"
+  cat > "$fb/orca-ide" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${FM_FAKE_ORCA_LOG:?}"
+printf '{"ok":true,"result":{"terminal":{"status":"exited"}}}\n'
+SH
+  chmod +x "$fb/orca-ide"
+  out=$(env -u TMUX_PANE -u HERDR_ENV -u HERDR_PANE_ID -u FM_SUPERVISOR_BACKEND -u FM_SUPERVISOR_TARGET \
+    PATH="$fb:$PATH" FM_FAKE_ORCA_LOG="$dir/orca.log" ORCA_TERMINAL_HANDLE=term-seat \
+    FM_STATE_OVERRIDE="$state" "$AFK_START" 2>&1)
+  status=$?
+  [ "$status" -ne 0 ] || fail "startup against an exited Orca terminal should stop at the target check"
+  assert_not_contains "$out" "does not support supervisor backend" "away mode refused an Orca seat's backend"
+  assert_contains "$out" "supervisor target 'term-seat' does not resolve to a orca pane" \
+    "away mode did not resolve the Orca seat's own terminal handle"
+  assert_contains "$(cat "$dir/orca.log")" "terminal read --terminal term-seat" \
+    "away mode did not ask Orca about the seat's terminal"
+  pass "fm-afk-start.sh: an Orca seat resolves backend orca and its own terminal handle"
+}
+
 test_afk_start_reclaims_stale_daemon_lock_reused_pid() {
   local dir state out status lock
   dir=$(make_supercase afk-start-stale-lock-reused-pid)
@@ -3167,6 +3196,21 @@ test_discover_supervisor_target_herdr() {
   pass "discover_supervisor_target: override > TMUX_PANE > herdr '<session>:<pane-id>' composition > firstmate:0 fallback"
 }
 
+test_discover_supervisor_orca() {
+  local out
+  out=$(FM_SUPERVISOR_TARGET='' FM_SUPERVISOR_BACKEND='' TMUX_PANE='' HERDR_ENV='' HERDR_PANE_ID='' ORCA_TERMINAL_HANDLE=term-seat discover_supervisor_target) \
+    || fail "an Orca terminal handle should resolve the target cleanly"
+  [ "$out" = term-seat ] || fail "the target should be the Orca terminal handle, got '$out'"
+  out=$(FM_SUPERVISOR_TARGET='' FM_SUPERVISOR_BACKEND='' TMUX_PANE='' HERDR_ENV='' HERDR_PANE_ID='' ORCA_TERMINAL_HANDLE=term-seat discover_supervisor_backend) \
+    || fail "an Orca terminal handle should resolve the backend cleanly"
+  [ "$out" = orca ] || fail "the backend should be orca, got '$out'"
+  out=$(FM_SUPERVISOR_TARGET='' FM_SUPERVISOR_BACKEND='' TMUX_PANE='%3' HERDR_ENV='' HERDR_PANE_ID='' ORCA_TERMINAL_HANDLE=term-seat discover_supervisor_target)
+  [ "$out" = '%3' ] || fail "tmux nested in an Orca terminal must stay innermost: $out"
+  out=$(FM_SUPERVISOR_TARGET='' FM_SUPERVISOR_BACKEND='' TMUX_PANE='' HERDR_ENV=1 HERDR_PANE_ID=w1:p9 ORCA_TERMINAL_HANDLE=term-seat discover_supervisor_backend)
+  [ "$out" = herdr ] || fail "herdr nested in an Orca terminal must stay innermost: $out"
+  pass "discover_supervisor_*: ORCA_TERMINAL_HANDLE selects orca and that handle, after tmux and herdr"
+}
+
 # --- t3code supervisor discovery and busy verdict --------------------------
 # The real adapter is sourced once so fm_backend_source's sourced flag keeps it
 # from re-sourcing over the stub; the stub records every home it is asked about
@@ -3450,6 +3494,7 @@ test_inject_msg_defers_on_unrecognized_composer_state() {
 test_afk_start_refuses_when_flag_cannot_be_written
 test_afk_start_ignores_stale_pidfile_without_lock
 test_afk_start_refuses_tern_supervisor_backend
+test_afk_start_accepts_an_orca_seat
 test_afk_start_reclaims_stale_daemon_lock_reused_pid
 test_daemon_state_root_uses_fm_home
 test_classify_routine_signal_self
@@ -3586,6 +3631,7 @@ test_fm_send_exits_nonzero_on_initial_send_failure
 test_fm_send_exits_nonzero_on_unproven_submit
 test_discover_supervisor_backend_precedence
 test_discover_supervisor_target_herdr
+test_discover_supervisor_orca
 test_discover_supervisor_t3code_after_env_tmux_and_herdr
 test_pane_is_busy_t3code_trusts_native_verdict_without_capture
 test_pane_is_busy_herdr_native_busy_state

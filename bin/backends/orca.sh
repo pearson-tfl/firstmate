@@ -220,15 +220,17 @@ fm_backend_orca_run_json() {
   printf '%s' "$out" | fm_backend_orca_json_ok
 }
 
-fm_backend_orca_repo_ensure() {  # <project-path>
+fm_backend_orca_repo_ensure() {  # <project-path> [folder]
   local project=$1 out repo_id
+  local -a kind=()
+  [ "${2:-}" != folder ] || kind=(--kind folder)
   fm_backend_orca_tool_check || return 1
   out=$(fm_backend_orca_cli repo show --repo "path:$project" --json 2>/dev/null || true)
   if repo_id=$(printf '%s' "$out" | fm_backend_orca_json_get repo-id 2>/dev/null); then
     printf '%s' "$repo_id"
     return 0
   fi
-  out=$(fm_backend_orca_cli repo add --path "$project" --json) || return 1
+  out=$(fm_backend_orca_cli repo add --path "$project" ${kind[@]+"${kind[@]}"} --json) || return 1
   repo_id=$(printf '%s' "$out" | fm_backend_orca_json_get repo-id) || {
     echo "error: orca repo add did not return a repo id for $project" >&2
     return 1
@@ -408,6 +410,28 @@ fm_backend_orca_worktree_path() {
     return 1
   }
   printf '%s' "$path"
+}
+
+# fm_backend_orca_home_worktree: the Orca workspace a secondmate seat's terminal
+# opens in. A seat has no task worktree, so its home folder is registered as an
+# Orca folder project (git or not) and the project's root entry, whose id is
+# `<repo id>::<home>`, is used. Orca refuses to delete a project root, and
+# Firstmate never asks it to. Prints the entry id; refuses when Orca resolves the
+# home to an entry at another path.
+fm_backend_orca_home_worktree() {  # <home-path>
+  local home=$1 out wt_id wt_path
+  fm_backend_orca_repo_ensure "$home" folder >/dev/null || return 1
+  out=$(fm_backend_orca_cli worktree show --worktree "path:$home" --json) || return 1
+  if ! wt_id=$(printf '%s' "$out" | fm_backend_orca_json_get worktree-id) \
+    || ! wt_path=$(printf '%s' "$out" | fm_backend_orca_json_get worktree-path); then
+    echo "error: orca worktree show did not return an id and path for home $home" >&2
+    return 1
+  fi
+  if [ "$wt_path" != "$home" ] || [ "${wt_id#*::}" != "$home" ]; then
+    echo "error: Orca resolved home $home to workspace $wt_id at $wt_path; refusing to open a seat there" >&2
+    return 1
+  fi
+  printf '%s' "$wt_id"
 }
 
 # fm_backend_orca_screen_read: the terminal as Orca draws it now, never the
