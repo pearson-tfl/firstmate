@@ -70,6 +70,11 @@ case "$1 $2" in
     printf '{"ok":true,"result":{"terminal":{"handle":"term-1"}}}\n'
     exit 0
     ;;
+  "terminal read")
+    # A just-started plain shell, which spawn requires before its first key.
+    printf '{"ok":true,"result":{"terminal":{"handle":"term-1","status":"running","source":"screen","tail":["$"]}}}\n'
+    exit 0
+    ;;
   "terminal close")
     touch "$DIR/terminal-closed"
     exit 0

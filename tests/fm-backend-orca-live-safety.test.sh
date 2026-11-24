@@ -3,7 +3,8 @@
 # real-Orca lane (tests/fm-backend-orca-live-e2e.test.sh) with a fake `orca`,
 # so they hold on every machine without a real Orca: the runtime never sees
 # ssh or tmux identity, and no key reaches a terminal that is not the lane's
-# own nonce-prompted shell.
+# own nonce-prompted shell. The same fake pins production fm-spawn's guard:
+# a new terminal that is not a plain shell gets no key at all.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -21,7 +22,11 @@ GUARD="$ROOT/tests/fm-backend-orca-live-e2e.test.sh"
 # mode it shows a login shell's own prompt, as when SHELL was ignored; in
 # `own-orca` mode it is the `own` shell read the way Orca 1.4.271 returns
 # rows, with the space after the prompt dropped. Like Orca, a read reports
-# source "screen" only for --screen, which the adapter requires.
+# source "screen" only for --screen, which the adapter requires. The spawn-*
+# modes serve production fm-spawn, which never sets SHELL: spawn-shell shows a
+# login shell's prompt, spawn-tmux the tmux client a login profile's
+# `exec tmux attach` leaves (a pane and its status row), and spawn-picker the
+# session picker `choose-tree` opens; their sends are only logged.
 make_fake() {
   local dir=$1 mode=$2
   mkdir -p "$dir/bin" "$dir/state"
@@ -96,6 +101,9 @@ case "$cmd" in
       own | own-orca) prompt > "$S/screen" ;;
       foreign) printf '● Kneading…\n❯ \n' > "$S/screen" ;;
       login) printf 'bash-3.2$ \n' > "$S/screen" ;;
+      spawn-shell) printf '➜  %s git:(%s)\n' "${worktree##*/}" "${worktree##*/}" > "$S/screen" ;;
+      spawn-tmux) printf 'johnp@mac ~ %% \n 1:andrew-assistant \n' > "$S/screen" ;;
+      spawn-picker) printf '(0) + andrew-new-website: 1 windows\n(1) + firstmate: 29 windows\n' > "$S/screen" ;;
     esac
     printf '{"ok":true,"result":{"terminal":{"handle":"term_fake"}}}\n'
     ;;
@@ -103,6 +111,7 @@ case "$cmd" in
     if [ -f "$S/closed" ]; then rm -f "$S/screen"; screen_json exited; else screen_json running; fi
     ;;
   "terminal send")
+    case "$mode" in spawn-*) printf '{"ok":true,"result":{"send":{"accepted":true}}}\n'; exit 0 ;; esac
     last=$(tail -n 1 "$S/screen")
     if [ "$interrupt" = 1 ]; then
       [ -f "$S/running" ] && { rm -f "$S/running"; prompt >> "$S/screen"; }
@@ -199,3 +208,42 @@ assert_contains "$ERR" "never another Orca" "the runtime mismatch must be named"
 ! grep -Eq '^orca (repo|worktree|terminal) ' "$D/state/log" || fail "the lane touched a runtime it did not start"
 serve_stopped "$D"
 pass "orca live lane: when the CLI reaches any runtime but its own, nothing is registered, created or sent"
+
+# --- production fm-spawn: no key before the new terminal proves a plain shell
+# spawn_case <mode> <id>: drive bin/fm-spawn.sh on backend=orca against the fake;
+# sets OUT, RC and D (the fake's directory).
+spawn_case() {
+  local mode=$1 id=$2 home
+  D="$TMP_ROOT/$mode"; make_fake "$D" "$mode"
+  home="$D/fm-home"
+  mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config"
+  touch "$home/state/.last-watcher-beat"
+  printf 'codex\n' > "$home/config/crew-harness"
+  printf 'manual\n' > "$home/config/backlog-backend"
+  printf "/implement\n\n# Task\n## Captain's intent\nExercise the Orca spawn guard.\n\n## Firstmate spec\nNone.\n" > "$home/data/$id/brief.md"
+  fm_git_init_commit "$D/project"
+  OUT=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$D/user-home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_SPAWN_NO_GUARD=1 FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S=2 PATH="$D/bin:$PATH" \
+    "$ROOT/bin/fm-spawn.sh" "$id" "$D/project" --mode no-mistakes --yolo off --backend orca 2>&1)
+  RC=$?
+}
+
+for mode in spawn-tmux spawn-picker; do
+  spawn_case "$mode" "orca-guard-${mode#spawn-}"
+  assert_not_equals 0 "$RC" "spawn into a $mode terminal must fail"$'\n'"$OUT"
+  assert_contains "$OUT" "refusing to send to Orca terminal term_fake" "a $mode refusal must name the terminal"
+  assert_contains "$OUT" "verdict: tmux" "a $mode screen must be read as a tmux client"
+  assert_grep 'orca terminal read --terminal term_fake --screen' "$D/state/log" "spawn must read the $mode screen before deciding"
+  ! grep -q 'terminal send' "$D/state/log" || fail "spawn typed into a $mode terminal: $(grep 'terminal send' "$D/state/log")"
+  assert_grep 'terminal close' "$D/state/log" "a refused $mode spawn must close the terminal it created"
+  assert_present "$D/fm-home/data/orca-guard-${mode#spawn-}/brief.md" "a refused $mode spawn must keep the task record"
+done
+pass "orca spawn: a new terminal showing a tmux client or its session picker gets no key, and the spawn refuses"
+
+spawn_case spawn-shell orca-guard-shell
+expect_code 0 "$RC" "spawn into a plain login shell must succeed"$'\n'"$OUT"
+assert_contains "$OUT" "spawned orca-guard-shell" "a plain-shell spawn must report success"
+assert_grep 'orca terminal send --terminal term_fake --text cd -- ' "$D/state/log" "a plain-shell spawn must type its cd into the terminal"
+pass "orca spawn: a new terminal showing only a login shell's prompt passes the guard and receives the launch"

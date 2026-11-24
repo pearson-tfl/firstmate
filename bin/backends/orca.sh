@@ -273,6 +273,73 @@ fm_backend_orca_terminal_create() {  # <worktree-id> <title>
   printf '%s' "$terminal"
 }
 
+# fm_backend_orca_fresh_shell_verdict: classify one drawn screen of a terminal
+# spawn has just created and not yet typed into. Prints one word:
+#   shell    a few rows and no program chrome: what a just-started shell draws
+#   empty    nothing drawn yet
+#   tmux     a tmux status row (`[session] 0:win`, ` 1:win `, first or last
+#            row) or a tmux tree-picker row (`(0) + session: 1 windows`)
+#   foreign  box-drawing chrome or more than
+#            FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS rows: another program's screen
+# Orca starts the operator's login shell and sets no prompt Firstmate controls,
+# so the live lane's nonce prompt cannot apply here; these are screen shapes.
+FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS=${FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS:-4}
+fm_backend_orca_fresh_shell_verdict() {  # <screen>
+  local row first='' last='' rows=0
+  local status_re='^ *(\[[^]]*\] +)?[0-9]+:[^ ]' picker_re='^\([0-9]+\) +[-+] '
+  while IFS= read -r row; do
+    case "$row" in *[![:space:]]*) ;; *) continue ;; esac
+    rows=$((rows + 1))
+    [ -n "$first" ] || first=$row
+    last=$row
+    if [[ $row =~ $picker_re ]]; then printf 'tmux'; return 0; fi
+    # Whole UTF-8 sequences, never a bracket set, which would match single bytes.
+    case "$row" in
+      *─* | *━* | *│* | *┃* | *┌* | *┐* | *└* | *┘* | *╭* | *╮* | *╰* | *╯* | *├* | *┤* | *═* | *║*)
+        printf 'foreign'; return 0 ;;
+    esac
+  done <<<"$1"
+  [ "$rows" -gt 0 ] || { printf 'empty'; return 0; }
+  if [[ $first =~ $status_re ]] || [[ $last =~ $status_re ]]; then printf 'tmux'; return 0; fi
+  [ "$rows" -le "$FM_BACKEND_ORCA_FRESH_SHELL_MAX_ROWS" ] || { printf 'foreign'; return 0; }
+  printf 'shell'
+}
+
+# fm_backend_orca_fresh_shell: before spawn types its first key into a new
+# terminal, prove the terminal still shows only the shell Orca started in it.
+# A login profile can exec something else first - an ssh-keyed `tmux attach`
+# once turned a new Orca terminal into a client of a live tmux session, and
+# every key typed went to that session's pane. Passes on the same `shell`
+# screen read twice in a row (settled); refuses at once on tmux or a foreign
+# screen, and after FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S on an empty, unreadable,
+# or unsettled one. Sends nothing in every case.
+FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S=${FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S:-20}
+fm_backend_orca_fresh_shell() {  # <terminal-id>
+  local terminal=$1 screen prev='' verdict=unreadable i tries
+  tries=$((FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S * 2))
+  for ((i = 0; i <= tries; i++)); do
+    [ "$i" -eq 0 ] || sleep 0.5
+    if ! screen=$(fm_backend_orca_screen_read "$terminal" 2>/dev/null); then
+      verdict=unreadable prev=''
+      continue
+    fi
+    verdict=$(fm_backend_orca_fresh_shell_verdict "$screen")
+    case "$verdict" in
+      tmux | foreign) break ;;
+      shell)
+        [ "$screen" != "$prev" ] || return 0
+        prev=$screen
+        ;;
+      *) prev='' ;;
+    esac
+  done
+  [ "$verdict" != shell ] || verdict='shell, never settled'
+  local row=${screen:-}
+  row=${row##*$'\n'}
+  echo "error: refusing to send to Orca terminal $terminal: its screen is not the plain shell spawn just created (verdict: $verdict; last row: '${row:0:80}'); nothing was typed" >&2
+  return 1
+}
+
 fm_backend_orca_send_text_line() {  # <terminal-id> <text>
   local terminal=$1 text=$2
   fm_backend_orca_tool_check || return 1
