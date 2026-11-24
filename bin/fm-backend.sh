@@ -1375,8 +1375,8 @@ fm_backend_target_exists() {  # <backend> <target> [expected-label]
 # empirically validated. Orca, cmux, paseo, and tern do not support secondmate
 # spawns. The Orca adapter answers from Orca's own agent listing, which Orca's
 # status hooks feed and clear when the agent ends, rather than from a process
-# read (bin/backends/orca.sh); like Tern and hc it is absent from
-# fm_control_backend_state_verified. The t3code adapter maps the thread's V2 status through its one status
+# read (bin/backends/orca.sh); it never reads `dead`, because its agent ends its
+# terminal. The t3code adapter maps the thread's V2 status through its one status
 # table (bin/backends/t3code.sh); there is no process to attribute locally.
 # Tern answers through the same process classifier from `tern process`, but
 # bin/fm-control-lib.sh's fm_control_backend_state_verified does not list it, so

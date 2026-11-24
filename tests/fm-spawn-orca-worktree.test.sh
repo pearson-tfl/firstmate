@@ -13,14 +13,9 @@
 # the worktree Orca actually created, proving the skip does not just avoid an
 # error but lets a genuine Orca launch complete.
 #
-# The matching relaunch-side carve-out at the `[ "$RELAUNCH" -eq 1 ] &&
-# [ "$BACKEND" = orca ]` branch is guarded by an earlier, unconditional gate:
-# fm_control_backend_state_verified (bin/fm-control-lib.sh) only recognizes
-# tmux and herdr as having a recovery-grade agent-state classifier, so any
-# `--relaunch` on backend=orca is refused before that branch can ever run.
-# The second test below pins that refusal so a future change that starts
-# routing orca through the classifier does not silently reach the untested
-# branch without also covering it.
+# The relaunch tests pin the Orca rebind: a recorded terminal proven gone gets
+# one fresh terminal in the same worktree, and one that cannot be proven gone
+# is refused before anything is created.
 set -u
 
 # shellcheck source=tests/fixtures.sh
@@ -68,10 +63,16 @@ case "$1 $2" in
     exit 0
     ;;
   "terminal create")
+    touch "$DIR/terminal-created"
     printf '{"ok":true,"result":{"terminal":{"handle":"term-1"}}}\n'
     exit 0
     ;;
   "terminal read")
+    # FM_TEST_ORCA_STALE answers a read of the recorded term-old as an Orca that restarted.
+    if [ "${FM_TEST_ORCA_STALE:-0}" = 1 ] && [[ " $* " == *" term-old "* ]]; then
+      printf '{"ok":false,"error":{"code":"terminal_handle_stale","message":"terminal_handle_stale"}}\n'
+      exit 1
+    fi
     # A bare prompt in the new worktree, which spawn requires before its first key.
     printf '{"ok":true,"result":{"terminal":{"handle":"term-1","status":"running","source":"screen","tail":["➜  %s git:(task)"]}}}\n' "$(cat "$DIR/worktree-name")"
     exit 0
@@ -83,6 +84,18 @@ case "$1 $2" in
     ;;
   "agent list")
     printf '{"ok":true,"result":{"agents":[]}}\n'
+    exit 0
+    ;;
+  "worktree show")
+    printf '{"ok":true,"result":{"worktree":{"id":"wt-1","path":"/orca/wt-1"}}}\n'
+    exit 0
+    ;;
+  "terminal list")
+    if [ "${FM_TEST_ORCA_LIVE_TERMINALS:-0}" = 1 ]; then
+      printf '{"ok":true,"result":{"terminals":[{"handle":"term-new","connected":true}]}}\n'
+    else
+      printf '{"ok":true,"result":{"terminals":[]}}\n'
+    fi
     exit 0
     ;;
   "terminal close")
@@ -246,26 +259,29 @@ EOF
   pass "an Orca launch ends the pane shell with its worker, even after a custom launch's trailing comment"
 }
 
-test_orca_relaunch_is_refused_before_the_worktree_carveout_could_run() {
-  local case_dir home proj wt id=orca-relaunch-a2 out status
-  case_dir="$TMP_ROOT/relaunch"
+# orca_relaunch_case <name> <id>: a recorded Orca ship task whose terminal is
+# term-old and whose worktree holds one uncommitted file. Prints the case dir.
+orca_relaunch_case() {
+  local case_dir=$TMP_ROOT/$1 id=$2 home proj wt
   home="$case_dir/home"
   proj="$case_dir/proj"
   wt="$case_dir/wt"
-  mkdir -p "$home/data" "$home/projects" "$home/state" "$home/config"
+  mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config"
   touch "$home/state/.last-watcher-beat"
   printf 'manual\n' > "$home/config/backlog-backend"
-  fm_git_worktree "$proj" "$wt" "task-$id"
-  mkdir -p "$home/data/$id"
+  fm_git_worktree "$proj" "$wt" "task-$id" >/dev/null
+  printf 'unlanded\n' > "$wt/unlanded.txt"
+  # The fake's terminal show places a new terminal in wt-<this name>: the recorded worktree.
+  printf '1::%s\n' "$wt" > "$case_dir/worktree-name"
   cat > "$home/data/$id/brief.md" <<EOF
 /implement
 
 # Task
 ## Captain's intent
-Exercise a relaunch attempt against a recorded Orca task.
+Exercise a relaunch of a recorded Orca task.
 
 ## Firstmate spec
-Confirm the relaunch is refused before any worktree re-entry logic runs.
+Relaunch in the recorded worktree.
 EOF
   {
     echo "window=fm-$id"
@@ -274,24 +290,64 @@ EOF
     echo "project=$proj"
     echo "harness=codex"
     echo "kind=ship"
-    echo "mode=no-mistakes"
+    echo "mode=direct-PR"
     echo "yolo=off"
+    echo "branch=task-$id"
     echo "backend=orca"
     echo "orca_worktree_id=wt-1::$wt"
-    echo "terminal=term-1"
+    echo "terminal=term-old"
   } > "$home/state/$id.meta"
+  printf '%s' "$case_dir"
+}
 
-  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$case_dir/user-home" \
+run_orca_relaunch() {  # <case-dir> <id> [env...]
+  local case_dir=$1 id=$2 home fb
+  shift 2
+  home="$case_dir/home"
+  fb=$(make_orca_fakebin "$case_dir")
+  env FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$case_dir/user-home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
-    FM_SPAWN_NO_GUARD=1 \
-    "$SPAWN" "$id" --relaunch 2>&1)
-  status=$?
+    FM_SPAWN_NO_GUARD=1 FM_TEST_ORCA_DIR="$case_dir" PATH="$fb:$PATH" "$@" \
+    "$SPAWN" "$id" --relaunch 2>&1
+}
 
-  expect_code 1 "$status" "a relaunch against a recorded Orca task should refuse"$'\n'"$out"
-  assert_contains "$out" "no recovery-grade agent-state classifier" \
-    "the refusal should name the missing classifier, proving relaunch never reaches the worktree carve-out"
-  pass "a relaunch against an Orca-backed task is refused before the RELAUNCH+orca worktree carve-out could run"
+test_orca_relaunch_rebinds_a_terminal_gone_in_an_orca_restart() {
+  local id=orca-relaunch-a2 case_dir out status
+  case_dir=$(orca_relaunch_case relaunch-gone "$id")
+  out=$(run_orca_relaunch "$case_dir" "$id" FM_TEST_ORCA_STALE=1); status=$?
+  expect_code 0 "$status" "a relaunch whose Orca terminal is proven gone should succeed"$'\n'"$out"
+  [ -e "$case_dir/terminal-created" ] || fail "the relaunch did not open a fresh Orca terminal"
+  assert_contains "$(cat "$case_dir/home/state/$id.meta")" "terminal=term-1" "the record was not rebound to the fresh terminal"
+  assert_contains "$(cat "$case_dir/home/state/$id.meta")" "worktree=$case_dir/wt" "the record left its worktree"
+  assert_contains "$(cat "$case_dir/home/state/$id.meta")" "orca_worktree_id=wt-1::$case_dir/wt" "the record lost its Orca worktree id"
+  [ "$(cat "$case_dir/wt/unlanded.txt")" = unlanded ] || fail "the relaunch touched the unlanded work"
+  pass "an Orca relaunch after a restart opens one fresh terminal in the same worktree, keeping its unlanded work"
+}
+
+test_orca_relaunch_refuses_while_the_worktree_has_a_live_terminal() {
+  local id=orca-relaunch-a4 case_dir out status
+  case_dir=$(orca_relaunch_case relaunch-live "$id")
+  out=$(run_orca_relaunch "$case_dir" "$id" FM_TEST_ORCA_STALE=1 FM_TEST_ORCA_LIVE_TERMINALS=1); status=$?
+  expect_code 1 "$status" "a stale handle beside a live terminal in the worktree must refuse"$'\n'"$out"
+  assert_contains "$out" "may still run there under another handle" "the refusal should say why absence is unproven"
+  [ ! -e "$case_dir/terminal-created" ] || fail "a refused relaunch opened a terminal"
+  assert_contains "$(cat "$case_dir/home/state/$id.meta")" "terminal=term-old" "a refused relaunch rewrote the record"
+  pass "an Orca relaunch refuses when the worktree still has a live terminal the old agent may run in"
+}
+
+test_orca_relaunch_refuses_a_terminal_orca_does_not_vouch_for() {
+  local id=orca-relaunch-a5 case_dir out status
+  case_dir=$(orca_relaunch_case relaunch-unvouched "$id")
+  # Orca places the new terminal in another worktree, so the pre-key guard refuses it.
+  printf 'elsewhere\n' > "$case_dir/worktree-name"
+  out=$(run_orca_relaunch "$case_dir" "$id" FM_TEST_ORCA_STALE=1); status=$?
+  expect_code 1 "$status" "a relaunch into a terminal Orca does not vouch for must refuse"$'\n'"$out"
+  assert_contains "$out" "nothing was typed" "the refusal should come from the pre-key guard"
+  [ -e "$case_dir/terminal-closed" ] || fail "the refused relaunch left its new terminal open"
+  assert_contains "$(cat "$case_dir/home/state/$id.meta")" "terminal=term-old" "a refused relaunch rewrote the record"
+  [ "$(cat "$case_dir/wt/unlanded.txt")" = unlanded ] || fail "the refused relaunch touched the unlanded work"
+  pass "an Orca relaunch refuses, closing only its new terminal, when Orca does not vouch for that terminal"
 }
 
 # Source values are synthetic and deliberately include shell syntax and trailing
@@ -1066,6 +1122,8 @@ test_orca_pane_wins_launch_file_race_at_deadline
 test_orca_snapshot_keeps_raw_bytes_tmux_reports
 test_orca_fresh_spawn_enters_the_worktree_it_created
 test_orca_launch_ends_the_terminal_with_the_worker
-test_orca_relaunch_is_refused_before_the_worktree_carveout_could_run
+test_orca_relaunch_rebinds_a_terminal_gone_in_an_orca_restart
+test_orca_relaunch_refuses_while_the_worktree_has_a_live_terminal
+test_orca_relaunch_refuses_a_terminal_orca_does_not_vouch_for
 
 echo "# all fm-spawn-orca-worktree tests passed"

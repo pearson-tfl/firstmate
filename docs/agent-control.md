@@ -219,15 +219,16 @@ The worktree and the task's records are unaffected either way.
 - A backend that cannot deliver the harness's interrupt key, or the composer clear that key needs, is refused rather than sent a different key.
   Orca delivers Escape and Ctrl+U as raw control bytes, but a harness that must see its screen between or after presses, such as Devin or Command Code, is refused there because Orca's screen read has never been verified with a real Devin or Command Code on it.
   T3 Code has no composer, so Escape and Ctrl+C are both a turn interrupt and Ctrl+U is refused.
-- `exit` and `relaunch` require a backend with a recovery-grade agent-state classifier - tmux, herdr, rex, and t3code - because without one the "the agent stopped" postcondition cannot be proven.
-  zellij, orca, cmux, and paseo are refused rather than reported as successful blind.
+- `exit` and `relaunch` require a backend with a recovery-grade agent-state classifier - tmux, herdr, rex, t3code, and orca - because without one the "the agent stopped" postcondition cannot be proven.
+  zellij, cmux, and paseo are refused rather than reported as successful blind.
+- On orca, an agent ends its own terminal, so `exit` types the exit command and waits for Orca to report the terminal exited; [`orca-backend.md`](orca-backend.md#exit-and-relaunch) owns the Orca details, including the one case where it closes the terminal.
 - On t3code, `exit` refuses before anything is sent: a T3 thread has no composer for a typed exit command, and T3's `/mcp` tools offer no session stop.
-- `relaunch` additionally requires a backend that can host a replacement agent - tmux, herdr, and rex.
+- `relaunch` additionally requires a backend that can host a replacement agent - tmux, herdr, rex, and orca.
   t3code is refused before anything is stopped: a T3 thread keeps its conversation, so a new turn or a provider change on it continues the same agent rather than launching a fresh one.
 - An ambiguous or unreadable endpoint state refuses.
   Only a positively classified state acts; a Rex `unreadable` acts only once the absence proof above settles it.
 - `exit`'s composer-empty check, above, is itself a fail-closed boundary that `relaunch` inherits by stopping the old agent through `exit`.
-- `fm-spawn --relaunch` independently refuses unless the endpoint is positively agent-free - either a `dead` endpoint that survives, or a Herdr or Rex endpoint proven gone by the absence proof above - so a replacement can never join a live agent.
+- `fm-spawn --relaunch` independently refuses unless the endpoint is positively agent-free - either a `dead` endpoint that survives, or a Herdr, Rex, or Orca endpoint proven gone by the absence proof above - so a replacement can never join a live agent.
   An `alive`, `ambiguous`, or `unreadable` verdict all refuse (a Rex `unreadable` after the absence proof cannot settle it), and so does any endpoint whose absence is not provable, which on tmux is every `missing`; absence is claimed only from positive evidence of it.
   It also requires the shell to be in the recorded worktree: every backend but Orca (which owns its own task worktree with no current-path probe) gets one explicit `cd` to the recorded path, then a pre-launch path read that refuses before any harness starts unless it confirms the endpoint is sitting in the recorded copy.
 
@@ -241,7 +242,7 @@ Backend capability comes from each adapter's real surface, not from a policy cho
 | herdr | yes | yes | yes | yes | yes | yes |
 | zellij | yes | yes | yes | yes | no | no |
 | cmux | yes | yes | yes | yes | no | no |
-| orca | yes | yes | yes | yes | no | no |
+| orca | yes | yes | yes | yes | yes | yes |
 | paseo | yes | yes | yes | yes | no | no |
 | rex | yes | yes | yes | yes | yes | yes |
 | t3code | yes | yes | yes | no | yes | no |

@@ -1719,6 +1719,9 @@ spawn_remote_secondmate() {
 
 BACKEND=
 ORCA_ABORT_CLEANUP=0
+# 1 while a relaunch's fresh Orca terminal is unpublished: an abort closes that
+# terminal only, never the task's worktree.
+ORCA_RELAUNCH_ABORT_CLEANUP=0
 ORCA_WORKTREE_ID=
 ORCA_TERMINAL=
 T3CODE_ABORT_CLEANUP=0
@@ -1849,6 +1852,10 @@ spawn_abort_cleanup() {
   if [ "$HERDR_PRESENTATION_ORDER_LOCK_HELD" = 1 ]; then
     HERDR_PRESENTATION_ORDER_LOCK_HELD=0
     fm_lock_release "$HERDR_PRESENTATION_ORDER_LOCK" || true
+  fi
+  if [ "$ORCA_RELAUNCH_ABORT_CLEANUP" = 1 ]; then
+    ORCA_RELAUNCH_ABORT_CLEANUP=0
+    fm_backend_kill orca "$ORCA_TERMINAL" 2>/dev/null && SPAWN_ENDPOINT_CLOSED=1 || true
   fi
   if [ "$ORCA_ABORT_CLEANUP" = 1 ]; then
     ORCA_ABORT_CLEANUP=0
@@ -2532,8 +2539,8 @@ if [ "$RELAUNCH" -eq 1 ]; then
   # endpoint was DESTROYED" with "the endpoint is UNREACHABLE from here right
   # now", and an unreachable endpoint can still hold the live agent this
   # relaunch would duplicate. So absence is PROVEN before it may rebind, never
-  # inferred from a failed read - and only HERDR, REX, and tmux after a reboot
-  # can prove it:
+  # inferred from a failed read - and only HERDR, REX, ORCA, and tmux after a
+  # reboot can prove it:
   #   herdr - the recorded session's server is started, and the recorded pane is
   #           RE-READ through that session's own socket. `dead` means the pane
   #           survived the restart and is adopted after all; `alive` means the
@@ -2545,6 +2552,10 @@ if [ "$RELAUNCH" -eq 1 ]; then
   #           `unreadable` is rechecked too, because a stopped Rex server
   #           reads as unreachable to a read that never starts it
   #           (fm_control_absence_recheck_applies owns that rule).
+  #   orca  - Orca reports the recorded terminal exited, or refuses its handle as
+  #           stale while listing the recorded worktree with no live terminal.
+  #           An Orca agent ends its terminal, so an Orca relaunch always
+  #           rebinds to a fresh terminal in that worktree.
   #   tmux  - REFUSES unless the host rebooted after the recorded window was
   #           created (its recorded host_boot_id differs from this boot's), which ends every tmux server
   #           on every socket. Otherwise a task record carries no socket
@@ -2640,6 +2651,13 @@ if [ "$RELAUNCH" -eq 1 ]; then
     FM_REX_TASK_WINDOW_ID=$(fm_meta_get "$RELAUNCH_META" rex_window_id)
     FM_REX_TASK_BLOCK_ID=$(fm_meta_get "$RELAUNCH_META" rex_block_id)
     FM_REX_TASK_SERVER=$(fm_meta_get "$RELAUNCH_META" rex_server)
+  fi
+  if [ "$BACKEND" = orca ]; then
+    ORCA_WORKTREE_ID=$(fm_meta_get "$RELAUNCH_META" orca_worktree_id)
+    fm_backend_orca_worktree_id_valid "$ORCA_WORKTREE_ID" || {
+      echo "error: task $ID records no valid orca_worktree_id, so a fresh Orca terminal cannot be opened in its worktree; refusing to relaunch" >&2
+      exit 1
+    }
   fi
   # With no explicit harness, a relaunch reuses the harness already recorded
   # for this task. It must NOT fall through to the fresh-spawn config
@@ -5166,6 +5184,18 @@ EOF
     T=$(fm_backend_rex_target "$FM_REX_TASK_SESSION_ID" "$FM_REX_TASK_BLOCK_ID")
     SES=${T%%:*}
     WT_TARGET=$T
+  elif [ "$BACKEND" = orca ]; then
+    # Orca reaches here only on a PROVEN-gone terminal: Orca reports it exited
+    # (its agent ended it), or an Orca restart refused its handle and Orca lists
+    # no live terminal in the recorded worktree (fm_control_endpoint_absence_verdict
+    # owns that argument). Open ONE fresh terminal in that worktree; the record
+    # published below rebinds terminal= to it.
+    ORCA_TERMINAL=$(fm_backend_orca_terminal_create "$ORCA_WORKTREE_ID" "$W") || exit 1
+    ORCA_RELAUNCH_ABORT_CLEANUP=1
+    T=$ORCA_TERMINAL
+    WT_TARGET=$T
+    # The same pre-key guard as a first spawn; a refusal closes only this terminal.
+    fm_backend_orca_fresh_shell "$T" "$ORCA_WORKTREE_ID" || exit 1
   elif [ "$BACKEND" = tmux ]; then
     # tmux reaches here only when the host rebooted after the recorded window
     # was created, which ends every tmux server on every socket
@@ -7640,7 +7670,7 @@ if [ "$SPAWN_TASK_SET_LOCK_HELD" = 1 ]; then
   fm_lock_release "$SPAWN_TASK_SET_LOCK"
 fi
 "$SCRIPT_DIR/fm-home-summary-refresh.sh" --best-effort || true
-[ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0
+[ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0 && ORCA_RELAUNCH_ABORT_CLEANUP=0
 
 # A resumed session already holds its brief, so its first prompt is the resume
 # prompt instead; every other launch reads the brief.

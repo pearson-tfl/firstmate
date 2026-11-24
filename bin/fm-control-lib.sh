@@ -382,14 +382,17 @@ fm_control_backend_supports_key() {  # <backend> <key>
 }
 
 # Whether <backend> has a recovery-grade agent-state classifier. tmux, herdr,
-# rex, and t3code implement fm_backend_agent_state; zellij, orca, cmux, and paseo report
-# `unverified`, and tern's `tern process` classifier answers for display but is
-# not promoted to this list, so no reading of theirs can prove an agent stopped.
+# rex, t3code, and orca implement fm_backend_agent_state; zellij, cmux, and paseo
+# report `unverified`, and tern's `tern process` classifier answers for display
+# but is not promoted to this list, so no reading of theirs can prove an agent
+# stopped. Orca never reads `dead`: its agent ends its terminal (route A in
+# bin/backends/orca.sh), so a stopped Orca agent reads `missing` and goes
+# through the absence proof below.
 # The control plane refuses a stop-proving verb there instead of reporting an
 # unprovable transition as success.
 fm_control_backend_state_verified() {  # <backend>
   case "${1-}" in
-    tmux|herdr|rex|t3code) return 0 ;;
+    tmux|herdr|rex|t3code|orca) return 0 ;;
   esac
   return 1
 }
@@ -413,11 +416,13 @@ fm_control_backend_exit_supported() {  # <backend>
 # nightlies refused a driver change outright), never the fresh agent a
 # relaunch promises. So t3code has no replacement to launch and a relaunch
 # is refused before anything is stopped (docs/t3code-backend.md "Active
-# limits"). zellij, orca, cmux, and paseo never reach this table: they fail
-# fm_control_backend_state_verified first.
+# limits"). zellij, cmux, and paseo never reach this table: they fail
+# fm_control_backend_state_verified first. An Orca relaunch always creates a
+# fresh terminal in the recorded worktree, because the old one ended with its
+# agent.
 fm_control_backend_relaunch_supported() {  # <backend>
   case "${1-}" in
-    tmux|herdr|rex) return 0 ;;
+    tmux|herdr|rex|orca) return 0 ;;
   esac
   return 1
 }
@@ -492,6 +497,12 @@ fm_control_absence_recheck_applies() {  # <backend> <raw-state>
 #     could make a live window look older than the boot. A record with no
 #     host_boot_id, or a host with no boot id, stays `unproven`, and both verbs
 #     refuse.
+#   orca CAN prove it. Orca reporting the recorded terminal exited is its own
+#     answer about that terminal. A stale handle alone is not, because an Orca
+#     restart refuses every old handle while the desktop app re-attaches its
+#     terminals under new ones; it proves absence only when this Orca knows the
+#     recorded worktree (orca_worktree_id) and lists no live terminal in it
+#     (bin/backends/orca.sh fm_backend_orca_endpoint_absence_recheck).
 #
 # Both control-plane callers share this one implementation so the proof cannot
 # drift into two answers for the same endpoint.
@@ -556,6 +567,13 @@ fm_control_endpoint_absence_verdict() {  # <backend> <target> [meta]
         alive) printf 'alive\t' ;;
         missing) printf 'gone\t' ;;
         *) printf 'unproven\tthe T3 server could not be reached to re-read thread %s' "$target" ;;
+      esac
+      ;;
+    orca)
+      case "$(fm_backend_orca_endpoint_absence_recheck "$target" "$(fm_meta_get "$meta" orca_worktree_id)")" in
+        gone) printf 'gone\t' ;;
+        alive) printf 'alive\t' ;;
+        *) printf 'unproven\tOrca neither reports terminal %s exited nor lists the recorded worktree free of live terminals, so the agent may still run there under another handle' "$target" ;;
       esac
       ;;
     *)

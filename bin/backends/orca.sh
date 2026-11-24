@@ -463,6 +463,7 @@ fm_backend_orca_terminal_status() {  # <terminal-id>
 #   pane             show JSON  -> "<worktree-id>\t<tab-id>:<leaf-id>"
 #   state <pane-key> list JSON  -> the newest terminal agent's state on that
 #                                  pane, or none when Orca lists no agent there
+#   live-terminals  terminal list JSON -> how many live terminals Orca lists
 fm_backend_orca_agent_json() {  # <mode> [pane-key]
   node -e '
 const fs = require("fs");
@@ -486,6 +487,11 @@ if (mode === "pane") {
   const ok = (v) => typeof v === "string" && v !== "" && !/[\t\n]/.test(v);
   if (!ok(t.worktreeId) || !ok(t.tabId) || !ok(t.leafId)) process.exit(1);
   process.stdout.write(t.worktreeId + "\t" + t.tabId + ":" + t.leafId);
+  process.exit(0);
+}
+if (mode === "live-terminals") {
+  if (!Array.isArray(r.terminals)) process.exit(1);
+  process.stdout.write(String(r.terminals.length));
   process.exit(0);
 }
 if (mode === "state") {
@@ -556,6 +562,46 @@ fm_backend_orca_agent_state() {  # <terminal-id>
     none) printf 'unverified' ;;
     *) printf 'alive' ;;
   esac
+}
+
+# fm_backend_orca_wait_exit: `orca terminal wait --for exit` on <terminal> for
+# up to <seconds>, then succeed only when a fresh read says the terminal
+# exited; a timeout, a stale handle, or any other answer fails.
+fm_backend_orca_wait_exit() {  # <terminal-id> <seconds>
+  local ms
+  ms=$(awk -v s="$2" 'BEGIN{printf "%d", s * 1000}')
+  fm_backend_orca_cli terminal wait --terminal "$1" --for exit --timeout-ms "$ms" --json >/dev/null 2>&1 || true
+  [ "$(fm_backend_orca_terminal_status "$1")" = exited ]
+}
+
+# fm_backend_orca_endpoint_absence_recheck: whether a task terminal whose probe
+# read missing is gone (bin/fm-control-lib.sh's fm_control_endpoint_absence_verdict
+# owns the contract). Orca reporting the terminal exited is its own answer
+# about that terminal. A stale handle is not: an Orca restart refuses every
+# old handle, while the desktop app re-attaches its terminals under new ones,
+# so the terminal is gone only when this Orca still knows the recorded worktree
+# and lists no live terminal in it. Prints gone, alive, or unproven.
+fm_backend_orca_endpoint_absence_recheck() {  # <terminal-id> <worktree-id>
+  local terminal=$1 worktree=${2:-} out
+  case "$(fm_backend_orca_agent_probe "$terminal")" in
+    missing) ;;
+    none|unreadable) printf 'unproven'; return 0 ;;
+    *) printf 'alive'; return 0 ;;
+  esac
+  case "$(fm_backend_orca_terminal_status "$terminal")" in
+    exited) printf 'gone'; return 0 ;;
+    stale) ;;
+    *) printf 'unproven'; return 0 ;;
+  esac
+  [ -n "$worktree" ] || { printf 'unproven'; return 0; }
+  if ! out=$(fm_backend_orca_cli worktree show --worktree "id:$worktree" --json 2>/dev/null) \
+    || ! printf '%s' "$out" | fm_backend_orca_json_get worktree-path >/dev/null 2>&1 \
+    || ! out=$(fm_backend_orca_cli terminal list --worktree "id:$worktree" --json 2>/dev/null) \
+    || [ "$(printf '%s' "$out" | fm_backend_orca_agent_json live-terminals 2>/dev/null)" != 0 ]; then
+    printf 'unproven'
+    return 0
+  fi
+  printf 'gone'
 }
 
 fm_backend_orca_json_text() {  # <json>
