@@ -722,7 +722,7 @@ test_spawn_writes_orca_metadata_and_launches_harness() {
   printf '1\n' > "$RESP/1.exit"
   printf '{"ok":true,"result":{"repo":{"id":"repo-spawn"}}}\n' > "$RESP/2.out"
   printf '{"ok":true,"result":{"worktree":{"id":"wt-spawn::/orca/wt-spawn","path":"%s"},"terminal":{"handle":"term-spawn"}}}\n' "$wt" > "$RESP/3.out"
-  # Two settled reads of a plain shell, which spawn requires before its first key.
+  # A matching prompt remains unproven shell ownership.
   printf '{"ok":true,"result":{"terminal":{"source":"screen","tail":["➜  %s git:(task)"]}}}\n' "${wt##*/}" | tee "$RESP/4.out" > "$RESP/5.out"
   out=$( HOME="$SPAWN_HOME" CLAUDE_CONFIG_DIR='' PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \

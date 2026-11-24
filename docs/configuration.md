@@ -564,7 +564,7 @@ For spawn-capable adapters, the runtime session-provider backend controls where 
 | `tmux` | Verified reference backend | [`docs/tmux-backend.md`](tmux-backend.md) |
 | `herdr` | Has its own required CI lane | [`docs/herdr-backend.md`](herdr-backend.md) |
 | `zellij` | Experimental; no dedicated real-backend CI lane | [`docs/zellij-backend.md`](zellij-backend.md) |
-| `orca` | Experimental; no dedicated real-backend CI lane | [`docs/orca-backend.md`](orca-backend.md) |
+| `orca` | Experimental; see current launch limits | [`docs/orca-backend.md`](orca-backend.md#shell-ownership) |
 | `cmux` | Experimental; no dedicated real-backend CI lane | [`docs/cmux-backend.md`](cmux-backend.md) |
 | `paseo` | Experimental; no dedicated real-backend CI lane | [`docs/paseo-backend.md`](paseo-backend.md) |
 | `rex` | Experimental; no dedicated real-backend CI lane | [`docs/rex-backend.md`](rex-backend.md) |

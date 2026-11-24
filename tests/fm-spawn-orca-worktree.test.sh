@@ -72,7 +72,7 @@ case "$1 $2" in
     exit 0
     ;;
   "terminal read")
-    # A just-started plain shell, which spawn requires before its first key.
+    # A shell-looking screen cannot prove ownership to the spawn guard.
     printf '{"ok":true,"result":{"terminal":{"handle":"term-1","status":"running","source":"screen","tail":["➜  %s git:(task)"]}}}\n' "$(cat "$DIR/worktree-name")"
     exit 0
     ;;
