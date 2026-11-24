@@ -417,19 +417,27 @@ ok - fm-teardown: an already-exited endpoint, and a server that is already gone,
 ok - fm_backend_orca_kill: a close its missing CLI never attempted reports the failure instead of a success
 ```
 
+The Orca arm's re-read was measured on 2026-11-23 against Orca 1.4.271 on macOS 27.0.1, on a scratch `orca serve` runtime ("Orca checked close and branch choice" below), and is pinned by:
+
+```text
+ok - fm_backend_orca_kill: closes, then succeeds on a re-read that reports exited
+ok - fm_backend_orca_kill: a terminal still running, a stale handle, or a silent re-read reports the close failed
+ok - fm-teardown.sh backend=orca: stops and reports when the terminal close does not take
+```
+
 An endpoint that is already legitimately gone returns 0 silently on every arm covered by this entry, so ordinary cleanup of an already-exited session is unchanged: real tmux returns 0 for a live window, for a re-close of that same gone window, and for a close into a session whose whole server has exited.
 The refusal is reached only through a close that could not do its job, and each arm reports only what it can prove:
 
 | Backend | already gone | a close that failed |
 | --- | --- | --- |
 | tmux | 0, silent | 1, resolved by re-reading the window's exact recorded identity; a read that itself could not run refuses rather than passing for absence |
-| orca | 0, silent | 1 when a missing CLI means no close was attempted; 0 for a close command that failed after the CLI accepted it |
+| orca | 0, silent: a re-close still reads `exited` | 1 unless a re-read after the close reports `exited`: a terminal still `running`, a stale handle, a read with no answer, or a missing CLI that never attempted the close |
 | zellij | 0, silent | 0, not yet distinguishable |
 | cmux | 0, silent | 0, not yet distinguishable |
 | tern | 0, silent | 1 when its inventory re-read cannot run, the block moved to another session, its tab no longer carries the task's scoped title, or it is still listed after the close; portable fixtures only (`tests/fm-backend-tern.test.sh`), contract in [tern-backend.md](../tern-backend.md) |
 | herdr | 0, silent | 0 from this arm; `bin/fm-teardown.sh` gates every Herdr record removal on `fm_backend_herdr_endpoint_confirmed_gone` instead |
 
-The three arms that still report 0 need a presence re-read taken after their own close, and the close-then-read timing that re-read depends on cannot be established without the real Zellij, Orca, and cmux binaries.
+The two arms that still report 0 need a presence re-read taken after their own close, and the close-then-read timing that re-read depends on cannot be established without the real Zellij and cmux binaries.
 Guessing it is what a refusal must never rest on: a gate that refused an already-exited session would break ordinary cleanup on every task, which is a worse failure than the stranded endpoint it would be trying to prevent.
 tmux's re-read is deliberately exact - `=session` plus a whole-line window-name match - because a prefix match would read a neighboring window as this window's survivor, which is the same exactness the cleanup identity boundary above already requires.
 It is also deliberately conservative about the read itself, sharing `fm_backend_tmux_window_inventory` with `fm_backend_tmux_agent_state` so both mean the same thing by an absent session: only a definitive missing-session, missing-server, or connect-error response proves the window gone.
@@ -444,7 +452,8 @@ It states what `--force` authorizes rather than what will have happened, because
 T3 Code uses the [native cleanup path](../t3code-backend.md#current-lifecycle-and-safety) instead.
 
 The Orca close refuses under `--force` too.
-The step immediately after it removes the Orca worktree through the same CLI whose absence is the only thing that arm ever reports, so a forced continue would die there having removed nothing while claiming the records were already gone.
+The step immediately after it removes the Orca worktree: with the CLI absent a forced continue would die there having removed nothing while claiming the records were already gone, and otherwise it would remove the worktree from under a terminal Orca has not reported exited.
+A stale handle therefore stops Orca cleanup even under `--force`; after an Orca restart, close the task's terminal in Orca and reconcile the task's records by hand.
 The two child close sites inside forced secondmate cleanup also keep refusing: that path is only ever reached under `--force`, so honoring force there would delete the refusal rather than override it, and would contradict the adjacent Herdr child gate that stops forced cleanup for the same hazard.
 
 The retained record is this run's, not a durable guarantee.
@@ -2599,6 +2608,27 @@ After Claude, Pi, or Oh My Pi exited and left the shell running, the listing dro
 An unknown handle answered `{"ok":false,"error":{"code":"terminal_handle_stale"}}`.
 `tests/fm-backend-orca.test.sh` and `tests/fm-spawn-orca-worktree.test.sh` pin the mapping, the pane match, and the launch file's exit.
 
+### Orca checked close and branch choice
+
+Verified on 2026-11-23 against Orca 1.4.271 on macOS 27.0.1, on a scratch `orca serve` runtime started with the real-Orca lane's safeguards, in a scratch git repository whose task terminals ran the lane's own plain shell.
+Each command below ran with `--json`; the table keeps the fields the adapter reads.
+
+| Command | Result |
+| --- | --- |
+| `orca terminal close --terminal <handle>` with `sleep 401` running | `rc=0`, `result.close.ptyKilled: true` |
+| `orca terminal read --terminal <handle> --limit 1` straight after that close, and again 3 s later | `rc=0`, `result.terminal.status: "exited"` both times |
+| `orca terminal show --terminal <handle>` after that close | `connected: false`, `exitCause.kind: "operator_close"` |
+| The same close sent again, then the same read | `rc=0`, `ptyKilled: true`; status still `exited` |
+| `orca terminal read --terminal <handle> --limit 1` on a live terminal | `result.terminal.status: "running"` |
+| `orca terminal close` and `read` on a handle the runtime never issued | `rc=1`, `ok: false`, `error.code: "terminal_handle_stale"` |
+| `orca worktree rm --worktree id:<id> --force`, no commits | `removed: true`; branch kept |
+| The same with `--delete-branch`, no commits | `removed: true`; branch deleted |
+| The same with `--delete-branch`, one unmerged commit | `removed: true`, `result.preservedBranch: {branchName, head}`; branch kept |
+| The same with `--delete-branch`, one commit fast-forward merged into `main` | `removed: true`; branch deleted |
+| The same with `--delete-branch`, one commit whose content `main` gained through a separate commit | `removed: true`; branch deleted |
+
+The same day the real-Orca lane below ran `fm-teardown.sh` on two scratch ship tasks against that Orca: one whose commit was merged into `main` lost its branch, and one forced over an unlanded commit kept it; both terminals read `exited` and both worktrees were gone.
+
 ### Orca whole-task proof
 
 Not yet proved.
@@ -2625,7 +2655,19 @@ The fake-Orca cases execute the real staged launch file under synthetic personal
 ### Real-Orca lane
 
 `tests/fm-backend-orca-live-e2e.test.sh` is the refresh command for this section on each Orca release: it drives the adapter against a disposable `orca serve` runtime it starts and stops itself, and its header owns the safeguards that keep it off the operator's live terminals.
-It is opt-in, with `FM_ORCA_LIVE_E2E=1`, and has not yet passed against a real Orca, so the readiness and building-block results above stay the only real-Orca records here.
+It is opt-in, with `FM_ORCA_LIVE_E2E=1`.
+It passed on 2026-11-23 against Orca 1.4.271 on macOS 27.0.1, run over ssh with `/usr/local/bin` on the PATH:
+
+```sh
+FM_ORCA_LIVE_E2E=1 bash bin/fm-test-run.sh tests/fm-backend-orca-live-e2e.test.sh
+```
+
+```text
+ok - orca live lane: Orca 1.4.271 runtime 28e86e76-e848-4fcf-87b9-012881887aab passes register, worktree, own-shell send, Enter, Ctrl-C, checked close, release, and teardown's branch choice
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=34978
+```
+
+The same lane run against the previous `bin/fm-teardown.sh`, which deleted the task branch with `git branch -D` whatever the landed-work test found, failed with `not ok - Orca 1.4.271: forced teardown deleted the unlanded branch fm-orca-td-forced`.
 
 On 2026-11-23 an ungated scratch-runtime probe on macOS with Orca 1.4.271, run over ssh, showed why the safeguards exist.
 The Orca terminal started the operator's own login shell, which inherited `SSH_CONNECTION` from the runtime and ran a login rule that attached it to the operator's live default tmux server, so keys sent to the scratch terminal reached a live agent session.

@@ -1172,9 +1172,9 @@ fm_backend_send_text_submit() {  # <backend> <target> <text> <retries> <enter-sl
 # resolves a failed close against the window's exact recorded identity, Rex
 # proves the closed block gone through a structured not-found, tern
 # re-reads its inventory and refuses while the block is still present or the
-# inventory cannot be read, Orca reports a close its missing CLI never
-# attempted, and the remaining arms still report 0 for a close command that
-# failed after being accepted.
+# inventory cannot be read, Orca re-reads the terminal and refuses unless Orca
+# reports it exited, and the remaining arms still report 0 for a close command
+# that failed after being accepted.
 # docs/verification/runtime-backends.md "Endpoint close" is the per-backend
 # record.
 fm_backend_kill() {  # <backend> <target>
@@ -1197,7 +1197,7 @@ fm_backend_kill() {  # <backend> <target>
   esac
 }
 
-fm_backend_remove_worktree() {  # <backend> <worktree-id>
+fm_backend_remove_worktree() {  # <backend> <worktree-id> [delete-branch]
   local backend=$1
   shift
   fm_backend_source "$backend" || return 1

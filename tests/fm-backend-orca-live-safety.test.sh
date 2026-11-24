@@ -34,7 +34,7 @@ S="$(cd "$(dirname "$0")/.." && pwd)/state"
 { printf 'orca'; printf ' %s' "$@"; printf '\n'; } >> "$S/log"
 mode=$(cat "$S/mode")
 cmd="${1:-} ${2:-}"
-path='' repo='' name='' worktree='' text='' enter=0 interrupt=0 source=stream
+path='' repo='' name='' worktree='' text='' enter=0 interrupt=0 source=stream delete_branch=0
 shift 2 2>/dev/null || shift $#
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -46,6 +46,7 @@ while [ $# -gt 0 ]; do
     --enter) enter=1 ;;
     --interrupt) interrupt=1 ;;
     --screen) source=screen ;;
+    --delete-branch) delete_branch=1 ;;
   esac
   shift
 done
@@ -89,9 +90,12 @@ case "$cmd" in
   "worktree show") printf '{"ok":true,"result":{"worktree":{"id":"%s","path":"%s"}}}\n' "$worktree" "${worktree#*::}" ;;
   "worktree rm")
     git -C "$(cat "$S/repo-path")" worktree remove --force "${worktree#*::}" >/dev/null 2>&1
+    # Like Orca's safe deletion: only a branch already merged goes.
+    [ "$delete_branch" = 0 ] || git -C "$(cat "$S/repo-path")" branch -d "${worktree##*/}" >/dev/null 2>&1
     printf '{"ok":true,"result":{"removed":true}}\n'
     ;;
   "terminal create")
+    rm -f "$S/closed"
     case "$mode" in
       own | own-orca) prompt > "$S/screen" ;;
       foreign) printf '● Kneading…\n❯ \n' > "$S/screen" ;;

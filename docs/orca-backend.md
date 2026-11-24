@@ -14,7 +14,7 @@ Each behavioral claim below ends with one of these marks.
 - **(code)** - read from Firstmate's own scripts, which own the exact behavior; not exercised on real Orca.
 - **(reported)** - recorded by an earlier Orca evaluation and not re-checked.
 
-No real agent has yet run a whole Firstmate task on Orca: `fm-spawn.sh`, `fm-send.sh`, and `fm-teardown.sh` have not run end to end against real Orca.
+No real agent has yet run a whole Firstmate task on Orca: `fm-spawn.sh` and `fm-send.sh` have not run end to end against real Orca, and `fm-teardown.sh` has run there only on scratch ship tasks with no agent.
 The [whole-task proof](verification/runtime-backends.md#orca-whole-task-proof) section is where that proof is recorded once it runs.
 
 ## Setup
@@ -98,8 +98,13 @@ A ship still refuses dirty or unlanded work.
 Before release, cleanup resolves the recorded Orca worktree id and verifies its path matches the recorded worktree path (fake Orca).
 A missing, unreadable, or mismatched identity preserves metadata and stops rather than deleting anything (fake Orca).
 After those checks, Firstmate closes the exact terminal and releases the exact worktree with Orca's worktree command.
-Closing an Orca terminal ends the process running in it and Orca answers `ptyKilled: true` (real Orca), but Firstmate does not read that answer or re-read the terminal after the close (code).
-The release removes the worktree folder and keeps the task branch (real Orca).
+Closing an Orca terminal ends the process running in it, and a re-read then reports the terminal `exited` (real Orca).
+Firstmate re-reads the terminal after its close and, unless Orca reports it `exited`, stops cleanup with the metadata intact and names what it read: a terminal still running, a stale handle, or no answer (fake Orca).
+A stale handle is not treated as closed, because after an Orca restart the terminal may live on under a new handle.
+The release keeps the task branch unless asked to delete it (real Orca).
+Firstmate asks only when the landed-work test passed, so a scout, a `--force` discard, or a missing worktree keeps the branch (real Orca for a landed and a forced ship).
+Orca preserves a branch it cannot prove merged (real Orca); [checked close and branch choice](verification/runtime-backends.md#orca-checked-close-and-branch-choice) records the deletion cases exercised.
+Firstmate names a branch Orca kept that way (fake Orca).
 It never raw-deletes an Orca worktree.
 A close the CLI never attempted, because no Orca CLI was found, stops cleanup with the metadata intact even under `--force`: removing those records would leave nothing on disk naming a terminal that may still be live.
 Reinstall the CLI and rerun; [`verification/runtime-backends.md`](verification/runtime-backends.md) "Endpoint close" owns what this arm can and cannot prove about its own close.
@@ -119,7 +124,8 @@ Orca drops an agent from that listing when it ends, but `orca terminal show` kee
 A running terminal with no listed agent reads unverified, as before: a harness Orca does not hook, one that has not reported yet, and one that ended and left its shell look the same (code).
 
 Firstmate's Orca launch ends the terminal with the agent: the staged launch file exits the pane shell once the worker returns, while a refused launch keeps the shell (fake Orca).
-An ended terminal reads `exited`, and a handle Orca no longer knows answers `terminal_handle_stale`; both read as a gone endpoint (real Orca).
+An ended terminal reads `exited`, and a handle Orca no longer knows answers `terminal_handle_stale`; the agent-state classifier maps both to a gone endpoint (real Orca).
+That classification does not prove a safe close for cleanup; the cleanup rules above govern release.
 `orca terminal wait --for exit` reports the same end but not a trustworthy exit code (real Orca), so nothing here reads that code.
 The [agent-state verification](verification/runtime-backends.md#orca-agent-state) records the real Claude, Pi, and Oh My Pi checks.
 Waiting for input is unsupported for Pi on Orca; its busy, idle, and gone states are verified (real Orca).

@@ -175,7 +175,8 @@
 # require_orca_worktree_path_match instead.
 # Orca tasks use the same safety checks, then close the recorded terminal and
 # remove the recorded worktree through `orca worktree rm`; teardown never guesses
-# an Orca target from ambient CLI state.
+# an Orca target from ambient CLI state. The task branch is deleted, through
+# Orca's own safe deletion, only when the landed-work test passed.
 # A Herdr presentation journal never authorizes cleanup. Teardown still closes
 # only the exact task pane from ordinary endpoint metadata and never calls
 # `workspace close`. It retires the non-authoritative journal only when a
@@ -1297,6 +1298,9 @@ if [ -z "$BUSY_GEN" ]; then
 fi
 ORCA_WORKTREE_ID=$(fm_meta_get "$META" orca_worktree_id)
 ORCA_PATH_MATCH_VERIFIED=0
+# Set only when validate_worktree_teardown_safety ran its landed-work test in
+# full and it passed; the Orca release deletes the task branch only then.
+TEARDOWN_WORK_LANDED=0
 CLEANUP_RECOVERY=$TEARDOWN_CLEANUP_RECOVERY
 
 KIND=$TEARDOWN_META_KIND
@@ -2178,6 +2182,7 @@ validate_worktree_teardown_safety() {
       return 1
     fi
   fi
+  TEARDOWN_WORK_LANDED=1
 }
 
 # Fix 1 (see script header): does the active-or-most-recent no-mistakes run in
@@ -3417,9 +3422,10 @@ preflight_firstmate_home_herdr_children() {  # <home>
 # worktree is already returned by then and nothing after it needs the backend
 # that could not close.
 # It is 0 everywhere else. The Orca site refuses under --force too, because
-# the step immediately after it removes the Orca worktree through the same CLI
-# whose absence is the only thing that arm ever reports, so a forced continue
-# would die there having removed nothing while this message claimed otherwise.
+# the step immediately after it removes the Orca worktree: with the CLI absent
+# a forced continue would die there having removed nothing while this message
+# claimed otherwise, and otherwise it would remove the worktree from under a
+# terminal Orca has not reported exited.
 # The T3 site refuses under --force because stop and archive must succeed before
 # its worktree or home can be released (see the native cleanup site below).
 # The two forced secondmate child sites refuse because that path is only ever
@@ -3866,13 +3872,10 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
     require_orca_worktree_path_match_if_present "$ORCA_WORKTREE_ID" "$WT" || exit 1
     ORCA_PATH_MATCH_VERIFIED=1
   fi
+  # The task branch goes only through Orca's own safe deletion, and only after
+  # the landed-work test above passed; --force, a scout, or a missing worktree
+  # keeps it.
   if [ -d "$WT" ]; then
-    branch=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
-    if [ "$branch" != "HEAD" ]; then
-      if git -C "$WT" checkout --detach -q 2>/dev/null; then
-        git -C "$WT" branch -D "$branch" >/dev/null 2>&1 || true
-      fi
-    fi
     rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" \
       "$WT/.opencode/plugins/fm-busy-state.js" \
       "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend"
@@ -3882,7 +3885,11 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
     fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" \
       || { endpoint_close_refusal "$ID" "$BACKEND" "$T" 0; exit 1; }
   fi
-  fm_backend_remove_worktree "$BACKEND" "$ORCA_WORKTREE_ID"
+  if [ "$TEARDOWN_WORK_LANDED" = 1 ]; then
+    fm_backend_remove_worktree "$BACKEND" "$ORCA_WORKTREE_ID" delete-branch
+  else
+    fm_backend_remove_worktree "$BACKEND" "$ORCA_WORKTREE_ID"
+  fi
 elif [ "$KIND" != secondmate ] && ! teardown_owns_worktree; then
   :
 elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then

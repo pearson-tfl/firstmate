@@ -82,7 +82,7 @@ A terminal's `cwd` field in `terminal ls` is creation-time-frozen and never foll
 Spawn-time worktree discovery therefore sends begin and end markers around `pwd`, captures the marked block, and joins wrapped path lines, exactly like cmux and zellij.
 
 Cleanup closes only the task's tab with `terminal kill`; sibling task tabs stay alive.
-It is best-effort like every backend's kill, so an already-gone target stays quiet.
+Its kill is best-effort, so an already-gone target stays quiet; other backends' close guarantees are recorded in [Endpoint close](verification/runtime-backends.md#endpoint-close).
 When the closed tab was the last one in a per-project shared workspace for one of the home's own clones under `projects/`, cleanup archives that workspace, provided it carries Firstmate's own title, is not Firstmate's own workspace, and no Paseo agent works in its folder, because archiving a workspace also archives the agents it owns.
 Archiving leaves the project in the sidebar, so cleanup then deletes that clone's project when no other workspace uses it; workspaces and projects outside the home's clones are never touched.
 Spawning and this cleanup share one home-wide lock (`state/.paseo-workspace.lock`), so a new task's tab can never land in a workspace between its empty check and its archive; a spawn that cannot get the lock refuses, and cleanup that cannot get it skips.
