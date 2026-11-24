@@ -1,0 +1,17 @@
+Real Orca 1.4.272 runtime b4a6ef35-0b0a-4e86-9efb-a19cf49e4ea8; isolated terminal term_3e768d3a-26f5-484a-9289-b77e9b9b9b95
+SCENARIO: fresh nonce-prompt shell is refused without ownership evidence
+fm-orca-live-4d238176d5af893b$error: refusing to send to Orca terminal term_3e768d3a-26f5-484a-9289-b77e9b9b9b95: shell ownership cannot be established from its screen (verdict: foreign; last row: 'fm-orca-live-4d238176d5af893b$'); nothing was typed
+REFUSED; guard invoked without any send operation
+Attached real tmux client PID: 2773443
+SCENARIO: real tmux client with visible status is refused
+fm-orca-live-4d238176d5af893b$
+[proof] 0:tmux*                                                                              "dell-v100" 00:30 24-Nov-26error: refusing to send to Orca terminal term_3e768d3a-26f5-484a-9289-b77e9b9b9b95: shell ownership cannot be established from its screen (verdict: tmux; last row: '[proof] 0:tmux*                                                                 '); nothing was typed
+REFUSED; guard invoked without any send operation
+SCENARIO: real tmux client with hidden status and matching nonce prompt is refused
+fm-orca-live-4d238176d5af893b$error: refusing to send to Orca terminal term_3e768d3a-26f5-484a-9289-b77e9b9b9b95: shell ownership cannot be established from its screen (verdict: foreign; last row: 'fm-orca-live-4d238176d5af893b$'); nothing was typed
+REFUSED; guard invoked without any send operation
+SCENARIO: foreign program screen is refused
+╭ foreign composer ╮
+❯error: refusing to send to Orca terminal term_3e768d3a-26f5-484a-9289-b77e9b9b9b95: shell ownership cannot be established from its screen (verdict: foreign; last row: '❯'); nothing was typed
+REFUSED; guard invoked without any send operation
+Real terminal closed and disposable worktree removed

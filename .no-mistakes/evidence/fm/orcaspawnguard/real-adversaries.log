@@ -1,0 +1,41 @@
+
+FOREIGN PROGRAM SCREEN
+● Kneading…
+❯error: refusing to send to Orca terminal term_86aa0141-9e68-4c41-b7e5-df946516f5c3: its screen is not the plain shell spawn just created (verdict: foreign; last row: '❯'); nothing was typed
+FOREIGN PROGRAM REFUSED
+
+VISIBLE TMUX SCREEN
+fm-orca-live-00ac087ec56ba661$
+[fm-lab-gu0:tmux*                                                                            "dell-v100" 00:25 24-Nov-26error: refusing to send to Orca terminal term_86aa0141-9e68-4c41-b7e5-df946516f5c3: its screen is not the plain shell spawn just created (verdict: foreign; last row: '[fm-lab-gu0:tmux*                                                               '); nothing was typed
+VISIBLE TMUX REFUSED
+
+TMUX PICKER SCREEN
+(0) - fm-lab-guard: 1 windows (attached)
+(1) └─> - 0: [tmux]*
+(2)     └─> 0: sh*
+┌ 0 (sort: index) ─────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ fm-orca-live-00ac087ec56ba661$                                                                                       │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                    ┌─────────────┐                                                   │
+│                                                    │ 0:dell-v100 │                                                   │
+│                                                    └─────────────┘                                                   │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+[fm-lab-gu0:[tmux]*                                                                          "dell-v100" 00:25 24-Nov-26error: refusing to send to Orca terminal term_86aa0141-9e68-4c41-b7e5-df946516f5c3: its screen is not the plain shell spawn just created (verdict: tmux; last row: '[fm-lab-gu0:[tmux]*                                                             '); nothing was typed
+TMUX PICKER REFUSED
+
+HIDDEN TMUX SCREEN
+fm-orca-live-00ac087ec56ba661$UNSAFE: production guard accepted an attached tmux client with status hidden
+not ok - guard accepted hidden tmux client

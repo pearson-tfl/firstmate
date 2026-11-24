@@ -1,0 +1,31 @@
+orca-ide terminal create
+
+Usage: orca-ide terminal create [--worktree <selector>] [--title <name>] [--command <text>] [--shell <shell>] [--focus] [--keep-open] [--json]
+
+Create a terminal session in the current worktree
+
+Options:
+  --help                 Show this help message
+  --json                 Emit machine-readable JSON
+  --pairing-code <code>  Run against a remote Orca server using an orca://pair?... code
+  --environment <selector> Run against a saved paired Orca server (id or name), or `local` for this machine's own Orca over ORCA_ENVIRONMENT/ORCA_PAIRING_CODE; terminal handles belong to the server that issued them
+  --worktree <selector>  Worktree selector such as identity:<identity>, id:<repo-id>::<path>, folder:<id> (where the command takes folder workspaces), name:<displayName>, branch:<branch>, issue:<number>, path:<path>, or active/current
+  --command <text>       Command to run in the terminal on startup
+  --shell <shell>        Windows shell the terminal itself runs as
+  --title <text>         Custom title for the terminal tab (omit to reset)
+  --focus                Reveal the created terminal session in Orca
+  --keep-open            Stay open after the worker finishes
+
+Notes:
+  Creates a visible terminal tab without switching focus when possible; falls back to a background handle if the UI cannot adopt it. Pass --focus to switch to it.
+  This creates a terminal and runs --command in it. To start an agent, use `orca-ide agent launch` (or `orca-ide worktree create --agent` for a new checkout), which follows your Chat | CLI choice.
+  Run from an orchestration worker, the terminal closes when that worker closes; pass --keep-open to keep it.
+  --shell picks the shell the terminal IS on a Windows host (cmd.exe, powershell.exe, pwsh.exe, wsl.exe, bash.exe, git-bash); --command is typed into whatever shell the host started, so `--command cmd.exe` leaves a cmd running INSIDE the default shell and exiting it drops back to that shell.
+  A host that cannot apply --shell refuses the create rather than quietly spawning its default shell: macOS and Linux execution hosts spawn the login shell, terminals routed over SSH resolve their shell on the SSH host, a --shell that contradicts the project execution runtime (WSL vs Windows host) is refused, and an Orca host older than --shell is refused by the CLI.
+
+Examples:
+  $ orca-ide terminal create --json
+  $ orca-ide terminal create --worktree active --command "pnpm dev" --json
+  $ orca-ide terminal create --worktree path:/projects/myapp --title "RUNNER" --command "npm test"
+  $ orca-ide terminal create --worktree path:/projects/myapp --command "pnpm dev" --focus
+  $ orca-ide terminal create --worktree path:C:/src/app --shell cmd.exe --json

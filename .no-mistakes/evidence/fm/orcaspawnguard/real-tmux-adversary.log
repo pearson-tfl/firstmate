@@ -1,0 +1,9 @@
+
+VISIBLE TMUX SCREEN
+fm-orca-live-66b7fe6cc7fa801c$
+[fm-lab-gu0:tmux*                                                                            "dell-v100" 00:24 24-Nov-26error: refusing to send to Orca terminal term_5a6a7751-153e-4cb6-b594-df711c293791: its screen is not the plain shell spawn just created (verdict: foreign; last row: '[fm-lab-gu0:tmux*                                                               '); nothing was typed
+VISIBLE TMUX REFUSED
+
+HIDDEN TMUX SCREEN
+fm-orca-live-66b7fe6cc7fa801c$UNSAFE: production guard accepted an attached tmux client with status hidden
+not ok - guard accepted hidden tmux client
