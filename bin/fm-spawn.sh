@@ -540,6 +540,8 @@
 #   in this launching home, then falls back to its home-wide pin when absent.
 #   Pins are never inherited; remote per-mate overrides refuse locally.
 #   T3 Code refuses a pin because its provider instance owns the account.
+#   Orca refuses Claude pins, including cswap lane and rules selections, before
+#   provisioning because its managed terminal profile can override the account.
 #   bin/fm-worker-account-lib.sh owns parsing, the check, and the shed list.
 # Account rules (config/account-rules): when present, a Claude launch chooses
 #   its cswap account through the same seam instead of config/claude-account,
@@ -3648,6 +3650,13 @@ WORKER_ACCOUNT_DECLARED=${WORKER_ACCOUNT%%$'\t'*}
 WORKER_ACCOUNT_ROOT=${WORKER_ACCOUNT#*$'\t'}
 WORKER_ACCOUNT_PROVIDER=${WORKER_ACCOUNT_ROOT#*$'\t'}
 WORKER_ACCOUNT_ROOT=${WORKER_ACCOUNT_ROOT%%$'\t'*}
+# Orca supplies its own Claude profile and shell routing. Until the account at
+# that launch boundary is verified, a successful caller-side login check cannot
+# guarantee the worker's account. Refuse before creating any task resources.
+if [ "$BACKEND" = orca ] && [ "$HARNESS" = claude ] && [ -n "$WORKER_ACCOUNT" ]; then
+  echo "error: backend=orca cannot guarantee the Claude worker account pin ($WORKER_ACCOUNT_DECLARED) because Orca manages the terminal's Claude profile; refusing to launch on a potentially different account; choose another backend to honor the pin" >&2
+  exit 1
+fi
 # T3 starts the agent itself, at full access, with its provider instance's own
 # account and environment, so a launch setting only a Firstmate-built command
 # line can apply refuses here instead of being silently widened or dropped.

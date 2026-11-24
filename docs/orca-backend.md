@@ -166,6 +166,7 @@ A refused relaunch closes the fresh terminal it opened and never the worktree (c
   Pointing a home at another machine's runtime with `--environment` or `ORCA_ENVIRONMENT` is unsupported.
 - The Orca runtime must be running and report ready.
 - Secondmate spawns are unsupported (code).
+- Claude launches with a worker account pin, a cswap lane account, or an account-rules selection are refused before provisioning because Firstmate cannot guarantee that Orca's managed terminal profile honors the selected account (code).
 - An interrupt is reported delivered with its cancellation unconfirmed unless the harness keeps its own confirmation record (muse confirms from its session log), and an interrupt for a harness that must read its screen between or after presses (Devin and Command Code) is refused because Orca's screen read has never been verified with a real Devin or Command Code on it (code); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
 - `exit` and `relaunch` act only on an agent Orca lists; a running terminal with no listed agent reads unverified and refuses (code).
 - `exit` and `relaunch` have not yet run against a real agent on real Orca.
