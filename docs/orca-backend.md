@@ -55,9 +55,9 @@ Orca also sets `CLAUDE_CONFIG_DIR` in its terminals to its own managed Claude fo
 To scope worker credentials, configure an [Orca environment source](configuration.md#orca-environment-source-configlaunch-env-vault-configlaunch-env-tmux-session): a vault, with no tmux, or a tmux session.
 
 That login shell runs your startup files before Firstmate types anything, so a startup rule can turn a new terminal into another program: an ssh-keyed `exec tmux attach` once made a new Orca terminal a client of a live tmux session, and every key sent to it reached that session's pane (real Orca).
-Before its first key, spawn reads the new terminal's drawn screen and refuses, typing nothing, unless the same screen reads twice as a plain shell: a recognised bare prompt naming the new worktree directory, no tmux status or session-picker row, and no box-drawn program chrome (fake Orca).
+Before its first key, spawn reads the new terminal's drawn screen and refuses, typing nothing: even a matching directory prompt can belong to a hidden-status tmux client, so screen text alone cannot establish shell ownership.
 A refused spawn closes that terminal and releases the worktree it just created, like any other failed Orca spawn (code).
-`bin/backends/orca.sh` (`fm_backend_orca_fresh_shell`) owns those screen shapes and the wait.
+`bin/backends/orca.sh` (`fm_backend_orca_fresh_shell`) owns that refusal and the screen-read wait.
 The real-Orca test lane's nonce prompt cannot be used here, because spawn chooses neither the shell nor the prompt Orca starts.
 Orca 1.4.271's `orca terminal create` has no option to set or clear a terminal's environment, so spawn cannot open a terminal without inherited `SSH_*` or `TMUX` (Orca help): `--command` is typed into the login shell after its startup files ran, and `--shell` applies only on Windows hosts.
 Keep those variables out of the environment the Orca runtime starts from, since every terminal inherits it.
@@ -144,7 +144,7 @@ Waiting for input is unsupported for Pi on Orca; its busy, idle, and gone states
 - Orca's agent state is not among the backends whose state `fm-control.sh` trusts to prove an agent stopped, so `exit` and `relaunch` refuse (code).
 - Cortex and Command Code are refused because Orca supplies no pane identity for their composers (code).
 - Firstmate checks readiness, not Orca's version (code).
-- Spawn's pre-key check requires a prompt naming the new worktree directory; prompts that omit that directory, including status-hidden tmux panes in another directory, are refused (code).
+- Production Orca spawn is blocked until independent shell-ownership evidence is available; matching prompts are refused as well as visible tmux and foreign screens (code).
 - Only the verified terminal-handle and worktree result fields are accepted; speculative response shapes are rejected (fake Orca).
 - Orca's linked worktree has the shape the spawn-time Claude workspace-trust check in `bin/fm-claude-trust.sh` requires (real Orca), but that check has not run against an Orca worktree.
 - No real agent has run a whole task on Orca.

@@ -27,6 +27,9 @@ GUARD="$ROOT/tests/fm-backend-orca-live-e2e.test.sh"
 # login shell's prompt, spawn-tmux the tmux client a login profile's
 # `exec tmux attach` leaves (a pane and its status row), and spawn-picker the
 # session picker `choose-tree` opens; their sends are only logged.
+# spawn-hidden-tmux deliberately has the identical screen as spawn-shell:
+# the ownership contract requires refusing both, since a screen-only guard
+# cannot distinguish them. This rejects accepting a familiar prompt twice.
 make_fake() {
   local dir=$1 mode=$2
   mkdir -p "$dir/bin" "$dir/state"
@@ -100,8 +103,8 @@ case "$cmd" in
     case "$mode" in
       own | own-orca) prompt > "$S/screen" ;;
       foreign | spawn-foreign) printf '● Kneading…\n❯ \n' > "$S/screen" ;;
-      login | spawn-hidden-tmux) printf 'bash-3.2$ \n' > "$S/screen" ;;
-      spawn-shell) printf '➜  %s git:(%s)\n' "${worktree##*/}" "${worktree##*/}" > "$S/screen" ;;
+      login) printf 'bash-3.2$ \n' > "$S/screen" ;;
+      spawn-shell | spawn-hidden-tmux) printf '➜  %s git:(%s)\n' "${worktree##*/}" "${worktree##*/}" > "$S/screen" ;;
       spawn-tmux) printf 'johnp@mac ~ %% \n 1:andrew-assistant \n' > "$S/screen" ;;
       spawn-picker) printf '(0) + andrew-new-website: 1 windows\n(1) + firstmate: 29 windows\n' > "$S/screen" ;;
     esac
@@ -231,7 +234,7 @@ spawn_case() {
   RC=$?
 }
 
-for mode in spawn-tmux spawn-picker spawn-foreign spawn-hidden-tmux; do
+for mode in spawn-tmux spawn-picker spawn-foreign spawn-hidden-tmux spawn-shell; do
   spawn_case "$mode" "orca-guard-${mode#spawn-}"
   assert_not_equals 0 "$RC" "spawn into a $mode terminal must fail"$'\n'"$OUT"
   assert_contains "$OUT" "refusing to send to Orca terminal term_fake" "a $mode refusal must name the terminal"
@@ -245,10 +248,5 @@ for mode in spawn-tmux spawn-picker spawn-foreign spawn-hidden-tmux; do
   assert_grep 'terminal close' "$D/state/log" "a refused $mode spawn must close the terminal it created"
   assert_present "$D/fm-home/data/orca-guard-${mode#spawn-}/brief.md" "a refused $mode spawn must keep the task record"
 done
-pass "orca spawn: a new terminal showing a tmux client or its session picker gets no key, and the spawn refuses"
+pass "orca spawn: tmux, foreign screens, and unproven matching prompts receive no keys"
 
-spawn_case spawn-shell orca-guard-shell
-expect_code 0 "$RC" "spawn into a plain login shell must succeed"$'\n'"$OUT"
-assert_contains "$OUT" "spawned orca-guard-shell" "a plain-shell spawn must report success"
-assert_grep 'orca terminal send --terminal term_fake --text cd -- ' "$D/state/log" "a plain-shell spawn must type its cd into the terminal"
-pass "orca spawn: a new terminal showing only a login shell's prompt passes the guard and receives the launch"
