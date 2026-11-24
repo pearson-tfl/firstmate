@@ -345,6 +345,11 @@ fm_control_relaunch_resume_flag() {  # <harness> <registered-agent>
 #   claude          fresh: --session-id <uuid>  resume: --resume <uuid>
 #   pi, pi-signed   both:  --session-id <id> (Pi 1.x: "use exact project
 #                   session ID, creating it if missing")
+#   omp             resume only: --resume <session file>. omp has no flag that
+#                   fixes a fresh id, so its spawn-written extension records the
+#                   live session file in state/<id>.omp-session instead
+#                   (bin/fm-omp-profile-lib.sh fm_omp_session_file), and a
+#                   session file resumes under any profile.
 # Every other adapter has no verified exact-id form and returns nonzero, so its
 # launch line is unchanged and `resume` refuses for it.
 # Prints the flag name only; bin/fm-spawn.sh quotes and appends the id.
@@ -353,6 +358,7 @@ fm_control_agent_session_flag() {  # <harness> <fresh|resume>
     claude:fresh) printf -- '--session-id' ;;
     claude:resume) printf -- '--resume' ;;
     pi:fresh|pi:resume|pi-signed:fresh|pi-signed:resume) printf -- '--session-id' ;;
+    omp:resume) printf -- '--resume' ;;
     *) return 1 ;;
   esac
 }

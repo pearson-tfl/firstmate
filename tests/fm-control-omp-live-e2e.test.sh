@@ -24,6 +24,8 @@ exec "$REAL_TMUX" -L "$SOCKET" "\$@"
 EOF
 chmod +x "$LAB/shim/tmux"
 export PATH="$LAB/shim:$PATH"
+NO_OMP_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$(dirname "$OMP_BIN")" | paste -sd: -)
+[ -z "$(PATH=$NO_OMP_PATH command -v omp)" ] || fail 'cannot build a PATH without omp'
 # Clear inherited home bindings before selecting the disposable parent.
 unset FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_CONFIG_OVERRIDE FM_ROOT_OVERRIDE
 export FM_HOME="$LAB/parent" FM_SKIP_SECONDMATE_SYNC=1 FM_SKIP_SECONDMATE_INHERIT=1
@@ -104,7 +106,9 @@ EOF
   "$REAL_TMUX" -L "$SOCKET" capture-pane -p -t "lab:fm-$id" > "$LAB/$id-before.txt"
   if [ "$id" = without-extension ]; then printf 'export default function() {}\n' > "$extension"; fi
   old_pid=$(omp_pid "lab:fm-$id") || fail "$id has no attributed omp process"
-  bash "$ROOT/bin/fm-control.sh" "$id" relaunch > "$LAB/$id-relaunch.log" 2>&1
+  # Issue #5935: the supervisor's tool shell usually has no Bun directory on
+  # PATH, so relaunch from exactly that shell.
+  PATH=$NO_OMP_PATH bash "$ROOT/bin/fm-control.sh" "$id" relaunch > "$LAB/$id-relaunch.log" 2>&1
   rc=$?
   [ "$rc" -eq 0 ] || fail "$id relaunch exited $rc"
   grep -q '^phase=complete$' "$FM_HOME/state/$id.control-relaunch" || fail "$id transaction did not complete"
@@ -129,7 +133,7 @@ for decoy in ambiguous package-collision; do
     "$FM_HOME/state/without-extension.meta" > "$FM_HOME/state/$decoy.meta"
   git -C "$seat" init -q || fail 'cannot initialize ambiguous home'
   printf '%s\n' "$decoy" > "$seat/.fm-secondmate-home"
-  bash "$ROOT/bin/fm-control.sh" "$decoy" relaunch > "$LAB/$decoy-relaunch.log" 2>&1
+  PATH=$NO_OMP_PATH bash "$ROOT/bin/fm-control.sh" "$decoy" relaunch > "$LAB/$decoy-relaunch.log" 2>&1
   rc=$?
   [ "$rc" -ne 0 ] || fail "$decoy relaunch returned success"
   grep -q "endpoint reads 'ambiguous'" "$LAB/$decoy-relaunch.log" || fail 'refusal was not due to ambiguous identity'
