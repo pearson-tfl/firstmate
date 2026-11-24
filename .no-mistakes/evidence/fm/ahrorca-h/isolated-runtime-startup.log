@@ -1,0 +1,5 @@
+{
+  "exit": 1,
+  "stdout": "{\n  \"id\": \"local\",\n  \"ok\": false,\n  \"error\": {\n    \"code\": \"runtime_serve_failed\",\n    \"message\": \"This `orca` command isn't running from an installed Orca app. On a host Orca reaches over SSH, it belongs to that connection's server and can't start one of its own. Install the Orca app on this machine and run `orca-ide serve` from a plain login shell, or set ORCA_APP_EXECUTABLE to the Orca app executable.\"\n  },\n  \"_meta\": {\n    \"runtimeId\": null\n  }\n}\n",
+  "stderr": ""
+}
