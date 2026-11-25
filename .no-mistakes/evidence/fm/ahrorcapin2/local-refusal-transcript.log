@@ -1,0 +1,20 @@
+
+CASE ordinary / control (synthetic local account and task records)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.local-test-tmp/live/home
+error: backend=orca cannot guarantee the Claude worker account pin (ordinary) because Orca manages the terminal's Claude profile; refusing to launch on a potentially different account; choose another backend to honor the pin
+exit=1
+Persisted task record, instructions, and unlanded file unchanged.
+
+CASE root / control (synthetic local account and task records)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.local-test-tmp/live/home
+error: backend=orca cannot guarantee the Claude worker account pin ({run-worktree}/.local-test-tmp/auth-home/.claude) because Orca manages the terminal's Claude profile; refusing to launch on a potentially different account; choose another backend to honor the pin
+exit=1
+Persisted task record, instructions, and unlanded file unchanged.
+
+CASE fresh spawn / root pin
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.local-test-tmp/live/home
+WARNING: watcher still down (same stale episode; last beat: 1s ago, grace 300s) - full banner already printed this episode.
+error: backend=orca selected but the Orca CLI was not found: neither 'orca' nor 'orca-ide' is on PATH and {run-worktree}/.local-test-tmp/auth-home/.orca/cli/bin/orca-ide is absent
+exit=1
+
+NOTE: Orca is not installed; no runtime endpoint or real Orca worker was contacted.

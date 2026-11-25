@@ -1,0 +1,16 @@
+{
+  "loggedIn": true,
+  "authMethod": "claude.ai",
+  "apiProvider": "firstParty",
+  "analyticsDisabled": false,
+  "projectsDirectory": "{run-worktree}/.local-test-tmp/auth-home/.claude/projects",
+  "configDirectory": "{run-worktree}/.local-test-tmp/auth-home/.claude",
+  "loginExpiresAt": null,
+  "consoleProfileSignInOffered": true,
+  "email": null,
+  "orgId": null,
+  "orgName": null,
+  "subscriptionType": "max",
+  "storedClaudeAiLogin": true,
+  "planTier": "max_other"
+}

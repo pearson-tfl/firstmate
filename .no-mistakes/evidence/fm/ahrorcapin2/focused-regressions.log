@@ -1,0 +1,3 @@
+ok - control rejects every Orca Claude pin source before stopping the worker
+ok - Orca refuses a pinned Claude relaunch while preserving existing metadata and unlanded work
+ok - Orca refuses ordinary, root, lane cswap, and rules-based Claude pins before provisioning

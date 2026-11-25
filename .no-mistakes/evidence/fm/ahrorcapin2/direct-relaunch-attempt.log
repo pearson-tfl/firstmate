@@ -1,0 +1,3 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.local-test-tmp/live/home
+WARNING: watcher still down (same stale episode; last beat: 24s ago, grace 300s) - full banner already printed this episode.
+error: task pin-check's endpoint reads 'unreadable'; a relaunch requires a positively agent-free endpoint (stop the agent first with bin/fm-control.sh pin-check exit)

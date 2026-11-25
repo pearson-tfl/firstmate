@@ -1,0 +1,31 @@
+FM_TEST_BEGIN 2026-11-24T13:32:41Z tests/fm-spawn-orca-worktree.test.sh family=unclassified expected_gate_skip=none
+ok - control rejects every Orca Claude pin source before stopping the worker
+ok - Orca refuses a pinned Claude relaunch while preserving existing metadata and unlanded work
+ok - Orca refuses ordinary, root, lane cswap, and rules-based Claude pins before provisioning
+ok - real tmux preserves absent/C locale values and reported raw bytes, rejects missing/phantom names and excludes the automatic SSH agent
+ok - Orca refuses source=absent before allocating resources
+ok - Orca source/allowlist=enabled preserves controlled values, clears ambient credentials and keeps values off terminal input
+ok - Orca source/allowlist=empty preserves controlled values, clears ambient credentials and keeps values off terminal input
+ok - Orca refuses source=unavailable before allocating resources
+ok - Orca refuses source=malformed before allocating resources
+ok - Orca refuses source=nonregular before allocating resources
+ok - Orca refuses source=missing before allocating resources
+ok - Orca removes the credential launch file when the launch cannot be delivered
+ok - Orca vault source delivers declared keys through the private launch file with no tmux, clearing ambient credentials
+ok - Orca vault source refuses both before allocating resources, without tmux or leaking a key
+ok - Orca vault source refuses no-allowlist before allocating resources, without tmux or leaking a key
+ok - Orca vault source refuses undeclared before allocating resources, without tmux or leaking a key
+ok - Orca vault source refuses unreadable before allocating resources, without tmux or leaking a key
+ok - Orca vault source refuses malformed before allocating resources, without tmux or leaking a key
+ok - Orca vault source refuses value-field before allocating resources, without tmux or leaking a key
+ok - Orca vault source refuses unsupported before allocating resources, without tmux or leaking a key
+ok - Orca warns when allowlisted names would resolve from the Orca terminal, and stays quiet for an empty allowlist
+not ok - the spawn did not fail at the backlog transition (missing: 'could not be moved to In flight')
+--- output ---
+warning: {run-worktree}/.local-test-tmp/fm-spawn-orca-worktree.RqNHOn/orca-env-unsourced/home/data/orca-env-unsourced/launch-brief.md records no ship branch; defaulting to legacy branch fm/orca-env-unsourced
+warning: {run-worktree}/.local-test-tmp/fm-spawn-orca-worktree.RqNHOn/orca-env-unsourced/home/data/orca-env-unsourced/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: task orca-env-unsourced cannot be dispatched because its backlog data directory is inaccessible: {run-worktree}/.local-test-tmp/fm-spawn-orca-worktree.RqNHOn/orca-env-unsourced/home/data (automatic backlog transitions require tasks-axi 0.2.6 or newer with the required update and mv features)
+FM_TEST_END 2026-11-24T13:34:48Z tests/fm-spawn-orca-worktree.test.sh exit=1 duration_ms=126794 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=1 skipped_gate=0 duration_ms=127323
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=126794 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/fm-spawn-orca-worktree.test.sh duration_ms=126794
