@@ -115,9 +115,10 @@ The exception has these limits:
 
 Main's lock names its holder rather than walking process ancestry: a session claims main by starting with `FM_LOCK_HOLDER=<name>` and hands it back with `release`; the `bin/fm-lock.sh` header owns claim and `release` semantics.
 The holder name is a cooperation guard, not security: any process that sets `FM_LOCK_HOLDER` to main's name owns main, and nothing proves it is the session that name was meant for.
-Only the session-start claim, a caller's own `bin/fm-lock.sh` re-check and this turn-end guard consult it; a hand-run drain, spawn, merge or send is not refused, and two runs under one name both pass.
+The session-start claim, a caller's own `bin/fm-lock.sh` re-check, this turn-end guard and both omp primary extensions consult it; a hand-run drain, spawn, merge or send is not refused, and two runs under one name both pass.
 A name never expires, so a crashed or wedged holder keeps main until a session under that name runs `release`; nothing recovers it automatically.
-The Pi and omp primaries' extensions still read a pid from lock line 1, so a Pi or omp primary under a holder line loses its own supervision; the Cursor and agy adapters' remaining pid-dependent checks are tracked with them (#5137).
+Both omp primary extensions accept an explicit, valid `FM_LOCK_HOLDER` exactly matching the lock's `holder:<name>` line; different, missing or invalid names remain read-only, and numeric-pid ancestry and liveness checks are unchanged.
+The Pi primary's extensions and the Pi and omp primaries' park proofs still require a pid from lock line 1; the Cursor and agy adapters' remaining pid-dependent checks are tracked with them (#5137).
 Under a named holder, trace context stays off, and the pid-line readers the `bin/fm-lock.sh` header lists - the supervision host and its mirror, task leases, the live lab and the rest - stay inert (#5138).
 
 ### Pull-warning verdict by supervision model
