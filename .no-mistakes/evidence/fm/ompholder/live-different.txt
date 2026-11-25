@@ -1,0 +1,77 @@
+omp 18.16.0
+{"case": "different", "holder": "other", "lock": "holder:omp", "markers": {".omp-watch-extension-loaded": false, ".omp-turnend-extension-loaded": false}}
+BEFORE
+
+                                            ████████████
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.16.0
+
+                           Tip: Find out which model you emotionally abuse the most with `omp
+                                                         stats`
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 19.1.1 is available. Run: omp update
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◑ Qwen3.8-27B-UD-Q4_K_M > 🌳 137d8f335eb0/01M887R9HA940RAKYQ2PZMDASH > ⑂ detached ?1 ▶─6%───────────────╎─┃───131K─
+╰─                                                                                          ⇧⇥ to change thinking effort
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+AFTER COMMAND
+
+                                            ████████████
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.16.0
+
+                           Tip: Find out which model you emotionally abuse the most with `omp
+                                                         stats`
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 19.1.1 is available. Run: omp update
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Warning: watcher: read-only - session lock is held by another firstmate session
+
+ π > ◑ Qwen3.8-27B-UD-Q4_K_M > 🌳 137d8f335eb0/01M887R9HA940RAKYQ2PZMDASH > ⑂ detached ?1 ▶─6%───────────────╎─┃───131K─
+╰─                                                                                          ⇧⇥ to change thinking effort
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

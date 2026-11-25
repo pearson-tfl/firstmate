@@ -1,0 +1,77 @@
+omp 18.16.0
+{"case": "matching", "holder": "omp", "lock": "holder:omp", "markers": {".omp-watch-extension-loaded": true, ".omp-turnend-extension-loaded": true}}
+BEFORE
+
+                                            ████████████
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.16.0
+
+                         Tip: `/copy code` grabs the last code block to your clipboard — `/copy
+                                        cmd` grabs the last shell/python command
+
+ xdev: xd://: mounted fm_watch_arm_omp
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 19.1.1 is available. Run: omp update
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◑ Qwen3.8-27B-UD-Q4_K_M > 🌳 137d8f335eb0/01M887R9HA940RAKYQ2PZMDASH > ⑂ detached ?1 ▶─6%───────────────╎─┃───131K─
+╰─                                                                                          ⇧⇥ to change thinking effort
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+AFTER COMMAND
+
+                                            ████████████
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.16.0
+
+                         Tip: `/copy code` grabs the last code block to your clipboard — `/copy
+                                        cmd` grabs the last shell/python command
+
+ xdev: xd://: mounted fm_watch_arm_omp
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 19.1.1 is available. Run: omp update
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ watcher: unchanged - omp extension already owns an arm child; no manual re-arm needed; call fm_watch_arm_omp again
+ only after a later notification says the cycle is missing, failed, or unhealthy
+
+ π > ◑ Qwen3.8-27B-UD-Q4_K_M > 🌳 137d8f335eb0/01M887R9HA940RAKYQ2PZMDASH > ⑂ detached ?1 ▶─6%───────────────╎─┃───131K─
+╰─                                                                                          ⇧⇥ to change thinking effort
+
+
+
+
+
+
+
+
+
+
+
+
+
+

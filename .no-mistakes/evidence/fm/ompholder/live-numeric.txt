@@ -1,0 +1,77 @@
+omp 18.16.0
+{"case": "numeric", "holder": null, "lock": "PID", "markers": {".omp-watch-extension-loaded": true, ".omp-turnend-extension-loaded": true}}
+BEFORE
+
+                                            ████████████
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.16.0
+
+                           Tip: Psst, omp has a natural habitat 🐦 tern (https://scl.so/tern)
+
+ xdev: xd://: mounted fm_watch_arm_omp
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 19.1.1 is available. Run: omp update
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◑ Qwen3.8-27B-UD-Q4_K_M > 🌳 137d8f335eb0/01M887R9HA940RAKYQ2PZMDASH > ⑂ detached ?1 ▶─6%───────────────╎─┃───131K─
+╰─                                                                                          ⇧⇥ to change thinking effort
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+AFTER COMMAND
+
+                                            ████████████
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.16.0
+
+                           Tip: Psst, omp has a natural habitat 🐦 tern (https://scl.so/tern)
+
+ xdev: xd://: mounted fm_watch_arm_omp
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 19.1.1 is available. Run: omp update
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ watcher: started omp extension arm child 1; future ordinary re-arms are automatic; call fm_watch_arm_omp again only
+ after a later notification says the cycle is missing, failed, or unhealthy
+
+ π > ◑ Qwen3.8-27B-UD-Q4_K_M > 🌳 137d8f335eb0/01M887R9HA940RAKYQ2PZMDASH > ⑂ detached ?1 ▶─6%───────────────╎─┃───131K─
+╰─                                                                                          ⇧⇥ to change thinking effort
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

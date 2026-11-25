@@ -1,0 +1,5 @@
+Oracle: authoritative user intent requires explicit valid matching holder ownership in both omp extensions; different, absent and invalid names remain read-only. Numeric ownership remains supported.
+Real omp 18.16.0, five disposable marked FM_HOME labs, private fm-lab tmux socket, 120x36 panes. No model prompt submitted. Both extension markers appeared for matching holder and were absent for every rejected holder. /fm-watch-arm-omp confirmed an owned arm for matching and refused each rejected holder. Numeric current omp PID accepted and started an arm.
+Portable runner: bash bin/fm-test-run.sh tests/fm-omp-harness.test.sh, launched with PID-1 ancestry; exit 0, retained portable.log and portable.exit. These fake-API tests are supporting regression evidence, not fresh live proof.
+Cleanup: /quit, private kill-server, lab-scoped children stopped, all five disposable lab homes removed. Process inspection found no remaining lab, test, or watcher children. No source changes.
+Prior Dell and independent review evidence supplied in intent remains historical; no broad Dell suite, lint, CI, PR or merge actions run in this test phase.

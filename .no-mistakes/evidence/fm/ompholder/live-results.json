@@ -1,0 +1,42 @@
+[
+  {
+    "case": "different",
+    "markers": {
+      ".omp-watch-extension-loaded": false,
+      ".omp-turnend-extension-loaded": false
+    },
+    "capture_exit": 0
+  },
+  {
+    "case": "missing",
+    "markers": {
+      ".omp-watch-extension-loaded": false,
+      ".omp-turnend-extension-loaded": false
+    },
+    "capture_exit": 0
+  },
+  {
+    "case": "invalid",
+    "markers": {
+      ".omp-watch-extension-loaded": false,
+      ".omp-turnend-extension-loaded": false
+    },
+    "capture_exit": 0
+  },
+  {
+    "case": "matching",
+    "markers": {
+      ".omp-watch-extension-loaded": true,
+      ".omp-turnend-extension-loaded": true
+    },
+    "capture_exit": 0
+  },
+  {
+    "case": "numeric",
+    "markers": {
+      ".omp-watch-extension-loaded": true,
+      ".omp-turnend-extension-loaded": true
+    },
+    "capture_exit": 0
+  }
+]
