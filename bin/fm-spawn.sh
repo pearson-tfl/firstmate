@@ -312,6 +312,14 @@
 #   auto-discovering the home's tracked .omp/extensions/ for the rest
 #   (verified, omp 18.1.11: a file named both ways loads twice, and discovery is
 #   cwd-only with no trust dialog).
+#   An omp secondmate whose model is on the antigravity-cli/ provider also gets
+#   --system-prompt naming the tracked .omp/fm-antigravity-system-prompt.md:
+#   with omp's default system prompt, Google answers every request on that
+#   route with RESOURCE_EXHAUSTED (429), and a replacement avoids it (omp
+#   19.1.1). The flag replaces only omp's static coding-assistant block; omp
+#   still renders the skills list and the <project-context> block carrying the
+#   home's AGENTS.md. Every other omp provider and every ship or scout keeps
+#   omp's own prompt.
 #   config/secondmate-harness may also carry an optional model and effort as extra
 #   whitespace-separated tokens ("<harness> [<model>] [<effort>]"). For a
 #   --secondmate spawn, those tokens apply only when this spawn also resolves its
@@ -602,6 +610,9 @@
 #                  auto-discovery cannot load it a second time; a secondmate names
 #                  this -e and still does not name its auto-discovered primary extensions)
 #     __OMPWORKERCFG__ absolute path to the tracked .omp/fm-worker-overlay.yml posture overlay
+#     __OMPSYSPROMPT__ optional ` --system-prompt '<path>'` naming the tracked
+#                  .omp/fm-antigravity-system-prompt.md on an antigravity-cli/
+#                  secondmate launch (header above; empty otherwise)
 #     __OPINPUT__   absolute path to the canonical operational-input encoder
 #     __BRIEFDOORBELL__ quoted printable doorbell naming the launch-brief record this
 #                  script published into the receiving home's operational inbox
@@ -3077,7 +3088,7 @@ launch_template() {
   # session_stop continuation. The busy extension is the exception: it lives
   # outside the home, so discovery never sees it, and -e is the only load.
   omp)
-    printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS __FMLOCKHOLDER__ FM_OMP_HARNESS=omp OMP_SKIP_SETUP=1 __OMPBIN____OMPPROFILE__ --config __OMPWORKERCFG__ --auto-approve --cwd __WORKTREE__ __MODELFLAG____EFFORTFLAG__-e __OMPEXT__ "$(__SKILLOPENER__ __HARNESS__ encode __BRIEF__)"'
+    printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS -u GEMINI_CLI -u CURSOR_AGENT -u CURSOR_INVOKED_AS __FMLOCKHOLDER__ FM_OMP_HARNESS=omp OMP_SKIP_SETUP=1 __OMPBIN____OMPPROFILE__ --config __OMPWORKERCFG____OMPSYSPROMPT__ --auto-approve --cwd __WORKTREE__ __MODELFLAG____EFFORTFLAG__-e __OMPEXT__ "$(__SKILLOPENER__ __HARNESS__ encode __BRIEF__)"'
     ;;
   # agy (Antigravity CLI): --prompt-interactive "<brief>" starts the supervised
   # interactive session and auto-submits it, so the brief rides the launch
@@ -7765,6 +7776,11 @@ omp)
   OMPPROFILE=
   [ -z "$OMP_PROFILE_PIN" ] || OMPPROFILE=" --profile $(shell_quote "$OMP_PROFILE_PIN")"
   LAUNCH=${LAUNCH//__OMPPROFILE__/$OMPPROFILE}
+  OMPSYSPROMPT=
+  if [ "$KIND" = secondmate ] && [ "${MODEL#antigravity-cli/}" != "$MODEL" ]; then
+    OMPSYSPROMPT=" --system-prompt $(shell_quote "$FM_ROOT/.omp/fm-antigravity-system-prompt.md")"
+  fi
+  LAUNCH=${LAUNCH//__OMPSYSPROMPT__/$OMPSYSPROMPT}
   ;;
 devin)
   LAUNCH=${LAUNCH//__DEVINBIN__/"$(shell_quote "$DEVIN_BIN")"}

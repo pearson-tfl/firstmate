@@ -396,6 +396,34 @@ test_secondmate_omp_profile_absent_or_foreign_adds_nothing() {
   pass "fm-spawn: an absent pin, or only another secondmate's pin, leaves the omp launch unchanged"
 }
 
+test_secondmate_antigravity_route_replaces_system_prompt() {
+  # omp's default system prompt draws RESOURCE_EXHAUSTED from Google on the
+  # antigravity-cli route, so only an omp secondmate on that provider gets the
+  # tracked replacement; another provider's secondmate launch carries none.
+  local world fakebin out status launch
+  world=$(make_omp_secondmate_world secondmate-omp-antigravity)
+  fakebin="$world/fake/fakebin"
+  mkdir -p "$world/home/config/secondmate-accounts/sm"
+  printf 'neon\n' > "$world/home/config/secondmate-accounts/sm/omp-profile"
+  out=$(run_omp_secondmate_spawn "$world" omp --secondmate --model antigravity-cli/gemini-4-neon --effort xhigh)
+  status=$?
+  expect_code 0 "$status" "an antigravity-cli omp secondmate spawn should succeed: $out"
+  launch=$(cat "$world/launch.log")
+  assert_contains "$launch" "'$fakebin/omp' --profile 'neon' --config '$ROOT/.omp/fm-worker-overlay.yml' --system-prompt '$ROOT/.omp/fm-antigravity-system-prompt.md' --auto-approve" \
+    "an antigravity-cli omp secondmate launch must carry the replacement system prompt: $launch"
+  assert_contains "$launch" "--model 'antigravity-cli/gemini-4-neon' --thinking 'xhigh'" "the route lost its model or effort: $launch"
+  assert_present "$ROOT/.omp/fm-antigravity-system-prompt.md" "the replacement system prompt must be tracked"
+
+  world=$(make_omp_secondmate_world secondmate-omp-other-provider)
+  out=$(run_omp_secondmate_spawn "$world" omp --secondmate --model openai-codex/gpt-6-astra)
+  status=$?
+  expect_code 0 "$status" "another provider's omp secondmate spawn should succeed: $out"
+  launch=$(cat "$world/launch.log")
+  [ -n "$launch" ] || fail "the other-provider case recorded no launch, so its absence assertion would be vacuous"
+  assert_not_contains "$launch" "--system-prompt" "another omp provider's launch must keep omp's own system prompt: $launch"
+  pass "fm-spawn: only an antigravity-cli omp secondmate launch replaces omp's system prompt"
+}
+
 test_secondmate_omp_profile_malformed_refuses() {
   # A malformed pin, including a name omp rejects as a Windows reserved device
   # name, refuses before any record or launch, naming the file.
@@ -1002,6 +1030,7 @@ test_secondmate_launch_relies_on_discovery
 test_secondmate_config_pinned_model_is_validated
 test_secondmate_omp_profile_pin
 test_secondmate_omp_profile_absent_or_foreign_adds_nothing
+test_secondmate_antigravity_route_replaces_system_prompt
 test_secondmate_omp_profile_malformed_refuses
 test_busy_extension_lifecycle
 test_control_composer_and_model_tables

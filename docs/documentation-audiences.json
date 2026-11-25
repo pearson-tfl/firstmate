@@ -688,6 +688,10 @@
     {
       "path": ".agents/skills/validation-supervision/SKILL.md",
       "audience": "agent-runtime"
+    },
+    {
+      "path": ".omp/fm-antigravity-system-prompt.md",
+      "audience": "agent-runtime"
     }
   ]
 }
