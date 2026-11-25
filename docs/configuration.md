@@ -1572,6 +1572,7 @@ An unqualified model, an undeclared provider, or a raw Pi launch command, which 
 When a file is present, supported command-line launches of that runner from this home use it: ships, scouts, local secondmate agents, raw Claude launch commands, and relaunches.
 A local secondmate can override this default with its own [per-secondmate account pin](#per-secondmate-account-pins).
 T3 Code selects the account through its provider instance instead, so `backend=t3code` refuses a worker account pin before mutation; [`t3code-backend.md`](t3code-backend.md#active-limits) owns that backend limit.
+For Orca account compatibility, see the [Orca backend limits](orca-backend.md#active-limits).
 A raw Claude launch command refuses if its leading assignments set `CLAUDE_CONFIG_DIR` or a credential that a pinned launch unsets, such as `ANTHROPIC_API_KEY`.
 The assignment would override the pin.
 The refusal names the variable; remove that assignment from the raw command, or change or remove `config/claude-account`.
@@ -1620,6 +1621,7 @@ A matching primary-side per-secondmate pin for a remote route refuses before rem
 
 A home whose Claude workers spread across several subscriptions held by the `cswap` account switcher can let a rules file choose each worker's account instead of pinning one.
 When `config/account-rules` exists, every fresh Claude spawn from that home picks its account from `cswap list --json`; relaunches do the same unless an explicit account move pinned that lane.
+Backend compatibility is subject to the [launch scope limits](#launch-scope-and-sign-in-checks).
 Both profile preparation and the actual Claude launch use `cswap run <num> --share-history --`, including secondmates and resumed sessions.
 The global login is never switched, so other sessions and background jobs that use their own saved tokens are unaffected.
 `config/claude-account`, or a per-secondmate Claude pin, beside the rules file refuses the launch rather than being used.
