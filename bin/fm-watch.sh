@@ -3128,7 +3128,7 @@ fm_active_check_stop() {
   [ -z "$pgid" ] || kill -TERM -- "-$pgid" 2>/dev/null || true
   [ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null || true
   i=0
-  while [ -n "$pgid" ] && kill -0 -- "-$pgid" 2>/dev/null && [ "$i" -lt 300 ]; do
+  while [ -n "$pgid" ] && kill -0 -- "-$pgid" 2>/dev/null && [ "$i" -lt "${FM_ACTIVE_CHECK_STOP_POLLS:-20}" ]; do
     sleep 0.01
     i=$((i + 1))
   done
@@ -3922,7 +3922,9 @@ while :; do
   if [ "$(age_of "$STATE/.last-check")" -ge "$CHECK_INTERVAL" ]; then
     merge_stall_reason=
     merge_stall_rc=0
-    watcher_waited merge_stall_scan || merge_stall_rc=$?
+    # Let the scan's nested timeout runners finish their two-second cleanup
+    # without extending cancellation of ordinary checks, pane reads, or waits.
+    FM_ACTIVE_CHECK_STOP_POLLS=300 watcher_waited merge_stall_scan || merge_stall_rc=$?
     merge_stall_out=$WATCHER_CAPTURE
     if fm_timed_out "$merge_stall_rc"; then
       merge_stall_out="scan deadline exceeded${merge_stall_out:+: $merge_stall_out}"
