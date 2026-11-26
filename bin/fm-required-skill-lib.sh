@@ -91,11 +91,15 @@ fm_required_skill_line_proves() {  # <line> <start|shaped> <name> [corr]
     case "${line%%:*}" in *"[corr=$corr]"*) ;; *) return 1 ;; esac
   fi
   note=$(status_line_note "$line")
+  note=$(printf '%s' "$note" | sed 's/ (.*via-helper)$//')
   case "$kind" in
     start)
       case "$note" in "skill-start $name "*) ;; *) return 1 ;; esac
       rest=${note#"skill-start $name "}
       case "$rest" in path=?*' route='?*) ;; *) return 1 ;; esac
+      [ -n "${rest##* route=}" ] || return 1
+      rest=${rest##* route=}
+      [ -n "${rest//[[:space:]]/}" ] || return 1
       ;;
     shaped)
       case "$note" in "skill-shaped $name:"*) ;; *) return 1 ;; esac
@@ -114,13 +118,27 @@ fm_required_skill_note_is_proof() {  # <note>
 
 # Print, one per line, each skill in <list> with no <kind> proof in <status-file>.
 fm_required_skills_missing() {  # <status-file> <start|shaped> <comma-list> [corr]
-  local status=$1 kind=$2 list=$3 corr=${4:-} name line found
+  local status=$1 kind=$2 list=$3 corr=${4:-} name line found candidate valid
   local IFS=,
   for name in $list; do
     [ -n "$name" ] || continue
     found=0
     if [ -f "$status" ]; then
       while IFS= read -r line || [ -n "$line" ]; do
+        [ -n "${line//[[:space:]]/}" ] || continue
+        if [ -n "$corr" ]; then
+          case "${line%%:*}" in *"[corr=$corr]"*) ;; *) continue ;; esac
+        fi
+        if [ "$kind" = start ]; then
+          valid=0
+          for candidate in $list; do
+            if fm_required_skill_line_proves "$line" start "$candidate" "$corr"; then
+              valid=1
+              break
+            fi
+          done
+          [ "$valid" = 1 ] || break
+        fi
         if fm_required_skill_line_proves "$line" "$kind" "$name" "$corr"; then
           found=1
           break
@@ -158,7 +176,7 @@ fm_required_skills_done_refusal() {  # <status-file> <comma-list> [corr]
     missing=$(fm_required_skills_missing "$status" "$kind" "$list" "$corr")
     [ -n "$missing" ] || continue
     case "$kind" in
-      start) what="${what}${what:+; }required skill $(printf '%s' "$missing" | paste -sd, -) has no start proof" ;;
+      start) what="${what}${what:+; }required skill $(printf '%s' "$missing" | paste -sd, -) has no start proof before other status lines" ;;
       shaped) what="${what}${what:+; }required skill $(printf '%s' "$missing" | paste -sd, -) has no record of how it shaped the work" ;;
     esac
     while IFS= read -r name; do
@@ -168,7 +186,7 @@ $missing
 EOF
   done
   [ -n "$what" ] || return 0
-  printf 'done refused: %s; append %s, then report done again\n' "$what" "$forms"
+  printf 'done refused: %s; required forms: %s; start proofs must precede other status lines\n' "$what" "$forms"
   return 1
 }
 

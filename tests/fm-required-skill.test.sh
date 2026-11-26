@@ -56,7 +56,10 @@ test_missing_start_proof_keeps_ringing() {
   fm_task_inbox_due_action "$state" w1 >/dev/null
   [ -f "$rec" ] || fail "a malformed or foreign proof let the acknowledgement stick"
 
-  printf 'working [at=3]: skill-start tdd path=/s/tdd/SKILL.md route=red test first at the CLI seam\n' >> "$state/w1.status"
+  printf 'working [at=3]: skill-start tdd path=/s/tdd/SKILL.md route=red test first\n' >> "$state/w1.status"
+  mv "$rec" "$state/w1.inbox/handled/" || fail "could not acknowledge the record"
+  assert_equals escalate "$(action_verb "$state" w1)" "late proofs settled the record"
+  printf 'working [at=3]: skill-start tdd path=/s/tdd/SKILL.md route=red test first at the CLI seam\n' > "$state/w1.status"
   mv "$rec" "$state/w1.inbox/handled/" || fail "could not acknowledge the record"
   assert_equals quiet "$(action_verb "$state" w1)" "a proven, acknowledged record still rang"
   [ -f "$state/w1.inbox/handled/${rec##*/}" ] || fail "a proven acknowledgement was reopened"
@@ -100,6 +103,12 @@ test_secondmate_done_refused_then_accepted() {
     "the parent record did not carry the required skills"
   fm_pending_reply_embed_corr "$body" "$corr" req
   fm_task_inbox_write "$state" sm "$req" >/dev/null || fail "could not deliver the request"
+
+  mv "$state/sm.inbox/"*.msg "$state/sm.inbox/handled/"
+  req=$(fm_pending_reply_recovery_message "$(fm_pending_reply_path "$state" "$corr")")
+  assert_equals poteto-mode "$(fm_required_skills_from_text "$req")" "recovery lost the machine requirement"
+  fm_task_inbox_write "$state" sm "$req" >/dev/null || fail "could not deliver recovery"
+  assert_equals poteto-mode "$(fm_pending_reply_mate_required_skills "$state/sm.inbox" "$corr")" "recovery hid original requirements"
 
   out=$(FM_HOME="$mate" "$REPORT" "done" "wiki rebuilt" 2>&1); rc=$?
   [ "$rc" -ne 0 ] || fail "a done without a shaped proof was accepted"
@@ -146,8 +155,17 @@ test_worker_done_refused_then_accepted() {
   fi
   assert_contains "$out" "working [at=<epoch>]: skill-start poteto-mode path=" "start refusal did not give the exact form"
   printf 'working [at=3]: skill-start poteto-mode path=/s/p/SKILL.md route=hill-climb\n' >> "$state/sc.status"
+  if fm_dod_accept_ship_done scout '' '' '' 'done: report written' "$state" sc "$meta"; then
+    fail "a late start proof was accepted"
+  fi
+  {
+    printf 'working [at=1]: skill-start tdd path=/s/tdd/SKILL.md route=red test first\n'
+    printf 'working [at=1]: skill-start poteto-mode path=/s/p/SKILL.md route=hill-climb\n'
+    printf 'working [at=2]: skill-shaped tdd: red test first\n'
+    printf 'working [at=2]: skill-shaped poteto-mode: rendered each page\n'
+  } > "$state/sc.status"
   fm_dod_accept_ship_done scout '' '' '' 'done: report written' "$state" sc "$meta" \
-    || fail "a scout done with every shaped proof was refused"
+    || fail "ordered proofs were refused"
   pass "a worker done is refused until every required skill is shaped, then accepted"
 }
 
@@ -193,7 +211,18 @@ test_no_required_skill_unchanged() {
   pass "tasks and requests with no required skill behave exactly as before"
 }
 
+test_helper_metadata_is_not_proof() {
+  local state
+  state=$(new_state metadata)
+  printf 'working [corr=c]: skill-start tdd path=/s/tdd/SKILL.md route= (via-helper)\n' > "$state/m.status"
+  assert_equals tdd "$(fm_required_skills_missing "$state/m.status" start tdd c)" "metadata supplied an empty route"
+  printf 'working [corr=c]: skill-shaped tdd: (report.md via-helper)\n' >> "$state/m.status"
+  assert_equals tdd "$(fm_required_skills_missing "$state/m.status" shaped tdd c)" "metadata supplied a shaped explanation"
+  pass "helper metadata cannot supply proof payload"
+}
+
 fm_test_run \
+  test_helper_metadata_is_not_proof \
   test_missing_start_proof_keeps_ringing \
   test_request_start_proof_needs_its_corr \
   test_secondmate_done_refused_then_accepted \

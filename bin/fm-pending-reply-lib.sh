@@ -976,7 +976,7 @@ fm_pending_reply_recovery_message() {  # <record-path>
   msg="REPOST REQUIRED: previous marked request had no correlated parent report. Reply on the parent status channel including ${token}. Original request: ${summary}"
   required=$(fm_pending_reply_get "$rec" required_skills)
   [ -z "$required" ] ||
-    msg="$msg Required skills ${required}: a done reply counts only after each has its line $(fm_required_skill_proof_form shaped '<name>' helper "$corr")."
+    msg="$msg"$'\n\n'"$(fm_required_skills_section "$required" request)"
   fm_pending_reply_embed_corr "$msg" "$corr" msg
   printf '%s' "$msg"
 }
@@ -1790,16 +1790,22 @@ fm_pending_reply_mate_received_corrs() {  # <inbox-dir>
 # The required-skills list the marked request <corr_id> in <inbox-dir> carries
 # (bin/fm-required-skill-lib.sh), or empty.
 fm_pending_reply_mate_required_skills() {  # <inbox-dir> <corr_id>
-  local inbox=$1 corr=$2 msg body
+  local inbox=$1 corr=$2 msg body list name out=''
   [ -n "$inbox" ] && [ -d "$inbox" ] || return 0
   for msg in "$inbox"/*.msg "$inbox"/handled/*.msg; do
     [ -f "$msg" ] || continue
     body=$(fm_task_inbox_body "$msg") || continue
     case "$body" in "$FM_FROMFIRST_MARK"*) ;; *) continue ;; esac
     [ "$(fm_pending_reply_extract_corr "$body")" = "$corr" ] || continue
-    fm_required_skills_from_text "$body"
-    return 0
+    list=$(fm_required_skills_from_text "$body")
+    local IFS=,
+    for name in $list; do
+      [ -n "$name" ] || continue
+      case ",$out," in *",$name,"*) continue ;; esac
+      out="${out}${out:+,}$name"
+    done
   done
+  printf '%s' "$out"
 }
 
 # 0 when <channel> already holds a line that resolves <corr_id>, holding a
