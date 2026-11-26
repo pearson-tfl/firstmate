@@ -47,7 +47,7 @@ SH
 #!/usr/bin/env bash
 printf '%s|%s\n' "$PWD" "$*" >> "${FM_TEST_LOOKUP_LOG:?}"
 case "$*" in
-  'pr list --state open --head fm/unregistered --limit 1 --json url,isDraft') ;;
+  'pr list --state open --head fm/unregistered --limit 20 --json url,isDraft,headRefName,headRepository,headRepositoryOwner') ;;
   *) exit 2 ;;
 esac
 if [ "${FM_TEST_HANG_READ:-}" = discovery ]; then exec "${0%/*}/hang-read"; fi
@@ -58,7 +58,10 @@ fi
 if [ "${FM_TEST_DISCOVERY_OUTPUT+x}" ]; then
   printf '%s\n' "$FM_TEST_DISCOVERY_OUTPUT"
 elif [ -n "${FM_TEST_BRANCH_URL:-}" ]; then
-  printf '[{"url":"%s","isDraft":%s}]\n' "$FM_TEST_BRANCH_URL" "${FM_TEST_BRANCH_DRAFT:-false}"
+  entry=$(printf '{"url":"%s","isDraft":%s,"headRefName":"%s","headRepository":{"name":"%s"},"headRepositoryOwner":{"login":"%s"}}' \
+    "$FM_TEST_BRANCH_URL" "${FM_TEST_BRANCH_DRAFT:-false}" "${FM_TEST_BRANCH_REF:-fm/unregistered}" \
+    "${FM_TEST_BRANCH_REPO:-repo}" "${FM_TEST_BRANCH_OWNER:-owner}")
+  if [ "${FM_TEST_BRANCH_DUP:-0}" = 1 ]; then printf '[%s,%s]\n' "$entry" "$entry"; else printf '[%s]\n' "$entry"; fi
 else
   printf '[]\n'
 fi
@@ -266,6 +269,8 @@ test_secondmate_routes() {
 write_unregistered_task() {
   local home=$1 task=$2 verb=$3
   mkdir -p "$home/copy"
+  git -C "$home/copy" init -q
+  git -C "$home/copy" remote add origin "${FM_TEST_PUSH_REMOTE:-https://github.com/owner/repo.git}" 2>/dev/null || :
   printf 'kind=ship\nmode=direct-PR\nyolo=on\nworktree=%s\nbranch=fm/unregistered\n' "$home/copy" > "$home/state/$task.meta"
   printf 'working [at=%s]: Ready fix PR %s\n%s [at=%s]: waiting on home\n' "$T0" "$URL" "$verb" "$T0" > "$home/state/$task.status"
 }
@@ -281,7 +286,7 @@ test_unregistered_pr() {
       out=$(FM_TEST_BRANCH_URL="$URL" scan "$home" $((T0 + 600))) || fail "unregistered PR scan failed"
       case "$out" in "t PR $URL unmerged 600s"*"merge it now with bin/fm-pr-merge.sh t $URL"*) ;; *) fail "unregistered $route $verb PR was missed: $out" ;; esac
       [ "$(wc -l < "$WORLD/lookup.log" | tr -d ' ')" = 1 ] || fail "unregistered PR needed more than one forge lookup"
-      grep -Fxq "$home/copy|pr list --state open --head fm/unregistered --limit 1 --json url,isDraft" "$WORLD/lookup.log" || fail "lookup did not address the task branch in its repository"
+      grep -Fxq "$home/copy|pr list --state open --head fm/unregistered --limit 20 --json url,isDraft,headRefName,headRepository,headRepositoryOwner" "$WORLD/lookup.log" || fail "lookup did not address the task branch in its repository"
       [ ! -e "$home/state/t.pr-poll" ] || fail "lookup created a second PR registry"
       out=$(FM_TEST_BRANCH_URL="$URL" scan "$home" $((T0 + 900))) || fail "unregistered PR rescan failed"
       [ -z "$out" ] || fail "unregistered PR bypassed reminder backoff: $out"
@@ -878,6 +883,54 @@ test_terminal_state_retires_held_stalls() {
   pass "closed and merged PRs retire held escalations across both routes and all poll states"
 }
 
+# A task whose recorded PR merged or closed opens a second PR and waits again:
+# the recorded identity retires and the task's branch is searched for the next.
+test_later_pr_after_terminal_recorded_pr() {
+  local next=https://github.com/owner/repo/pull/629 end out
+  for end in merged closed; do
+    make_world "later-pr-$end"
+    write_unregistered_task "$MAIN" t paused
+    printf 'pr=%s\n' "$URL" >> "$MAIN/state/t.meta"
+    printf 'github\n%s\ngithub.com\nowner/repo\n628\n' "$URL" > "$MAIN/state/t.pr-poll"
+    if [ "$end" = merged ]; then
+      observe_merge "$MAIN" t || fail "could not record the first PR merge"
+      out=$(FM_TEST_BRANCH_URL="$next" scan "$MAIN" $((T0 + 600))) || fail "later PR scan failed after $end"
+    else
+      out=$(FM_TEST_CLOSED_URL="$URL" FM_TEST_BRANCH_URL="$next" scan "$MAIN" $((T0 + 600))) || fail "later PR scan failed after $end"
+    fi
+    case "$out" in "t PR $next unmerged 600s"*"merge it now with bin/fm-pr-merge.sh t $next"*) ;; *) fail "the PR after a $end recorded PR stayed silent: $out" ;; esac
+    case "$out" in *"$URL"*) fail "the $end recorded PR still received a merge instruction: $out" ;; esac
+  done
+  pass "a later PR from the same task wakes the home once its recorded PR merged or closed"
+}
+
+# Discovery acts only on a PR whose head is this task's branch on its own fork.
+test_discovered_pr_identity_is_bound() {
+  local case_name out
+  for case_name in other-owner other-repo other-branch duplicate non-github-remote; do
+    make_world "bind-$case_name"
+    if [ "$case_name" = non-github-remote ]; then
+      FM_TEST_PUSH_REMOTE=https://gitlab.example/owner/repo.git write_unregistered_task "$MAIN" t paused
+    else
+      write_unregistered_task "$MAIN" t paused
+    fi
+    case "$case_name" in
+      other-owner) out=$(FM_TEST_BRANCH_URL="$URL" FM_TEST_BRANCH_OWNER=someone-else scan "$MAIN" $((T0 + 600))) ;;
+      other-repo) out=$(FM_TEST_BRANCH_URL="$URL" FM_TEST_BRANCH_REPO=other scan "$MAIN" $((T0 + 600))) ;;
+      other-branch) out=$(FM_TEST_BRANCH_URL="$URL" FM_TEST_BRANCH_REF=fm/elsewhere scan "$MAIN" $((T0 + 600))) ;;
+      duplicate) out=$(FM_TEST_BRANCH_URL="$URL" FM_TEST_BRANCH_DUP=1 scan "$MAIN" $((T0 + 600))) ;;
+      non-github-remote) out=$(FM_TEST_BRANCH_URL="$URL" scan "$MAIN" $((T0 + 600))) ;;
+    esac || fail "$case_name binding scan failed"
+    case "$out" in *"merge it now"*|*"bin/fm-pr-merge.sh"*) fail "an unbound $case_name PR received a merge instruction: $out" ;; esac
+    case "$out" in *"evidence unavailable: PR discovery"*"t"*) ;; *) fail "an unbound $case_name PR was not reported as uncertain: $out" ;; esac
+  done
+  make_world bind-case-insensitive
+  write_unregistered_task "$MAIN" t paused
+  out=$(FM_TEST_BRANCH_URL="$URL" FM_TEST_BRANCH_OWNER=Owner scan "$MAIN" $((T0 + 600))) || fail "case-insensitive owner scan failed"
+  case "$out" in "t PR $URL unmerged 600s"*"merge it now"*) ;; *) fail "the task's own PR with a differently cased owner was rejected: $out" ;; esac
+  pass "a discovered PR wakes the home only when bound to the task's own fork and branch"
+}
+
 test_replay_paused_worker_red_pr
 test_merged_or_released_ends_stall
 test_posture_and_holds_respected
@@ -900,3 +953,5 @@ test_uncertain_task_does_not_block_siblings
 test_read_deadlines_and_watcher_cancellation
 test_sweep_budget_reaches_every_registered_task
 test_terminal_state_retires_held_stalls
+test_later_pr_after_terminal_recorded_pr
+test_discovered_pr_identity_is_bound

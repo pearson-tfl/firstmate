@@ -17,6 +17,8 @@
 #   - its meta records kind=ship, yolo=on (the home merges its green PRs
 #     without asking), and a pr= URL or an open PR on its recorded branch;
 #   - no matching merge-notification marker or forge result confirms it ended;
+#     once the recorded PR is merged or closed, its identity is retired and the
+#     task's branch is searched again, so a later PR from the same task counts;
 #   - its worker waits on the home: the declared wait is a `paused:` line, or
 #     the newest status event is `done:`, with current activity reconciled
 #     by bin/fm-crew-state.sh before either declaration is accepted;
@@ -42,6 +44,9 @@
 # matching `resolved` line when the stall ends. After escalation the line
 # repeats every FM_MERGE_STALL_ESCALATE_SECS instead.
 # Unregistered-PR discovery is GitHub-only; non-GitHub PRs are skipped there.
+# A discovered PR is accepted only when its head is the task's branch on the
+# owner/repository of the branch's push remote; any other or ambiguous match is
+# reported as uncertain evidence and never receives a merge instruction.
 # One line per scan, for the least recently notified due stall, oldest first
 # among ties; terminal PRs never consume that slot.
 #
@@ -171,6 +176,131 @@ task_uncertain() {
   [ -z "$preserved" ] || rows="$rows$preserved"$'\n'
 }
 
+# Find the open, ready PR whose head is task <id>'s branch on the owner/repo
+# its push remote names. 0 sets url, 1 when there is none, 2 after recording
+# uncertain evidence.
+discover_pr() {
+  local worktree branch remote remote_url owner repo lookup lookup_rc record counts total matched draft
+  worktree=$(meta_get "$meta" worktree)
+  branch=$(meta_get "$meta" branch)
+  if [ ! -d "$worktree" ] || [ -z "$branch" ] || [ "$branch" = HEAD ]; then
+    task_uncertain "PR discovery lacks a worktree or branch for $id"
+    return 2
+  fi
+  remote=$(git -C "$worktree" config "branch.$branch.pushRemote" 2>/dev/null \
+    || git -C "$worktree" config remote.pushDefault 2>/dev/null \
+    || git -C "$worktree" config "branch.$branch.remote" 2>/dev/null || echo origin)
+  remote_url=$(git -C "$worktree" remote get-url --push "$remote" 2>/dev/null) || remote_url=
+  case "$remote_url" in
+    https://github.com/*) owner=${remote_url#https://github.com/} ;;
+    git@github.com:*) owner=${remote_url#git@github.com:} ;;
+    ssh://git@github.com/*) owner=${remote_url#ssh://git@github.com/} ;;
+    *) owner= ;;
+  esac
+  owner=${owner%/}; owner=${owner%.git}
+  repo=${owner#*/}; owner=${owner%%/*}
+  case "$owner/$repo" in
+    /*|*/|*/*/*|*[!A-Za-z0-9._/-]*)
+      task_uncertain "PR discovery cannot bind $id: push remote $remote is not a GitHub owner/repository (${remote_url:-unset})"
+      return 2
+      ;;
+  esac
+  lookup_rc=0
+  lookup=$(cd "$worktree" && fm_exec_timed "$READ_TIMEOUT" 1 gh pr list --state open --head "$branch" --limit 20 \
+    --json url,isDraft,headRefName,headRepository,headRepositoryOwner 2>&1) || lookup_rc=$?
+  scan_active
+  if [ "$lookup_rc" -ne 0 ]; then
+    task_uncertain "PR discovery failed for $id (rc=$lookup_rc): $lookup"
+    return 2
+  fi
+  if ! record=$(printf '%s' "$lookup" | jq -sr --arg b "$branch" --arg o "$owner" --arg r "$repo" '
+    if length == 1 and (.[0] | type) == "array" and all(.[0][];
+      type == "object" and (.url | type) == "string" and (.isDraft | type) == "boolean")
+    then .[0] as $all
+      | ($all | map(select(.headRefName == $b
+          and ((.headRepositoryOwner.login // "") | ascii_downcase) == ($o | ascii_downcase)
+          and ((.headRepository.name // "") | ascii_downcase) == ($r | ascii_downcase)))) as $m
+      | "\($all | length)\t\($m | length)", ($m[] | [.url, .isDraft] | @tsv)
+    else error("expected an array of PR URLs and draft flags") end' 2>&1); then
+    task_uncertain "PR discovery unreadable for $id: $record"
+    return 2
+  fi
+  counts=${record%%$'\n'*}
+  total=${counts%%$'\t'*} matched=${counts#*$'\t'}
+  [ "$total" != 0 ] || return 1
+  if [ "$matched" != 1 ]; then
+    task_uncertain "PR discovery for $id found $total open PR(s) on $branch with $matched from $owner/$repo; identity not established"
+    return 2
+  fi
+  IFS=$'\t' read -r url draft <<EOF
+${record#*$'\n'}
+EOF
+  if ! fm_pr_url_parse "$url"; then
+    task_uncertain "PR discovery returned an invalid URL for $id: $url"
+    return 2
+  fi
+  [ "$FM_PR_PROVIDER" = github ] && [ "$draft" = false ] || return 1
+}
+
+# Track task <id>'s waiting episode on <url>; 3 when the forge reads it merged or closed.
+consider_pr() {
+  episode=$(printf '%s' "$line" | cksum | awk '{print $1}')
+  since='' last=0 escalated=0
+  while IFS=$'\t' read -r o_task o_url o_since o_last o_esc o_episode; do
+    [ "$o_task" = "$id" ] && [ "$o_url" = "$url" ] && [ "$o_episode" = "$episode" ] || continue
+    case "$o_since:$o_last:$o_esc" in *[!0-9:]*|:*|*::*|*:) continue ;; esac
+    since=$o_since last=$o_last escalated=$o_esc
+    break
+  done <<EOF
+$old
+EOF
+  if [ -z "$since" ]; then
+    since=$(status_line_at_epoch "$line") || since=$NOW
+    [ "$since" -le "$NOW" ] || since=$NOW
+  fi
+  row="$id"$'\t'"$url"$'\t'"$since"$'\t'"$last"$'\t'"$escalated"$'\t'"$episode"
+  rows="$rows$row"$'\n'
+  age=$((NOW - since))
+  [ "$age" -ge "$STALL" ] || return 0
+  interval=$STALL
+  [ "$escalated" = 0 ] || interval=$ESCALATE
+  [ "$last" -eq 0 ] || [ $((NOW - last)) -ge "$interval" ] || return 0
+  forge=
+  if fm_pr_url_parse "$url" && [ "$FM_PR_PROVIDER" = github ]; then
+    if forge=$(fm_exec_timed "$READ_TIMEOUT" 1 "$PR_STATE_BIN" "$url" 2>&1); then
+      scan_active
+      forge=$(printf '%s\n' "$forge" | awk 'NF { printf "%s%s", sep, $0; sep = "; " }')
+      [ -n "$forge" ] || forge='no blockers seen'
+    else
+      task_uncertain "forge state unreadable for $id: $url: $forge"
+      return 0
+    fi
+  fi
+  case "$forge" in
+    'STATE: '*|'DRAFT: '*)
+      rows=$(printf '%s' "$rows" | awk -F '\t' -v t="$id" -v u="$url" '!($1 == t && $2 == u)')
+      [ -z "$rows" ] || rows="$rows"$'\n'
+      case "$forge" in 'STATE: '*) return 3 ;; esac
+      return 0
+      ;;
+  esac
+  hold_rc=0
+  hold_error=$(fm_exec_timed "$READ_TIMEOUT" 1 env FM_HOME="$FM_HOME" "$CAPTAIN_HOLD_BIN" open "$id" 2>&1) || hold_rc=$?
+  scan_active
+  [ "$hold_rc" -ne 0 ] || return 0
+  if [ "$hold_rc" -eq 1 ]; then
+    hold_error=
+  else
+    hold_error=$(fm_parent_channel_clean_note "$hold_error")
+    hold_error="captain-hold read failed (rc=$hold_rc)${hold_error:+: $hold_error}"
+  fi
+  if [ -z "$due_last" ] || [ "$last" -lt "$due_last" ] \
+    || { [ "$last" -eq "$due_last" ] && [ "$since" -lt "$due_since" ]; }; then
+    due_row=$row due_since=$since due_last=$last due_line=$line
+    due_forge=$forge due_hold_error=$hold_error
+  fi
+}
+
 old=
 if [ -e "$LEDGER" ] || [ -L "$LEDGER" ]; then
   [ -f "$LEDGER" ] && [ ! -L "$LEDGER" ] || { echo 'fm-merge-stall: ledger is not a regular file' >&2; exit 1; }
@@ -200,7 +330,7 @@ for meta in "$STATE"/*.meta; do
       continue
     fi
     if fm_pr_poll_merge_already_notified "$STATE" "$id" "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER"; then
-      continue
+      url=
     fi
   fi
   activity_rc=0
@@ -215,91 +345,15 @@ for meta in "$STATE"/*.meta; do
     'state: working '*|'state: parked '*|'state: blocked '*|'state: failed '*) continue ;;
     *) task_uncertain "current activity unreadable for $id: $activity"; continue ;;
   esac
+  recorded=$url
   if [ -z "$url" ]; then
-    worktree=$(meta_get "$meta" worktree)
-    branch=$(meta_get "$meta" branch)
-    if [ ! -d "$worktree" ] || [ -z "$branch" ] || [ "$branch" = HEAD ]; then
-      task_uncertain "PR discovery lacks a worktree or branch for $id"
-      continue
-    fi
-    lookup_rc=0
-    lookup=$(cd "$worktree" && fm_exec_timed "$READ_TIMEOUT" 1 gh pr list --state open --head "$branch" --limit 1 --json url,isDraft 2>&1) || lookup_rc=$?
-    scan_active
-    if [ "$lookup_rc" -ne 0 ]; then
-      task_uncertain "PR discovery failed for $id (rc=$lookup_rc): $lookup"
-      continue
-    fi
-    if ! record=$(printf '%s' "$lookup" | jq -sr '
-      if length == 1 and (.[0] | type) == "array" and (.[0] | length) <= 1 and all(.[0][];
-        type == "object" and (.url | type) == "string" and (.isDraft | type) == "boolean")
-      then .[0][] | [.url, .isDraft] | @tsv
-      else error("expected an array of PR URLs and draft flags") end' 2>&1); then
-      task_uncertain "PR discovery unreadable for $id: $record"
-      continue
-    fi
-    [ -n "$record" ] || continue
-    IFS=$'\t' read -r url draft <<EOF
-$record
-EOF
-    if ! fm_pr_url_parse "$url"; then
-      task_uncertain "PR discovery returned an invalid URL for $id: $url"
-      continue
-    fi
-    [ "$FM_PR_PROVIDER" = github ] && [ "$draft" = false ] || continue
+    discover_pr || continue
   fi
-  episode=$(printf '%s' "$line" | cksum | awk '{print $1}')
-  since='' last=0 escalated=0
-  while IFS=$'\t' read -r o_task o_url o_since o_last o_esc o_episode; do
-    [ "$o_task" = "$id" ] && [ "$o_url" = "$url" ] && [ "$o_episode" = "$episode" ] || continue
-    case "$o_since:$o_last:$o_esc" in *[!0-9:]*|:*|*::*|*:) continue ;; esac
-    since=$o_since last=$o_last escalated=$o_esc
-    break
-  done <<EOF
-$old
-EOF
-  if [ -z "$since" ]; then
-    since=$(status_line_at_epoch "$line") || since=$NOW
-    [ "$since" -le "$NOW" ] || since=$NOW
-  fi
-  row="$id"$'\t'"$url"$'\t'"$since"$'\t'"$last"$'\t'"$escalated"$'\t'"$episode"
-  rows="$rows$row"$'\n'
-  age=$((NOW - since))
-  [ "$age" -ge "$STALL" ] || continue
-  interval=$STALL
-  [ "$escalated" = 0 ] || interval=$ESCALATE
-  [ "$last" -eq 0 ] || [ $((NOW - last)) -ge "$interval" ] || continue
-  forge=
-  if fm_pr_url_parse "$url" && [ "$FM_PR_PROVIDER" = github ]; then
-    if forge=$(fm_exec_timed "$READ_TIMEOUT" 1 "$PR_STATE_BIN" "$url" 2>&1); then
-      scan_active
-      forge=$(printf '%s\n' "$forge" | awk 'NF { printf "%s%s", sep, $0; sep = "; " }')
-      [ -n "$forge" ] || forge='no blockers seen'
-    else
-      task_uncertain "forge state unreadable for $id: $url: $forge"
-      continue
-    fi
-  fi
-  case "$forge" in
-    'STATE: '*|'DRAFT: '*)
-      rows=$(printf '%s' "$rows" | awk -F '\t' -v t="$id" -v u="$url" '!($1 == t && $2 == u)')
-      [ -z "$rows" ] || rows="$rows"$'\n'
-      continue
-      ;;
-  esac
-  hold_rc=0
-  hold_error=$(fm_exec_timed "$READ_TIMEOUT" 1 env FM_HOME="$FM_HOME" "$CAPTAIN_HOLD_BIN" open "$id" 2>&1) || hold_rc=$?
-  scan_active
-  [ "$hold_rc" -ne 0 ] || continue
-  if [ "$hold_rc" -eq 1 ]; then
-    hold_error=
-  else
-    hold_error=$(fm_parent_channel_clean_note "$hold_error")
-    hold_error="captain-hold read failed (rc=$hold_rc)${hold_error:+: $hold_error}"
-  fi
-  if [ -z "$due_last" ] || [ "$last" -lt "$due_last" ] \
-    || { [ "$last" -eq "$due_last" ] && [ "$since" -lt "$due_since" ]; }; then
-    due_row=$row due_since=$since due_last=$last due_line=$line
-    due_forge=$forge due_hold_error=$hold_error
+  consider_rc=0
+  consider_pr || consider_rc=$?
+  # A merged or closed recorded PR retires; the task's next PR, if any, counts.
+  if [ "$consider_rc" -eq 3 ] && [ -n "$recorded" ] && discover_pr && [ "$url" != "$recorded" ]; then
+    consider_pr || :
   fi
 done
 
