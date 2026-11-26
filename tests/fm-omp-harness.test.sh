@@ -398,7 +398,7 @@ test_secondmate_omp_profile_absent_or_foreign_adds_nothing() {
 
 test_secondmate_antigravity_route_replaces_system_prompt() {
   # omp's default system prompt draws RESOURCE_EXHAUSTED from Google on the
-  # antigravity-cli route, so only an omp secondmate on that provider gets the
+  # antigravity-cli route, so an omp secondmate on that provider gets the
   # tracked replacement; another provider's secondmate launch carries none.
   local world fakebin out status launch
   world=$(make_omp_secondmate_world secondmate-omp-antigravity)
@@ -421,7 +421,7 @@ test_secondmate_antigravity_route_replaces_system_prompt() {
   launch=$(cat "$world/launch.log")
   [ -n "$launch" ] || fail "the other-provider case recorded no launch, so its absence assertion would be vacuous"
   assert_not_contains "$launch" "--system-prompt" "another omp provider's launch must keep omp's own system prompt: $launch"
-  pass "fm-spawn: only an antigravity-cli omp secondmate launch replaces omp's system prompt"
+  pass "fm-spawn: an antigravity-cli omp secondmate launch replaces omp's system prompt; another provider's keeps omp's own"
 }
 
 test_crew_antigravity_route_gets_neon_profile_and_system_prompt() {

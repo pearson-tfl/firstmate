@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# fm-omp-profile-lib.sh - the single owner of the opt-in per-secondmate omp
-# profile pin: which launch reads it, how the pin file is parsed, and the
-# refusals.
+# fm-omp-profile-lib.sh - the single owner of which omp profile a launch uses:
+# the opt-in per-secondmate omp profile pin (which launch reads it, how the pin
+# file is parsed, and the refusals), and the fixed `neon` profile for an
+# antigravity-cli/ ship or scout.
 #
 # docs/configuration.md "Per-secondmate omp profile" owns the operator-facing
 # contract. Sourced by bin/fm-spawn.sh and bin/fm-control.sh.
@@ -9,10 +10,7 @@
 # The pin is config/secondmate-accounts/<id>/omp-profile in the launching
 # (primary) home. Only a local secondmate's own omp agent reads it: ships,
 # scouts, other harnesses, and remote secondmates never do, and there is no
-# home-wide fallback file. A ship or scout instead gets the fixed profile
-# `neon` when its model is on the antigravity-cli/ provider, the only omp
-# profile signed in to that provider (omp's default profile lists none of its
-# models); every other ship or scout keeps the ambient profile. It names an omp profile (`omp --profile <name>`,
+# home-wide fallback file. It names an omp profile (`omp --profile <name>`,
 # omp's own isolated auth, sessions, settings, and caches); it is independent
 # of the worker account pin in bin/fm-worker-account-lib.sh, which pins a
 # runner's credential root rather than an omp profile.
