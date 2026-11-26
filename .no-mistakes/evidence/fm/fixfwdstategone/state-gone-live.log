@@ -1,0 +1,232 @@
+
+SCENARIO: test_watcher_exits_when_its_state_directory_is_removed
+ok - watch-arm: a watcher exits when its state directory is removed
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/arm.out
+watcher: started pid=1741201 (beacon fresh)
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+SCENARIO: test_watcher_exits_when_state_is_removed_during_check_sweep absent
+ok - watch-arm: a watcher logs state-gone and emits no wake when state disappears mid-sweep (absent)
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/arm.out
+watcher: started pid=1741201 (beacon fresh)
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/arm.out
+watcher: started pid=1742831 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory no longer exists: /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+SCENARIO: test_watcher_exits_when_state_is_removed_during_check_sweep recreated
+ok - watch-arm: a watcher logs state-gone and emits no wake when state disappears mid-sweep (recreated)
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/arm.out
+watcher: started pid=1741201 (beacon fresh)
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/arm.out
+watcher: started pid=1742831 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory no longer exists: /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/arm.out
+watcher: started pid=1747861 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+SCENARIO: test_watcher_exits_when_state_is_removed_during_liveness_tick
+ok - watch-arm: a watcher logs state-gone when state disappears during a mid-cycle liveness tick
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/arm.out
+watcher: started pid=1741201 (beacon fresh)
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/arm.out
+watcher: started pid=1749550 (beacon fresh)
+touch: cannot touch '/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/state/.secondmate-liveness-tick': No such file or directory
+watcher: exiting - state directory no longer exists: /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/arm.out
+watcher: started pid=1742831 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory no longer exists: /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/arm.out
+watcher: started pid=1747861 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+SCENARIO: test_watcher_exits_when_state_is_removed_during_stale_surface
+ok - watch-arm: a watcher logs state-gone when state disappears during stale helper wake append
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/arm.out
+watcher: started pid=1741201 (beacon fresh)
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/arm.out
+watcher: started pid=1749550 (beacon fresh)
+touch: cannot touch '/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/state/.secondmate-liveness-tick': No such file or directory
+watcher: exiting - state directory no longer exists: /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-stale-surface/arm.out
+watcher: started pid=1753609 (beacon fresh)
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-stale-surface/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/arm.out
+watcher: started pid=1742831 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory no longer exists: /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/arm.out
+watcher: started pid=1747861 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+SCENARIO: test_watcher_exits_when_its_home_is_removed
+ok - watch-arm: a watcher exits when its home is removed
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/home-removed/arm.out
+watcher: started pid=1758190 (beacon fresh)
+watcher: exiting - home no longer exists: /tmp/fm-watch-arm-tests.0m9F84/home-removed/home
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/arm.out
+watcher: started pid=1741201 (beacon fresh)
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/arm.out
+watcher: started pid=1749550 (beacon fresh)
+touch: cannot touch '/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/state/.secondmate-liveness-tick': No such file or directory
+watcher: exiting - state directory no longer exists: /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-stale-surface/arm.out
+watcher: started pid=1753609 (beacon fresh)
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-stale-surface/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/arm.out
+watcher: started pid=1742831 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory no longer exists: /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/arm.out
+watcher: started pid=1747861 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+SCENARIO: test_attached_arm_exits_when_its_root_is_removed
+ok - watch-arm: an attached arm exits within its bound when its root is removed
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/home-removed/arm.out
+watcher: started pid=1758190 (beacon fresh)
+watcher: exiting - home no longer exists: /tmp/fm-watch-arm-tests.0m9F84/home-removed/home
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/root-removed/arm.out
+watcher: attached pid=1759535 (beacon 0s)
+watcher: FAILED - arm ground removed: /tmp/fm-watch-arm-tests.0m9F84/root-removed/repo/bin/fm-watch-arm.sh no longer exists
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/root-removed/owner.out
+watcher: started pid=1759535 (beacon fresh)
+watcher: exiting - home no longer exists: /tmp/fm-watch-arm-tests.0m9F84/root-removed/repo
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/arm.out
+watcher: started pid=1741201 (beacon fresh)
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/arm.out
+watcher: started pid=1749550 (beacon fresh)
+touch: cannot touch '/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/state/.secondmate-liveness-tick': No such file or directory
+watcher: exiting - state directory no longer exists: /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-stale-surface/arm.out
+watcher: started pid=1753609 (beacon fresh)
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-stale-surface/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/arm.out
+watcher: started pid=1742831 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory no longer exists: /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/arm.out
+watcher: started pid=1747861 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+SCENARIO: test_attached_arm_reports_the_delivered_wake
+ok - watch-arm: an attached arm reports the wake its cycle delivered instead of a false failure
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/attached-delivered-wake/arm.out
+watcher: attached pid=1761482 (beacon 1s)
+signal: /tmp/fm-watch-arm-tests.0m9F84/attached-delivered-wake/state/demo.status
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/attached-delivered-wake/watch.out
+signal: /tmp/fm-watch-arm-tests.0m9F84/attached-delivered-wake/state/demo.status
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/home-removed/arm.out
+watcher: started pid=1758190 (beacon fresh)
+watcher: exiting - home no longer exists: /tmp/fm-watch-arm-tests.0m9F84/home-removed/home
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/root-removed/arm.out
+watcher: attached pid=1759535 (beacon 0s)
+watcher: FAILED - arm ground removed: /tmp/fm-watch-arm-tests.0m9F84/root-removed/repo/bin/fm-watch-arm.sh no longer exists
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/root-removed/owner.out
+watcher: started pid=1759535 (beacon fresh)
+watcher: exiting - home no longer exists: /tmp/fm-watch-arm-tests.0m9F84/root-removed/repo
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/arm.out
+watcher: started pid=1741201 (beacon fresh)
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-dir-removed/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/arm.out
+watcher: started pid=1749550 (beacon fresh)
+touch: cannot touch '/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/state/.secondmate-liveness-tick': No such file or directory
+watcher: exiting - state directory no longer exists: /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-liveness-tick/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-stale-surface/arm.out
+watcher: started pid=1753609 (beacon fresh)
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-stale-surface/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/arm.out
+watcher: started pid=1742831 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory no longer exists: /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-absent/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason
+
+PRODUCT OUTPUT /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/arm.out
+watcher: started pid=1747861 (beacon fresh)
+mktemp: failed to create file via template ‘/tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/state/.fm-capture-output.XXXXXX’: No such file or directory
+watcher: exiting - state directory was torn down (singleton lock removed): /tmp/fm-watch-arm-tests.0m9F84/state-removed-mid-sweep-recreated/state
+watcher: FAILED - watcher cycle exited 1 without an actionable reason

@@ -1,0 +1,1 @@
+Both focused runners completed; post-fix exit 0; pre-fix regression exit 1 as expected. No processes reference the recorded fixture roots. Transient drivers and baseline copy removed.
