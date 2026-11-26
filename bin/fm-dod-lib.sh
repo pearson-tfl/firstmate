@@ -35,8 +35,8 @@
 # Callers of the gate are bin/fm-crew-state.sh (current-state done),
 # bin/fm-pr-check.sh (PR registration), and bin/fm-inactive-reconcile.sh
 # (secondmate ledger-first publish of a child done). A ship `done:` is not
-# accepted while the named head exists only in the worker's disposable copy.
-# The check tests that head, not whether some branch moved. In no-mistakes
+# accepted while a locally verifiable named head exists only in the worker's
+# disposable copy. The check tests that head, not whether some branch moved. In no-mistakes
 # mode the pre-validation `done: {summary}` is the pipeline handoff and is
 # not gated; only the later CI-ready `done: PR <url> checks green` is, or on a
 # Gerrit project the later `done: PR <change url> published for review`. The
@@ -879,8 +879,9 @@ fm_dod_pin_local_done_head() (  # <state> <id> <meta> <sha> <captured-meta> [met
 
 # 0 when the forge's head for a PR is the head the done names. In no-mistakes
 # mode the pipeline pushes it, possibly with commits the worker clone never
-# fetched. A direct-PR worker pushes from its own copy, so its named head stays
-# that copy's HEAD and a later unpushed commit is refused.
+# fetched. With a locally available worktree, a direct-PR worker's named head
+# stays that copy's HEAD and a later unpushed commit is refused.
+# The absent-worktree fallback is separate; see this library's header.
 fm_dod_forge_head_is_named_head() {  # <mode>
   case "$1" in
     no-mistakes|'') return 0 ;;
