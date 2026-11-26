@@ -230,6 +230,29 @@ wait_for_state "$SESSION:bun-package-collision" ambiguous \
   || fail "a stranger's package-shaped path must not match the installed omp tool"
 pass "tmux liveness: unrelated Bun scripts, eval, and basename/package-path collisions remain ambiguous"
 
+# A Bun-compiled omp at ~/.bun/bin/omp also runs as `bun <abs path>/omp`. With
+# omp absent from PATH (a primary seat may lack ~/.bun/bin), the default install
+# is the installed omp; an executable merely named omp elsewhere is not.
+mkdir -p "$LAB/home/.bun/bin" "$LAB/stranger-bin"
+for omp_file in "$LAB/home/.bun/bin/omp" "$LAB/stranger-bin/omp"; do
+  printf 'compiled omp fixture, never executed\n' > "$omp_file"
+  chmod +x "$omp_file"
+done
+new_window omp-compiled "$LAB/bin/bun" "$LAB/home/.bun/bin/omp" --profile sub2
+new_window omp-compiled-stranger "$LAB/bin/bun" "$LAB/stranger-bin/omp" --profile sub2
+saved_path=$PATH saved_home=$HOME
+PATH="$LAB/shim:/usr/bin:/bin" HOME="$LAB/home"
+command -v omp >/dev/null 2>&1 && fail "the compiled-omp case needs omp absent from PATH"
+wait_for_state "$SESSION:omp-compiled" alive \
+  || fail "the installed compiled omp run by Bun must classify alive via ~/.bun/bin"
+[ "$(fm_agent_process_classify_name "$(fm_backend_tmux_current_command "$SESSION:omp-compiled")")" != agent ] \
+  || fail "compiled omp case must blind the pane-command identity"
+comms_classify_agent "$SESSION:omp-compiled" && fail "compiled omp case must blind both process-name sources"
+wait_for_state "$SESSION:omp-compiled-stranger" ambiguous \
+  || fail "an executable merely named omp that is not the installed omp must remain ambiguous"
+PATH=$saved_path HOME=$saved_home
+pass "tmux liveness: Bun-run compiled omp is found via ~/.bun/bin; a stranger named omp stays ambiguous"
+
 # --- omp's bare binary name -------------------------------------------------
 # omp (Oh My Pi) runs as a single binary whose live process name is exactly
 # `omp`, with no path component to fall back on, so the anchored name is the

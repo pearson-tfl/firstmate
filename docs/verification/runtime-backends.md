@@ -3738,11 +3738,27 @@ omp publishes no harness marker: `PI_CODING_AGENT` is absent from the binary, an
 Verified on 2026-11-11 with omp 18.14.0 on macOS arm64 using real secondmates in disposable homes on a private tmux socket.
 This installation reports `bun` through both the foreground process name and tmux's current-command field; its command line names `omp` as Bun's script argument.
 `bin/fm-agent-process-lib.sh` owns the canonical identity predicate used by tmux: the script must resolve to the same file as the installed `omp` (the PATH-selected launch tool, else `~/.bun/bin/omp`), either the package entry or a compiled executable.
-omp 19.1.1 installed at `~/.bun/bin/omp` as a Bun-compiled executable also reports `bun` with `bun <path>/omp` as its command line (verified on macOS arm64, 2026-11-26).
 A bare script basename or an unrelated copy of the package directory spelling is insufficient.
 The generic process classifier used by Herdr, HC, Rex, and Tern is unchanged; this tmux-specific fix does not add Bun-script attribution to those adapters.
 No rendered prompt or busy-extension record is needed to prove liveness.
 The existing compiled-binary identity above remains supported.
+Verified on 2026-11-26 with omp 19.1.1 on macOS arm64: a Bun-compiled executable at `~/.bun/bin/omp` also runs as `bun <path>/omp`, and tmux reads it alive with `~/.bun/bin` absent from `PATH`:
+
+```sh
+file -b ~/.bun/bin/omp
+ps -o comm= -p <omp pid>
+ps -o args= -p <omp pid> | awk '{print $1, $2}' | sed "s|$HOME|~|"
+FM_BACKEND_LIB_DIR=bin bash -c '. bin/backends/tmux.sh && fm_backend_tmux_agent_state <session>:<window>'
+```
+
+```text
+Mach-O 64-bit executable arm64
+bun
+bun ~/.bun/bin/omp
+alive
+```
+
+`tests/fm-tmux-agent-liveness.test.sh` proves the compiled form with real processes through the `~/.bun/bin` fallback and keeps an executable merely named `omp` ambiguous.
 Refresh the credentialed proof with:
 
 ```sh
