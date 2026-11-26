@@ -123,6 +123,10 @@
 #                          opt-in config/open-decision-reminders record-age
 #                          backstop, independent of pane and branch state;
 #                          open_decision_reminder_tick owns its bounded repeats
+#   check: merge stall: <task> PR <url> ...
+#                          a PR this home merges without asking is unmerged
+#                          while its worker waits; bin/fm-merge-stall.sh owns
+#                          the trigger, repeats, and captain escalation
 #   check: process-event result captured: <keys>
 #                          a durably captured process-to-event result is queued
 #                          and has not been surfaced yet; reported once per
@@ -4019,6 +4023,17 @@ EOF
     touch "$STATE/.last-check"
     if [ -n "$contribution_check_output" ]; then
       wake "$contribution_check_output"
+    fi
+    # A PR this home merges without asking, unmerged while its worker waits.
+    if merge_stall_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-merge-stall.sh" scan 2>/dev/null); then
+      if [ -n "$merge_stall_out" ]; then
+        reason="check: merge stall: $merge_stall_out"
+        fm_wake_append check merge-stall "$reason" || exit 1
+        wake "$reason"
+      fi
+    else
+      triage_log "merge-stall scan unavailable"
     fi
   fi
 
