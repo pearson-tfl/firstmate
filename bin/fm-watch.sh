@@ -123,6 +123,10 @@
 #                          opt-in config/open-decision-reminders record-age
 #                          backstop, independent of pane and branch state;
 #                          open_decision_reminder_tick owns its bounded repeats
+#   check: merge stall: <task> PR <url> ...
+#                          a PR this home merges without asking is unmerged
+#                          while its worker waits; bin/fm-merge-stall.sh owns
+#                          the trigger, repeats, and captain escalation
 #   check: process-event result captured: <keys>
 #                          a durably captured process-to-event result is queued
 #                          and has not been surfaced yet; reported once per
@@ -242,6 +246,8 @@ WATCH_HOME_EXISTED=0
 . "$SCRIPT_DIR/fm-push-transition-lib.sh"
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
+# shellcheck source=bin/fm-timeout-lib.sh
+. "$SCRIPT_DIR/fm-timeout-lib.sh"
 # Only for the arm-time check on FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS below;
 # the per-cycle reconcile itself runs as a separate process.
 # shellcheck source=bin/fm-procevent-lib.sh
@@ -3122,7 +3128,7 @@ fm_active_check_stop() {
   [ -z "$pgid" ] || kill -TERM -- "-$pgid" 2>/dev/null || true
   [ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null || true
   i=0
-  while [ -n "$pgid" ] && kill -0 -- "-$pgid" 2>/dev/null && [ "$i" -lt 20 ]; do
+  while [ -n "$pgid" ] && kill -0 -- "-$pgid" 2>/dev/null && [ "$i" -lt "${FM_ACTIVE_CHECK_STOP_POLLS:-20}" ]; do
     sleep 0.01
     i=$((i + 1))
   done
@@ -3199,8 +3205,9 @@ fm_capture_output_cleanup() {
 # watcher_waited: <command...> into WATCHER_CAPTURE with its exit status. The
 # command runs as a waited background process group rather than inside $(...),
 # so a stop is not held for a blocked read (watcher_stop_signals): pane reads
-# (watcher_capture) and the event wait that spans a whole POLL
-# (event_wait_or_sleep) both run here. The group is recorded like a check's, so
+# (watcher_capture), the event wait that spans a whole POLL
+# (event_wait_or_sleep), and merge-stall scans all run here.
+# The group is recorded like a check's, so
 # watcher_cleanup stops one still in flight. Its own setup failures return 2,
 # which the event wait reads as an unusable event path (sleep the budget).
 watcher_waited() {  # <command...>
@@ -3233,6 +3240,24 @@ watcher_waited() {  # <command...>
   WATCHER_CAPTURE=$(cat "$FM_CAPTURE_OUTPUT" 2>/dev/null || true)
   fm_capture_output_cleanup
   return "$rc"
+}
+
+merge_stall_scan() {
+  local meta task_count=0 read_timeout=${FM_MERGE_STALL_READ_TIMEOUT:-5} value task_budget scan_budget
+  for value in "$CHECK_TIMEOUT" "$read_timeout"; do
+    case "$value" in
+      ''|0*|*[!0-9]*) printf 'fm-merge-stall: timeouts must be positive whole seconds\n'; return 2 ;;
+    esac
+    [ "${#value}" -le 12 ] || { printf 'fm-merge-stall: timeouts must be positive whole seconds\n'; return 2; }
+  done
+  for meta in "$STATE"/*.meta; do
+    [ -f "$meta" ] && [ ! -L "$meta" ] || continue
+    task_count=$((task_count + 1))
+  done
+  task_budget=$((CHECK_TIMEOUT + 4 * (read_timeout + 1)))
+  scan_budget=$((CHECK_TIMEOUT + task_count * task_budget))
+  fm_exec_timed "$scan_budget" 2 env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    bash "$SCRIPT_DIR/fm-merge-stall.sh" scan 2>&1
 }
 
 # watcher_capture: fm_backend_capture through watcher_waited.
@@ -3895,6 +3920,27 @@ while :; do
   # never run until the fleet went quiet. Checks are due only every
   # CHECK_INTERVAL, so most cycles skip this block and fall straight through.
   if [ "$(age_of "$STATE/.last-check")" -ge "$CHECK_INTERVAL" ]; then
+    merge_stall_reason=
+    merge_stall_rc=0
+    # Let the scan's nested timeout runners finish their two-second cleanup
+    # without extending cancellation of ordinary checks, pane reads, or waits.
+    FM_ACTIVE_CHECK_STOP_POLLS=300 watcher_waited merge_stall_scan || merge_stall_rc=$?
+    merge_stall_out=$WATCHER_CAPTURE
+    if fm_timed_out "$merge_stall_rc"; then
+      merge_stall_out="scan deadline exceeded${merge_stall_out:+: $merge_stall_out}"
+    fi
+    if [ "$merge_stall_rc" -ne 0 ]; then
+      merge_stall_out=$(printf '%s' "$merge_stall_out" | LC_ALL=C tr '\t\r\n' '   ' | cut -c1-1200)
+      merge_stall_reason="check: merge stall: scan failed (rc=$merge_stall_rc): ${merge_stall_out:-no diagnostic}; repair bin/fm-merge-stall.sh before relying on merge-stall detection"
+    elif [ -n "$merge_stall_out" ]; then
+      merge_stall_reason="check: merge stall: $merge_stall_out"
+    fi
+    if [ -n "$merge_stall_reason" ]; then
+      fm_wake_append check merge-stall "$merge_stall_reason" || exit 1
+      if [ "$merge_stall_rc" -ne 0 ]; then
+        touch "$STATE/.last-check" || exit 1
+      fi
+    fi
     rejected_checks=
     contribution_check_output=
     for c in "$STATE"/*.check.sh; do
@@ -4019,6 +4065,9 @@ EOF
     touch "$STATE/.last-check"
     if [ -n "$contribution_check_output" ]; then
       wake "$contribution_check_output"
+    fi
+    if [ -n "$merge_stall_reason" ]; then
+      wake "$merge_stall_reason"
     fi
   fi
 
