@@ -38,8 +38,8 @@
 #   parent_status_scan_signature=
 #   request_summary=        short sanitized summary (no secrets by design)
 #   required_skills=        comma list from the request's "Required skills:"
-#                           line, or empty (bin/fm-required-skill-lib.sh); a
-#                           done reply resolves only once each has its shaped proof
+#                           line, or empty; bin/fm-required-skill-lib.sh owns
+#                           the proof gates on correlated replies
 #   created_epoch=          when the expectation was created
 #   delivered_epoch=        when the marked request was confirmed delivered
 #                           (empty until delivery; delivery never resolves)
@@ -625,8 +625,8 @@ fm_pending_reply_line_resolves() {  # <line> <corr_id>
 }
 
 # Scan a status file for a correlated resolve. Prints the matching line or empty.
-# With <required-skills>, a done line counts only once the file holds every
-# shaped proof for this correlation (the required-skill done gate).
+# With <required-skills>, apply the reply proof gates owned by
+# bin/fm-required-skill-lib.sh.
 fm_pending_reply_find_resolve_line() {  # <status-file> <corr_id> [required-skills]
   local status_file=$1 corr=$2 line skip_done=0
   [ -f "$status_file" ] || return 0
@@ -1812,8 +1812,8 @@ fm_pending_reply_mate_required_skills() {  # <inbox-dir> <corr_id>
   printf '%s' "$out"
 }
 
-# 0 when <channel> already holds a line that resolves <corr_id>, holding a
-# done to the request's required-skill gate when <inbox-dir> is given.
+# 0 when <channel> already holds a line that resolves <corr_id>, applying the
+# request's required-skill gates when <inbox-dir> is given.
 fm_pending_reply_mate_answered() {  # <channel> <corr_id> [inbox-dir]
   [ -n "$(fm_pending_reply_find_resolve_line "$1" "$2" \
     "$(fm_pending_reply_mate_required_skills "${3:-}" "$2")")" ]

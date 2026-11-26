@@ -34,6 +34,9 @@
 #   start  bin/fm-task-inbox-lib.sh reopens an acknowledged inbox record that
 #          carries the machine line until every start proof is present, so the
 #          watcher's existing re-ring ladder keeps ringing and then escalates.
+#          The parent pending-reply scan accepts no answer without these start
+#          proofs, including on remote requests without a local inbox ladder;
+#          its existing recovery and escalation retain the required-skill list.
 #   done   bin/fm-dod-lib.sh's fm_dod_accept_ship_done and bin/fm-crew-state.sh
 #          refuse a ship or scout done, bin/fm-pr-check.sh refuses to register
 #          its PR, bin/fm-secondmate-report.sh refuses a done reply, and the
