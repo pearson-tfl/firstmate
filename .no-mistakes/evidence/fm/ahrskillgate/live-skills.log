@@ -1,0 +1,69 @@
+{run-worktree}/.skill-live/parent
+{run-worktree}/.skill-live/mate
+
+SCENARIO intake: scaffold normalized repeated skill flags and send an OMP marked request
+scaffolded: {run-worktree}/.skill-live/parent/data/task/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.skill-live/parent
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+schema=fm-task-inbox.v1
+at=2026-11-26T18:48:13Z
+body-terminator=1
+--
+[fm-from-firstmate]⁣corr=8944f117ea5646cc Hill-climb the synthetic wiki
+
+# Required skills
+Required skills: poteto-mode,tdd
+The request named these skills, so each one must shape this work, and firstmate checks the record mechanically.
+1. Before any other status line, load each skill (`read and follow the complete SKILL.md for /poteto-mode`, `read and follow the complete SKILL.md for /tdd`) through the skill tool or read its complete SKILL.md, then report one start proof per skill: `bin/fm-secondmate-report.sh working "skill-start <name> path=<SKILL.md path you read> route=<your first routing decision under it>"`
+   Firstmate keeps ringing this request until every start proof is present, even after you acknowledge it.
+2. Before reporting done, report one line per skill saying how it shaped the work: `bin/fm-secondmate-report.sh working "skill-shaped <name>: <how the skill shaped the work>"`
+   A done without one is refused, naming the missing skill.
+
+SCENARIO rering: acknowledged request without proof is reopened, rings, and escalates
+checkpoint: no actionable wake within 5s
+actual watcher checkpoint exit=124; acknowledged record reopened=yes
+watcher action: ring {run-worktree}/.skill-live/parent/state/sm.inbox/001.msg
+watcher action after ring budget: escalate {run-worktree}/.skill-live/parent/state/sm.inbox/001.msg 2
+
+SCENARIO completion: done refuses missing proofs; parenthesized initial proofs survive helper metadata and recovery
+error: done refused: required skill poteto-mode,tdd has no start proof before other status lines; required skill poteto-mode,tdd has no record of how it shaped the work; required forms: `bin/fm-secondmate-report.sh working 8944f117ea5646cc "skill-start poteto-mode path=<SKILL.md path you read> route=<your first routing decision under it>"`; `bin/fm-secondmate-report.sh working 8944f117ea5646cc "skill-start tdd path=<SKILL.md path you read> route=<your first routing decision under it>"`; `bin/fm-secondmate-report.sh working 8944f117ea5646cc "skill-shaped poteto-mode: <how the skill shaped the work>"`; `bin/fm-secondmate-report.sh working 8944f117ea5646cc "skill-shaped tdd: <how the skill shaped the work>"`; start proofs must precede other status lines
+missing-proof done refused as required
+watcher action with initial proofs: quiet
+error: done refused: required skill poteto-mode,tdd has no record of how it shaped the work; required forms: `bin/fm-secondmate-report.sh working 8944f117ea5646cc "skill-shaped poteto-mode: <how the skill shaped the work>"`; `bin/fm-secondmate-report.sh working 8944f117ea5646cc "skill-shaped tdd: <how the skill shaped the work>"`; start proofs must precede other status lines
+note [source=firstmate]: unmatched tool exclusion before recipient starts
+working [corr=8944f117ea5646cc] [at=1795718900]: skill-start poteto-mode path=/synthetic/poteto-mode/SKILL.md route= (render comparison first) (via-helper)
+working [corr=8944f117ea5646cc] [at=1795718900]: skill-start tdd path=/synthetic/tdd/SKILL.md route=red test first (via-helper)
+working [corr=8944f117ea5646cc] [at=1795718901]: skill-shaped poteto-mode: (rendered each candidate and kept the better comparison) (via-helper)
+working [corr=8944f117ea5646cc] [at=1795718902]: skill-shaped tdd: red CLI check drove the implementation (via-helper)
+done [corr=8944f117ea5646cc] [at=1795718902]: wiki ready (via-helper)
+parent phase: resolved
+
+SCENARIO adversarial helper payload: empty explanation does not satisfy completion
+error: done refused: required skill tdd has no record of how it shaped the work; required forms: `bin/fm-secondmate-report.sh working dbca8fc939be2bfa "skill-shaped tdd: <how the skill shaped the work>"`; start proofs must precede other status lines
+working [corr=dbca8fc939be2bfa] [at=1795718903]: skill-start tdd path=/synthetic/tdd/SKILL.md route=red test first (via-helper)
+working [corr=dbca8fc939be2bfa] [at=1795718903]: skill-shaped tdd: (via-helper)
+working [corr=dbca8fc939be2bfa] [at=1795718903]: skill-shaped tdd: failing check established the desired behavior (via-helper)
+done [corr=dbca8fc939be2bfa] [at=1795718904]: complete (via-helper)
+
+SCENARIO adversarial ordering: late and empty-route starts cannot authorize done
+error: done refused: required skill tdd has no start proof before other status lines; required forms: `bin/fm-secondmate-report.sh working 208c54f3f215a057 "skill-start tdd path=<SKILL.md path you read> route=<your first routing decision under it>"`; start proofs must precede other status lines
+error: done refused: required skill tdd has no start proof before other status lines; required forms: `bin/fm-secondmate-report.sh working a0ab7214d087a39b "skill-start tdd path=<SKILL.md path you read> route=<your first routing decision under it>"`; start proofs must precede other status lines
+
+SCENARIO remote-route parent boundary: unproven or foreign-correlated working cannot settle reminder
+parent remains open after unproven working
+parent remains open after foreign-correlation proof
+check: rearm-resurface
+parent phase after valid initial proof and answer: resolved
+
+SCENARIO worker current state: unproven scout done is blocked, proven done accepted, plain task unchanged
+state: blocked · source: status-log · done refused: required skill tdd has no start proof before other status lines; required skill tdd has no record of how it shaped the work; required forms: `working [at=<epoch>]: skill-start tdd path=<SKILL.md path you read> route=<your first routing decision under it>`; `working [at=<epoch>]: skill-shaped tdd: <how the skill shaped the work>`; start proofs must precede other status lines
+state: done · source: status-log · report written
+state: done · source: status-log · report written
+
+All manual CLI scenarios completed; private tmux server and lab homes removed by EXIT trap.

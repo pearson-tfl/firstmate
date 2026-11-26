@@ -1,0 +1,13 @@
+1..10
+ok - helper proofs preserve parenthesized routes and explanations
+ok - remote answers require every initial start proof
+ok - infrastructure events neither invalidate nor supply recipient proofs
+ok - helper metadata cannot supply proof payload
+ok - a required skill missing its start proof keeps ringing until the proof is present
+ok - a marked request's start proof must carry its correlation token
+ok - a secondmate done is refused until the shaped proof exists, then accepted
+done refused: required skill poteto-mode has no start proof before other status lines; required forms: `working [at=<epoch>]: skill-start poteto-mode path=<SKILL.md path you read> route=<your first routing decision under it>`; start proofs must precede other status lines
+ok - a worker done is refused until every required skill is shaped, then accepted
+ok - required-skill instructions use the harness's verified invocation form
+ok - tasks and requests with no required skill behave exactly as before
+FM_TEST_COMPLETE

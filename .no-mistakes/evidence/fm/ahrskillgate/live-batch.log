@@ -1,0 +1,23 @@
+{run-worktree}/.batch-live/home
+
+SCENARIO ship batch: each child must retain both required-skill flags and reject a brief naming only tdd
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.batch-live/home
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.batch-live/home
+error: required-skill mismatch for ship-a: {run-worktree}/.batch-live/home/data/ship-a/brief.md records tdd but this spawn passed tdd,poteto-mode; pass one --required-skill per skill the brief names, in its order, or re-scaffold the brief with the same --required-skill flags
+batch: FAILED to spawn ship-a ({run-worktree}/.batch-live/project)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.batch-live/home
+error: required-skill mismatch for ship-b: {run-worktree}/.batch-live/home/data/ship-b/brief.md records tdd but this spawn passed tdd,poteto-mode; pass one --required-skill per skill the brief names, in its order, or re-scaffold the brief with the same --required-skill flags
+batch: FAILED to spawn ship-b ({run-worktree}/.batch-live/project)
+exit=1
+
+SCENARIO scout batch: each child must retain both required-skill flags and reject a brief naming only tdd
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.batch-live/home
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.batch-live/home
+error: required-skill mismatch for scout-a: {run-worktree}/.batch-live/home/data/scout-a/brief.md records tdd but this spawn passed tdd,poteto-mode; pass one --required-skill per skill the brief names, in its order, or re-scaffold the brief with the same --required-skill flags
+batch: FAILED to spawn scout-a ({run-worktree}/.batch-live/project)
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.batch-live/home
+error: required-skill mismatch for scout-b: {run-worktree}/.batch-live/home/data/scout-b/brief.md records tdd but this spawn passed tdd,poteto-mode; pass one --required-skill per skill the brief names, in its order, or re-scaffold the brief with the same --required-skill flags
+batch: FAILED to spawn scout-b ({run-worktree}/.batch-live/project)
+exit=1
+
+Both batch preflights refused safely before launching; disposable home removed.
