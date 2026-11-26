@@ -1,0 +1,11 @@
+$ bin/fm-captain-hold.sh hold held --title Synthetic pending decision --reason Await approval --repo synthetic 
+exit= 0 stdout= 'held\n' stderr= ''
+$ bin/fm-crew-state.sh held 
+exit= 0 stdout= 'state: unknown · source: none · worktree gone (torn down?)\n' stderr= ''
+$ bin/.gate-old-merge.sh scan --now 1000000600 
+exit= 0 stdout= 'evidence unavailable: current activity unreadable for held: state: unknown · source: none · worktree gone (torn down?)\n' stderr= ''
+Traceback (most recent call last):
+  File "{run-worktree}/.test-merge-lab/baseline.py", line 46, in <module>
+    p=run(['bin/.gate-old-merge.sh','scan','--now',str(now)],timeout=30); assert p.returncode==0 and p.stdout=='' and p.stderr==''
+                                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

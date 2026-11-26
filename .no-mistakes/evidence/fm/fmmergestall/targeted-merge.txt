@@ -1,0 +1,3 @@
+ok - a 6s healthy forge read completes cleanly under the default read timeout
+ok - held tasks with gone workers stay silent without reading worker activity and still retire when merged
+ok - closed and merged PRs retire held escalations across both routes and all poll states

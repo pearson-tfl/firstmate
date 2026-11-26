@@ -1,0 +1,19 @@
+ok - a passing required check and a skipped one leave nothing to report
+ok - a terminal pull request reports that state and nothing else
+ok - draft state blocks readiness
+ok - stale changes-requested verdicts explain a blocking review decision
+ok - approved PR ignores stale changes-requested history
+ok - current changes-requested review blocks readiness
+ok - a CHANGES_REQUESTED decision is always reported
+ok - the author's own review is never listed as a blocker
+ok - a pending approval is not reported as a blocker
+ok - required failure blocks readiness
+ok - given gh's sentence, an unreported required check is unconfirmed, other check lookup failures refuse
+ok - given gh's sentence, a head with no reported checks is unverified rather than ready
+ok - a failing reported check is shown when the base has no required checks
+ok - a pending reported check is shown when the base has no required checks, and a failed fallback read refuses
+ok - a protected base reports only required checks
+ok - help states what empty output means and what is out of scope
+ok - unknown and conflicting mergeability block readiness
+ok - argument and lookup refusals exit nonzero
+ok - INT and TERM traps exit cleanly and remove the temp file without continuing to read it
