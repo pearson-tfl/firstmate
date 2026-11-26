@@ -330,6 +330,8 @@ for meta in "$STATE"/*.meta; do
       continue
     fi
     if fm_pr_poll_merge_already_notified "$STATE" "$id" "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER"; then
+      # A task with no branch copy left has no next PR to search for.
+      [ -n "$(meta_get "$meta" branch)" ] || continue
       url=
     fi
   fi
@@ -352,7 +354,8 @@ for meta in "$STATE"/*.meta; do
   consider_rc=0
   consider_pr || consider_rc=$?
   # A merged or closed recorded PR retires; the task's next PR, if any, counts.
-  if [ "$consider_rc" -eq 3 ] && [ -n "$recorded" ] && discover_pr && [ "$url" != "$recorded" ]; then
+  if [ "$consider_rc" -eq 3 ] && [ -n "$recorded" ] && [ -n "$(meta_get "$meta" branch)" ] \
+    && discover_pr && [ "$url" != "$recorded" ]; then
     consider_pr || :
   fi
 done

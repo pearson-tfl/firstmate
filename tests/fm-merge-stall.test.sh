@@ -278,7 +278,7 @@ write_unregistered_task() {
 test_unregistered_pr() {
   local route home verb out
   for route in main local remote; do
-    for verb in paused done; do
+    for verb in paused "done"; do
       make_world "unregistered-$route-$verb"
       home=$MAIN
       if [ "$route" != main ]; then bind_mate "$route"; home=$MATE; fi
@@ -335,7 +335,7 @@ test_due_stalls_make_progress() {
 test_replaced_waiting_episode() {
   local route verb channel out first second new_time
   for route in local remote; do
-    for verb in paused done; do
+    for verb in paused "done"; do
       make_world "episode-$route-$verb"; bind_mate "$route"
       if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
       write_task "$MATE" child on "$verb [at=$T0]: first wait"
@@ -409,6 +409,7 @@ test_chatty_check_cannot_starve_scan() {
   make_world chatty
   now=$(date +%s)
   write_task "$MAIN" t on "done [at=$((now - 700))]: PR ready"
+  # shellcheck disable=SC2016 # a literal script body
   printf '#!/usr/bin/env bash\nprintf "fresh mail\\n"\n' > "$MAIN/state/mail.check.sh"
   chmod 700 "$MAIN/state/mail.check.sh"
   FM_HOME="$MAIN" bash "$ROOT/bin/fm-check-register.sh" mail >/dev/null || fail "custom mail check registration failed"
@@ -431,14 +432,17 @@ test_scanner_failures_wake_home() {
       ledger-type) mkdir "$MAIN/state/.merge-stall" ;;
       ledger-read)
         : > "$MAIN/state/.merge-stall"
+        # shellcheck disable=SC2016 # a literal script body
         printf '#!/usr/bin/env bash\ncase "$1" in */.merge-stall) echo "ledger read refused" >&2; exit 1 ;; esac\nexec "%s" "$@"\n' "$real_cat" > "$WORLD/fakebin/cat"
         chmod +x "$WORLD/fakebin/cat"
         ;;
       ledger-temp)
+        # shellcheck disable=SC2016 # a literal script body
         printf '#!/usr/bin/env bash\ncase "$1" in */.merge-stall.??????) echo "ledger storage unavailable" >&2; exit 1 ;; esac\nexec "%s" "$@"\n' "$real_mktemp" > "$WORLD/fakebin/mktemp"
         chmod +x "$WORLD/fakebin/mktemp"
         ;;
       ledger-write)
+        # shellcheck disable=SC2016 # a literal script body
         printf '#!/usr/bin/env bash\nfor arg in "$@"; do case "$arg" in */.merge-stall) echo "ledger rename refused" >&2; exit 1 ;; esac; done\nexec "%s" "$@"\n' "$real_mv" > "$WORLD/fakebin/mv"
         chmod +x "$WORLD/fakebin/mv"
         ;;
@@ -462,8 +466,8 @@ test_scanner_failures_wake_home() {
     grep -Fq 'check: merge stall: scan failed (rc=1):' "$home/state/.wake-queue" || fail "$kind detector failure stayed silent: $(cat "$WORLD/watch.out")"
     case "$kind" in
       ledger-*) grep -Fq 'ledger' "$home/state/.wake-queue" || fail "$kind failure omitted its cause" ;;
-      parent-*) grep -Fq "parent channel append failed (rc=4):" "$home/state/.wake-queue" && grep -Fq "PR $URL" "$home/state/.wake-queue" || fail "$kind failure omitted the detected stall" ;;
-      resolved-*) grep -Fq 'parent channel read failed' "$home/state/.wake-queue" && grep -Fq "PR $URL" "$home/state/.wake-queue" || fail "$kind failure omitted the unresolved episode" ;;
+      parent-*) { grep -Fq "parent channel append failed (rc=4):" "$home/state/.wake-queue" && grep -Fq "PR $URL" "$home/state/.wake-queue"; } || fail "$kind failure omitted the detected stall" ;;
+      resolved-*) { grep -Fq 'parent channel read failed' "$home/state/.wake-queue" && grep -Fq "PR $URL" "$home/state/.wake-queue"; } || fail "$kind failure omitted the unresolved episode" ;;
     esac
     [ "$(wc -l < "$home/state/.wake-queue" | tr -d ' ')" = 1 ] || fail "$kind failure queued more than one wake"
     [ -f "$home/state/.last-check" ] || fail "$kind failure did not retain bounded sweep cadence"
@@ -559,7 +563,7 @@ test_active_validation_is_not_a_merge_wait() {
   local registration verb out head state
   fm_git_identity fmtest fmtest@example.invalid
   for registration in recorded discovered; do
-    for verb in paused done; do
+    for verb in paused "done"; do
       make_world "validation-$registration-$verb"
       write_unregistered_task "$MAIN" t "$verb"
       printf 'mode=no-mistakes\n' >> "$MAIN/state/t.meta"
@@ -708,6 +712,7 @@ test_short_checksum_has_a_valid_parent_key() {
   for route in local remote; do
     make_world "short-checksum-$route"; bind_mate "$route"
     if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
+    # shellcheck disable=SC2016 # a literal script body
     printf '#!/usr/bin/env bash\ncat >/dev/null\nprintf "1234567 42\\n"\n' > "$WORLD/fakebin/cksum"
     chmod +x "$WORLD/fakebin/cksum"
     write_task "$MATE" child on "done [at=$T0]: PR ready"
@@ -799,6 +804,7 @@ test_read_deadlines_and_watcher_cancellation() {
   done
   make_world scan-deadline
   real_mktemp=$(command -v mktemp)
+  # shellcheck disable=SC2016 # a literal script body
   printf '#!/usr/bin/env bash\ncase "$1" in */.merge-stall.??????) exec "${0%%/*}/hang-read" ;; esac\nexec "%s" "$@"\n' "$real_mktemp" > "$WORLD/fakebin/mktemp"
   chmod +x "$WORLD/fakebin/mktemp"
   FM_TEST_READ_PIDS="$WORLD/read.pids" FM_TEST_READ_TIMEOUT=1 FM_TEST_CHECK_TIMEOUT=1 run_watcher "$MAIN"
