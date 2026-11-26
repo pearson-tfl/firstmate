@@ -1158,7 +1158,7 @@ test_slow_forge_read_succeeds_under_default_timeout() {
 }
 
 test_held_task_with_gone_worker_stays_silent() {
-  local verb failure now out channel activity_reads
+  local verb failure now out channel activity_reads next=https://github.com/owner/repo/pull/629
   for verb in "done" paused; do
     for failure in unknown rc; do
       make_world "held-gone-$verb-$failure"
@@ -1190,6 +1190,20 @@ test_held_task_with_gone_worker_stays_silent() {
   [ -z "$out" ] && [ ! -s "$MATE/state/.merge-stall" ] || fail "merged PR did not retire escalated held stall with gone worker: $out"
   [ -z "$(parent_open "$channel")" ] || fail "merged PR did not resolve escalated held parent blocker with gone worker"
   [ "$(wc -l < "$WORLD/activity.log" | tr -d ' ')" = "$activity_reads" ] || fail "terminal retirement of held task read worker activity"
+  make_world held-replacement-pr; bind_mate local
+  channel="$MAIN/state/mate.status"
+  write_unregistered_task "$MATE" child paused
+  printf 'pr=%s\n' "$URL" >> "$MATE/state/child.meta"
+  FM_TEST_CLOSED_URL="$URL" FM_TEST_BRANCH_URL="$next" scan "$MATE" $((T0 + 1800)) >/dev/null || fail "replacement held fixture failed"
+  activity_reads=$(wc -l < "$WORLD/activity.log" | tr -d ' ')
+  out=$(FM_TEST_HELD=child FM_TEST_BAD_TASK=child FM_TEST_ACTIVITY='state: unknown · source: none · endpoint gone' FM_TEST_CLOSED_URL="$URL" scan "$MATE" $((T0 + 3600))) || fail "held replacement PR open scan failed"
+  [ -z "$out" ] || fail "held replacement PR with gone worker re-woke home: $out"
+  [ -n "$(parent_open "$channel")" ] || fail "held replacement PR lost its parent blocker while still open"
+  [ "$(wc -l < "$WORLD/activity.log" | tr -d ' ')" = "$activity_reads" ] || fail "held replacement PR read worker activity"
+  out=$(FM_TEST_HELD=child FM_TEST_BAD_TASK=child FM_TEST_ACTIVITY='state: unknown · source: none · endpoint gone' FM_TEST_PR_STATE='STATE: merged' scan "$MATE" $((T0 + 4800))) || fail "held replacement PR terminal scan failed"
+  [ -z "$out" ] && [ ! -s "$MATE/state/.merge-stall" ] || fail "merged replacement PR did not retire held stall: $out"
+  [ -z "$(parent_open "$channel")" ] || fail "merged replacement PR did not resolve held parent blocker"
+  [ "$(wc -l < "$WORLD/activity.log" | tr -d ' ')" = "$activity_reads" ] || fail "terminal retirement of held replacement PR read worker activity"
   pass "held tasks with gone workers stay silent without reading worker activity and still retire when merged"
 }
 

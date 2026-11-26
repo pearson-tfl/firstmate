@@ -348,12 +348,10 @@ for meta in "$STATE"/*.meta; do
     held_episode=$(printf '%s' "$line" | cksum | awk '{print $1}')
     held_url=
     while IFS=$'\t' read -r o_task o_url o_since o_last o_esc o_episode; do
-      [ "$o_task" = "$id" ] && [ "$o_episode" = "$held_episode" ] && [ "$o_url" != "$retired_url" ] || continue
+      [ "$o_task" = "$id" ] && [ -n "$o_url" ] && [ "$o_episode" = "$held_episode" ] && [ "$o_url" != "$retired_url" ] || continue
       case "$o_since:$o_last:$o_esc" in *[!0-9:]*|:*|*::*|*:) continue ;; esac
-      if [ -z "$url" ] || [ "$o_url" = "$url" ]; then
-        held_url=$o_url
-        break
-      fi
+      held_url=$o_url
+      break
     done <<EOF
 $old
 EOF
