@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Local CLI: paused authorized worker receives timed reminders and main escalation",
+    "result": "pass",
+    "live": true
+  },
+  {
+    "name": "Local and remote-route disposable homes escalate once and resolve after canonical merge evidence",
+    "result": "pass",
+    "live": true
+  },
+  {
+    "name": "Local CLI guards: no authority, busy worker, draft and captain hold suppress merge instructions",
+    "result": "pass",
+    "live": true
+  },
+  {
+    "name": "Real GitHub CLI against localhost forge: discover only the task push-remote owner, repository and branch",
+    "result": "pass",
+    "live": true
+  },
+  {
+    "name": "Local CLI recovery: retired PR blockers close despite replacement uncertainty, live unknowns persist and siblings progress",
+    "result": "pass",
+    "live": true
+  },
+  {
+    "name": "Real watcher: local polling queues an actionable merge-stall notification",
+    "result": "pass",
+    "live": true
+  }
+]

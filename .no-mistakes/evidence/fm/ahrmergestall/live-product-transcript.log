@@ -1,0 +1,431 @@
+$ openssl req -x509 -newkey rsa:2048 -nodes -keyout {run-worktree}/.merge-stall-live/key.pem -out {run-worktree}/.merge-stall-live/cert.pem -days 1 -subj /CN=api.github.com -addext subjectAltName=DNS:api.github.com,DNS:github.com
+.....+......+++++++++++++++++++++++++++++++++++++++*........+..+.+..+.......+...........+...+.........+......+.+...+...+.....+...+................+++++++++++++++++++++++++++++++++++++++*...+........+....+..+...+...+.......+..+....+.....+....+......+......+.........+......+...+.....+.+..+...+......+...+.......+....................+.+..+......+....+...........+.......+..+.......+.....+......+..................+.......+..+......+.........+.+..+............................+.....+............+....+.........+..+....+...+...........+....+.....+.+...............+.........+..+.........+.+.....+......+.......+....................+......+.......+.....+.......+..+.+..............+....+.........+...+..+..........+..+.+........+....+......+..............+.+...............+.....+......+.+...+............+...+.....+......+.+..+............+......+............+............+....+..+............+...+.......+...+.........+......+..+...+.........+......+...+.+.........+...........+.+..+.+..+.......+..................+...+..+...+..........+...........+.....................+.......+...........+.......+..+...+....+...+......+......+......+..+.+..+.........+..........+.....+....+..+...+......+...+..........+......+.............................+.......+...+.....+.+......+...+..+.........+.+........+..................+...+......+.+...+..............................+.........+...+.........+.....+....+......+.....+...+..........+...+..+...+...............+.............+..+.........+..........+........+...+...+.......+..+.+.....+.+..............+.........+.............+..............+......+............+.+......+......+.........+.....+....+.....+.+.....+....+.....+......+......+...+....+...+.....+...+....+...+..+..........+..+.............+...............+...+..............+.+.........+...........+.......+..+.+.....+...+....+..+...+.......+...+...........+.........+.......+...+......+...........+......+...+.......+.....+.......+...+........++++++
+.....................+++++++++++++++++++++++++++++++++++++++*......+..+...+......+...+......+.+.....+.+.....+...+.......+.....+....+......+........+......+...+++++++++++++++++++++++++++++++++++++++*............+....+..+....+...+..+.+........+......+.........+......+.+.....+....+.........+..............+.+..+...+........................+...+....+...+...........+....+......+..+............+.+..+....+...............+.........+..+..........+..+.+............+..+.+.....+.+...........+..........+............+.....+.......+.....+.............+........+.......+.....+......+.........+.+......+...........+...+.+.........+..+..........+..+.......+.....+...+...+..........+...+......+...+.....+...............+...+..................+.+...+........+...+................+...+..+..........+.....................+..................+...........+...+............+.....................+.......+.....+......+...............+.+...+..+.+..+......+.......+...+..+..........+.........+.....+.+...+...........+.+...+..+.........+.........+.+...+.....++++++
+-----
+exit=0
+$ tmux -S .merge-stall-live/socket new-session -d -s fm-lab-merge -n fm-worker -x 120 -y 40 -c {run-worktree}
+
+exit=0
+$ tmux -S .merge-stall-live/socket display-message -p #{socket_path},#{pid},0
+.merge-stall-live/socket,51145,0
+exit=0
+$ git init -q {run-worktree}/.merge-stall-live/copy
+
+exit=0
+$ git -C {run-worktree}/.merge-stall-live/copy -c user.name=Lab -c user.email=lab@example.invalid commit --allow-empty -qm Synthetic lab input
+
+exit=0
+$ git -C {run-worktree}/.merge-stall-live/copy checkout --detach -q
+
+exit=0
+$ git -C {run-worktree}/.merge-stall-live/copy remote add origin https://github.com/lab-owner/lab-repo.git
+
+exit=0
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/main
+{run-worktree}/.merge-stall-live/main
+exit=0
+$ gh pr view https://github.com/lab-owner/lab-repo/pull/628 --json state,mergedAt,isDraft,headRefOid,author,mergeable,reviewDecision
+{"author":{"id":"U_local","is_bot":false,"login":"lab-worker","name":"Local Worker"},"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","isDraft":false,"mergeable":"MERGEABLE","mergedAt":null,"reviewDecision":"APPROVED","state":"OPEN"}
+exit=0
+$ bash bin/fm-pr-state.sh https://github.com/lab-owner/lab-repo/pull/628
+
+exit=0
+
+SCENARIO Local CLI: paused authorized worker receives timed reminders and main escalation
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/main/state worker --state idle --source claude-hook --event Stop
+g1795665547.52653.23835
+exit=0
+$ bash bin/fm-crew-state.sh worker
+state: paused · source: status-log · Ready fix awaits this home
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 1300
+
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 1600
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 600s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 1900
+
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: tell the captain now
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 3000
+
+exit=0
+OBSERVED RESULT: PASS
+
+SCENARIO Local and remote-route disposable homes escalate once and resolve after canonical merge evidence
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/route-local
+{run-worktree}/.merge-stall-live/route-local
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/route-local/state worker --state idle --source claude-hook --event Stop
+g1795665550.60080.29858
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/main/state/route-local.status
+merge-stall-worker-38789529	blocked	merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 4600
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 3600s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel
+exit=0
+$ bash -c . bin/fm-pr-lib.sh; fm_pr_url_parse "$2" && fm_pr_poll_merge_mark_notified "$1/state" worker "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER" _ {run-worktree}/.merge-stall-live/route-local https://github.com/lab-owner/lab-repo/pull/628
+
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 6400
+
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/main/state/route-local.status
+
+exit=0
+PERSISTED PARENT CHANNEL {run-worktree}/.merge-stall-live/main/state/route-local.status
+blocked [key=merge-stall-worker-38789529] [at=1795665550]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+resolved [key=merge-stall-worker-38789529] [at=1795665551]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 is no longer a merge candidate or its worker waiting episode ended
+
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/route-remote
+{run-worktree}/.merge-stall-live/route-remote
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/route-remote/state worker --state idle --source claude-hook --event Stop
+g1795665551.64222.17640
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/route-remote/state/parent-replies.status
+merge-stall-worker-38789529	blocked	merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 4600
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 3600s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel
+exit=0
+$ bash -c . bin/fm-pr-lib.sh; fm_pr_url_parse "$2" && fm_pr_poll_merge_mark_notified "$1/state" worker "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER" _ {run-worktree}/.merge-stall-live/route-remote https://github.com/lab-owner/lab-repo/pull/628
+
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 6400
+
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/route-remote/state/parent-replies.status
+
+exit=0
+PERSISTED PARENT CHANNEL {run-worktree}/.merge-stall-live/route-remote/state/parent-replies.status
+blocked [key=merge-stall-worker-38789529] [at=1795665552]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+resolved [key=merge-stall-worker-38789529] [at=1795665553]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 is no longer a merge candidate or its worker waiting episode ended
+
+OBSERVED RESULT: PASS
+
+SCENARIO Local CLI guards: no authority, busy worker, draft and captain hold suppress merge instructions
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/guards
+{run-worktree}/.merge-stall-live/guards
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/guards/state worker --state idle --source claude-hook --event Stop
+g1795665553.67953.6976
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/guards/state worker --state idle --source claude-hook --event Stop
+g1795665553.69397.20724
+exit=0
+$ bash bin/fm-busy-event.sh apply {run-worktree}/.merge-stall-live/guards/state worker busy --current-gen --source claude-hook --event UserPromptSubmit
+
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/guards/state worker --state idle --source claude-hook --event Stop
+g1795665554.70561.21219
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+
+exit=0
+$ bash bin/fm-captain-hold.sh hold worker --title Synthetic approval --reason Await explicit approval
+worker
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+
+exit=0
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/held-terminal
+{run-worktree}/.merge-stall-live/held-terminal
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/held-terminal/state worker --state idle --source claude-hook --event Stop
+g1795665558.80220.32529
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel
+exit=0
+$ bash bin/fm-captain-hold.sh hold worker --title Synthetic approval --reason Await explicit approval
+worker
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 4600
+
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/held-terminal/state/parent-replies.status
+captain-hold-worker-1	needs-decision	captain hold worker: Await explicit approval
+exit=0
+OBSERVED RESULT: PASS
+
+SCENARIO Real GitHub CLI against localhost forge: discover only the task push-remote owner, repository and branch
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/discover-own
+{run-worktree}/.merge-stall-live/discover-own
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/discover-own/state worker --state idle --source claude-hook --event Stop
+g1795665560.87877.871
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/629 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/629, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: tell the captain now
+exit=0
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/discover-other-owner
+{run-worktree}/.merge-stall-live/discover-other-owner
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/discover-other-owner/state worker --state idle --source claude-hook --event Stop
+g1795665561.90549.25939
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+evidence unavailable: PR discovery for worker found 1 open PR(s) on fm/lab with 0 from lab-owner/lab-repo; identity not established
+exit=0
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/discover-other-repo
+{run-worktree}/.merge-stall-live/discover-other-repo
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/discover-other-repo/state worker --state idle --source claude-hook --event Stop
+g1795665562.92665.11595
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+evidence unavailable: PR discovery for worker found 1 open PR(s) on fm/lab with 0 from lab-owner/lab-repo; identity not established
+exit=0
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/discover-other-branch
+{run-worktree}/.merge-stall-live/discover-other-branch
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/discover-other-branch/state worker --state idle --source claude-hook --event Stop
+g1795665563.94469.7496
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+evidence unavailable: PR discovery for worker found 1 open PR(s) on fm/lab with 0 from lab-owner/lab-repo; identity not established
+exit=0
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/discover-ambiguous
+{run-worktree}/.merge-stall-live/discover-ambiguous
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/discover-ambiguous/state worker --state idle --source claude-hook --event Stop
+g1795665563.96658.1539
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+evidence unavailable: PR discovery for worker found 2 open PR(s) on fm/lab with 2 from lab-owner/lab-repo; identity not established
+exit=0
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/discover-draft
+{run-worktree}/.merge-stall-live/discover-draft
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/discover-draft/state worker --state idle --source claude-hook --event Stop
+g1795665564.98944.14068
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+
+exit=0
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/discover-mixed
+{run-worktree}/.merge-stall-live/discover-mixed
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/discover-mixed/state worker --state idle --source claude-hook --event Stop
+g1795665564.817.5326
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/629 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/629, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: tell the captain now
+exit=0
+OBSERVED RESULT: PASS
+
+SCENARIO Local CLI recovery: retired PR blockers close despite replacement uncertainty, live unknowns persist and siblings progress
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/retire-local-marker
+{run-worktree}/.merge-stall-live/retire-local-marker
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/retire-local-marker/state worker --state idle --source claude-hook --event Stop
+g1795665565.2943.29571
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/main/state/retire-local-marker.status
+merge-stall-worker-38789529	blocked	merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+exit=0
+$ bash -c . bin/fm-pr-lib.sh; fm_pr_url_parse "$2" && fm_pr_poll_merge_mark_notified "$1/state" worker "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER" _ {run-worktree}/.merge-stall-live/retire-local-marker https://github.com/lab-owner/lab-repo/pull/628
+
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 4600
+evidence unavailable: PR discovery failed for worker (rc=1): HTTP 503: local emulator intentionally unavailable (https://api.github.com/graphql)
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/main/state/retire-local-marker.status
+
+exit=0
+RETIRED CHANNEL
+blocked [key=merge-stall-worker-38789529] [at=1795665566]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+resolved [key=merge-stall-worker-38789529] [at=1795665567]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 is no longer a merge candidate or its worker waiting episode ended
+
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/retire-local-merged
+{run-worktree}/.merge-stall-live/retire-local-merged
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/retire-local-merged/state worker --state idle --source claude-hook --event Stop
+g1795665567.5318.5703
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/main/state/retire-local-merged.status
+merge-stall-worker-38789529	blocked	merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 4600
+evidence unavailable: PR discovery for worker found 2 open PR(s) on fm/lab with 2 from lab-owner/lab-repo; identity not established
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/main/state/retire-local-merged.status
+
+exit=0
+RETIRED CHANNEL
+blocked [key=merge-stall-worker-38789529] [at=1795665568]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+resolved [key=merge-stall-worker-38789529] [at=1795665568]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 is no longer a merge candidate or its worker waiting episode ended
+
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/retire-local-closed
+{run-worktree}/.merge-stall-live/retire-local-closed
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/retire-local-closed/state worker --state idle --source claude-hook --event Stop
+g1795665568.7744.11143
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/main/state/retire-local-closed.status
+merge-stall-worker-38789529	blocked	merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 4600
+evidence unavailable: PR discovery for worker found 2 open PR(s) on fm/lab with 2 from lab-owner/lab-repo; identity not established
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/main/state/retire-local-closed.status
+
+exit=0
+RETIRED CHANNEL
+blocked [key=merge-stall-worker-38789529] [at=1795665569]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+resolved [key=merge-stall-worker-38789529] [at=1795665570]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 is no longer a merge candidate or its worker waiting episode ended
+
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/retire-remote-marker
+{run-worktree}/.merge-stall-live/retire-remote-marker
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/retire-remote-marker/state worker --state idle --source claude-hook --event Stop
+g1795665570.8717.5340
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/retire-remote-marker/state/parent-replies.status
+merge-stall-worker-38789529	blocked	merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+exit=0
+$ bash -c . bin/fm-pr-lib.sh; fm_pr_url_parse "$2" && fm_pr_poll_merge_mark_notified "$1/state" worker "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER" _ {run-worktree}/.merge-stall-live/retire-remote-marker https://github.com/lab-owner/lab-repo/pull/628
+
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 4600
+evidence unavailable: PR discovery failed for worker (rc=1): HTTP 503: local emulator intentionally unavailable (https://api.github.com/graphql)
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/retire-remote-marker/state/parent-replies.status
+
+exit=0
+RETIRED CHANNEL
+blocked [key=merge-stall-worker-38789529] [at=1795665571]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+resolved [key=merge-stall-worker-38789529] [at=1795665572]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 is no longer a merge candidate or its worker waiting episode ended
+
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/retire-remote-merged
+{run-worktree}/.merge-stall-live/retire-remote-merged
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/retire-remote-merged/state worker --state idle --source claude-hook --event Stop
+g1795665572.10242.12993
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/retire-remote-merged/state/parent-replies.status
+merge-stall-worker-38789529	blocked	merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 4600
+evidence unavailable: PR discovery for worker found 2 open PR(s) on fm/lab with 2 from lab-owner/lab-repo; identity not established
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/retire-remote-merged/state/parent-replies.status
+
+exit=0
+RETIRED CHANNEL
+blocked [key=merge-stall-worker-38789529] [at=1795665573]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+resolved [key=merge-stall-worker-38789529] [at=1795665573]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 is no longer a merge candidate or its worker waiting episode ended
+
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/retire-remote-closed
+{run-worktree}/.merge-stall-live/retire-remote-closed
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/retire-remote-closed/state worker --state idle --source claude-hook --event Stop
+g1795665573.12094.11971
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/retire-remote-closed/state/parent-replies.status
+merge-stall-worker-38789529	blocked	merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 4600
+evidence unavailable: PR discovery for worker found 2 open PR(s) on fm/lab with 2 from lab-owner/lab-repo; identity not established
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/retire-remote-closed/state/parent-replies.status
+
+exit=0
+RETIRED CHANNEL
+blocked [key=merge-stall-worker-38789529] [at=1795665574]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+resolved [key=merge-stall-worker-38789529] [at=1795665575]: merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 is no longer a merge candidate or its worker waiting episode ended
+
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/uncertain-siblings
+{run-worktree}/.merge-stall-live/uncertain-siblings
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/uncertain-siblings/state a-unknown --state idle --source claude-hook --event Stop
+g1795665575.13525.23302
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/uncertain-siblings/state z-readable --state idle --source claude-hook --event Stop
+g1795665575.13576.3520
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+z-readable PR https://github.com/lab-owner/lab-repo/pull/629 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh z-readable https://github.com/lab-owner/lab-repo/pull/629, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel; evidence unavailable: current activity unreadable for a-unknown: state: unknown · source: none · backend target gone: fm-lab-merge:gone
+exit=0
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/preserve-uncertain
+{run-worktree}/.merge-stall-live/preserve-uncertain
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/preserve-uncertain/state worker --state idle --source claude-hook --event Stop
+g1795665576.14744.22308
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: reported to the captain through the parent channel
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 4600
+evidence unavailable: forge state unreadable for worker: https://github.com/lab-owner/lab-repo/pull/628: HTTP 503: local emulator intentionally unavailable (https://api.github.com/graphql) fm-pr-state: could not read https://github.com/lab-owner/lab-repo/pull/628
+exit=0
+$ bash -c . bin/fm-classify-lib.sh; status_open_decisions "$1" _ {run-worktree}/.merge-stall-live/preserve-uncertain/state/parent-replies.status
+merge-stall-worker-38789529	blocked	merge stall worker: PR https://github.com/lab-owner/lab-repo/pull/628 unmerged while its worker waits on this home (waiting since 1000)
+exit=0
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/later-pr
+{run-worktree}/.merge-stall-live/later-pr
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/later-pr/state worker --state idle --source claude-hook --event Stop
+g1795665578.15645.31426
+exit=0
+$ bash -c . bin/fm-pr-lib.sh; fm_pr_url_parse "$2" && fm_pr_poll_merge_mark_notified "$1/state" worker "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER" _ {run-worktree}/.merge-stall-live/later-pr https://github.com/lab-owner/lab-repo/pull/628
+
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 2800
+worker PR https://github.com/lab-owner/lab-repo/pull/629 unmerged 1800s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/629, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: tell the captain now
+exit=0
+OBSERVED RESULT: PASS
+
+SCENARIO Real watcher: local polling queues an actionable merge-stall notification
+$ bash bin/fm-lab-home.sh create {run-worktree}/.merge-stall-live/watcher
+{run-worktree}/.merge-stall-live/watcher
+exit=0
+$ bash bin/fm-busy-event.sh arm {run-worktree}/.merge-stall-live/watcher/state worker --state idle --source claude-hook --event Stop
+g1795665579.21581.9422
+exit=0
+$ bash bin/fm-watch.sh
+check: merge stall: worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1901s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: tell the captain now
+exit=0
+PERSISTED HOME NOTIFICATION
+1795665581	1	check	merge-stall	check: merge stall: worker PR https://github.com/lab-owner/lab-repo/pull/628 unmerged 1901s while its worker waits on this home (paused: Ready fix awaits this home); this home merges it without asking: merge it now with bin/fm-pr-merge.sh worker https://github.com/lab-owner/lab-repo/pull/628, and if that refuses, act on the refusal [forge: no blockers seen]; stalled past 1800s: tell the captain now
+
+OBSERVED RESULT: PASS
+$ tmux -S .merge-stall-live/socket kill-server
+
+exit=0
+CLEANUP: stopped localhost forge emulator and isolated tmux server; disposable lab removed
