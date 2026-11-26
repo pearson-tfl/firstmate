@@ -3899,6 +3899,22 @@ while :; do
   # never run until the fleet went quiet. Checks are due only every
   # CHECK_INTERVAL, so most cycles skip this block and fall straight through.
   if [ "$(age_of "$STATE/.last-check")" -ge "$CHECK_INTERVAL" ]; then
+    merge_stall_reason=
+    merge_stall_rc=0
+    merge_stall_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-merge-stall.sh" scan 2>&1) || merge_stall_rc=$?
+    if [ "$merge_stall_rc" -ne 0 ]; then
+      merge_stall_out=$(printf '%s' "$merge_stall_out" | LC_ALL=C tr '\t\r\n' '   ' | cut -c1-1200)
+      merge_stall_reason="check: merge stall: scan failed (rc=$merge_stall_rc): ${merge_stall_out:-no diagnostic}; repair bin/fm-merge-stall.sh before relying on merge-stall detection"
+    elif [ -n "$merge_stall_out" ]; then
+      merge_stall_reason="check: merge stall: $merge_stall_out"
+    fi
+    if [ -n "$merge_stall_reason" ]; then
+      fm_wake_append check merge-stall "$merge_stall_reason" || exit 1
+      if [ "$merge_stall_rc" -ne 0 ]; then
+        touch "$STATE/.last-check" || exit 1
+      fi
+    fi
     rejected_checks=
     contribution_check_output=
     for c in "$STATE"/*.check.sh; do
@@ -4024,16 +4040,8 @@ EOF
     if [ -n "$contribution_check_output" ]; then
       wake "$contribution_check_output"
     fi
-    # A PR this home merges without asking, unmerged while its worker waits.
-    if merge_stall_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-      "$SCRIPT_DIR/fm-merge-stall.sh" scan 2>/dev/null); then
-      if [ -n "$merge_stall_out" ]; then
-        reason="check: merge stall: $merge_stall_out"
-        fm_wake_append check merge-stall "$reason" || exit 1
-        wake "$reason"
-      fi
-    else
-      triage_log "merge-stall scan unavailable"
+    if [ -n "$merge_stall_reason" ]; then
+      wake "$merge_stall_reason"
     fi
   fi
 

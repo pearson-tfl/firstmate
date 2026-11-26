@@ -15,16 +15,17 @@
 #
 # A task is a merge-stall candidate when all of these hold:
 #   - its meta records kind=ship, yolo=on (the home merges its green PRs
-#     without asking), and a pr= URL;
+#     without asking), and a pr= URL or an open PR on its recorded branch;
 #   - its merge poll sidecar (state/<task>.pr-poll) is still armed for that
-#     same URL, so no merge of it has been observed;
+#     same URL when pr= is recorded, so no merge of it has been observed;
 #   - its worker waits on the home: the declared wait is a `paused:` line, or
 #     the newest status event is `done:`;
 #   - bin/fm-captain-hold.sh open confirms no captain call is open on it;
-#     a held or unreadable answer leaves it alone.
+#     a held answer leaves it alone; an unreadable answer wakes the home
+#     to repair the authorization read without instructing it to merge.
 # A candidate's stall starts at its waiting line's [at=] time, or when first
 # seen, and is kept across scans and watcher restarts in state/.merge-stall
-# (<task> TAB <url> TAB <since> TAB <last-wake> TAB <escalated>).
+# (<task> TAB <url> TAB <since> TAB <last-wake> TAB <escalated> TAB <episode>).
 #
 # Once a stall is FM_MERGE_STALL_SECS old (default 600), scan prints one line
 # for the watcher to wake the home with, directing it to merge through
@@ -40,7 +41,8 @@
 # to its parent channel (bin/fm-parent-channel-lib.sh), which is resolved by a
 # matching `resolved` line when the stall ends. After escalation the line
 # repeats every FM_MERGE_STALL_ESCALATE_SECS instead.
-# One line per scan, for the oldest due stall; others follow on later sweeps.
+# One line per scan, for the least recently notified due stall, oldest first
+# among ties; terminal PRs never consume that slot.
 #
 # Nothing here merges, comments, or changes a PR, and a failed forge read only
 # drops the blocker detail. Exit 0 on success, 2 on usage or settings errors,
@@ -104,8 +106,10 @@ waiting_line() {  # <status-file>
   printf '%s' "$line"
 }
 
-stall_key() {  # <task> <url> <since>
-  printf 'merge-stall-%s-%s' "$1" "$(printf '%s\t%s\t%s' "$1" "$2" "$3" | cksum | cut -c1-8)"
+stall_key() {  # <task> <url> <since> <episode>
+  printf 'merge-stall-%s-%s' "$1" "$(
+    { printf '%s\t%s\t%s' "$1" "$2" "$3"; [ -z "$4" ] || printf '\t%s' "$4"; } | cksum | cut -c1-8
+  )"
 }
 
 # Publish one merge-stall line on a secondmate's parent channel. 0 when
@@ -114,34 +118,46 @@ parent_report() {  # <line>
   local rc=0
   fm_parent_channel_report "$FM_HOME" "$STATE" "$1" || rc=$?
   case "$rc" in 0|1) return 0 ;; esac
-  printf 'fm-merge-stall: parent channel append failed (rc=%s)\n' "$rc" >&2
+  printf 'fm-merge-stall: parent channel append failed (rc=%s): %s\n' "$rc" "$1" >&2
   return 1
 }
 
 old=
 if [ -e "$LEDGER" ] || [ -L "$LEDGER" ]; then
   [ -f "$LEDGER" ] && [ ! -L "$LEDGER" ] || { echo 'fm-merge-stall: ledger is not a regular file' >&2; exit 1; }
-  old=$(cat "$LEDGER") || exit 1
+  old=$(cat "$LEDGER") || { echo 'fm-merge-stall: ledger read failed' >&2; exit 1; }
 fi
 
 rows=
 due_row=
 due_since=
+due_last=
+due_forge=
+due_hold_error=
 due_line=
 for meta in "$STATE"/*.meta; do
   [ -f "$meta" ] && [ ! -L "$meta" ] || continue
   id=${meta##*/}; id=${id%.meta}
   [ "$(meta_get "$meta" kind)" = ship ] || continue
   [ "$(meta_get "$meta" yolo)" = on ] || continue
-  url=$(meta_get "$meta" pr)
-  [ -n "$url" ] || continue
-  poll="$STATE/$id.pr-poll"
-  [ -f "$poll" ] && [ ! -L "$poll" ] || continue
-  [ "$(sed -n 2p "$poll")" = "$url" ] || continue
   line=$(waiting_line "$STATE/$id.status") || continue
+  url=$(meta_get "$meta" pr)
+  if [ -n "$url" ]; then
+    poll="$STATE/$id.pr-poll"
+    [ -f "$poll" ] && [ ! -L "$poll" ] || continue
+    [ "$(sed -n 2p "$poll")" = "$url" ] || continue
+  else
+    worktree=$(meta_get "$meta" worktree)
+    branch=$(meta_get "$meta" branch)
+    [ -d "$worktree" ] && [ -n "$branch" ] && [ "$branch" != HEAD ] || continue
+    lookup=$(cd "$worktree" && fm_run_timed 25 gh-axi pr list --state open --head "$branch" --limit 1 --fields url 2>/dev/null) || continue
+    url=$(printf '%s\n' "$lookup" | sed -n 's/^[[:space:]]*"\{0,1\}\(https:\/\/[^"[:space:]]*\)"\{0,1\}$/\1/p')
+    fm_pr_url_parse "$url" || continue
+  fi
+  episode=$(printf '%s' "$line" | cksum | awk '{print $1}')
   since='' last=0 escalated=0
-  while IFS=$'\t' read -r o_task o_url o_since o_last o_esc; do
-    [ "$o_task" = "$id" ] && [ "$o_url" = "$url" ] || continue
+  while IFS=$'\t' read -r o_task o_url o_since o_last o_esc o_episode; do
+    [ "$o_task" = "$id" ] && [ "$o_url" = "$url" ] && [ "$o_episode" = "$episode" ] || continue
     case "$o_since:$o_last:$o_esc" in *[!0-9:]*|:*|*::*|*:) continue ;; esac
     since=$o_since last=$o_last escalated=$o_esc
     break
@@ -152,37 +168,22 @@ EOF
     since=$(status_line_at_epoch "$line") || since=$NOW
     [ "$since" -le "$NOW" ] || since=$NOW
   fi
-  row="$id"$'\t'"$url"$'\t'"$since"$'\t'"$last"$'\t'"$escalated"
+  row="$id"$'\t'"$url"$'\t'"$since"$'\t'"$last"$'\t'"$escalated"$'\t'"$episode"
   rows="$rows$row"$'\n'
   age=$((NOW - since))
   [ "$age" -ge "$STALL" ] || continue
   interval=$STALL
   [ "$escalated" = 0 ] || interval=$ESCALATE
   [ "$last" -eq 0 ] || [ $((NOW - last)) -ge "$interval" ] || continue
-  # Only a confirmed absence of a captain call (exit 1) lets the home act;
-  # held (0) or cannot tell (2) leaves the task to the captain.
   hold_rc=0
-  FM_HOME="$FM_HOME" "$CAPTAIN_HOLD_BIN" open "$id" >/dev/null 2>&1 || hold_rc=$?
-  [ "$hold_rc" -eq 1 ] || continue
-  if [ -z "$due_since" ] || [ "$since" -lt "$due_since" ]; then
-    due_row=$row due_since=$since due_line=$line
+  hold_error=$(FM_HOME="$FM_HOME" "$CAPTAIN_HOLD_BIN" open "$id" 2>&1) || hold_rc=$?
+  [ "$hold_rc" -ne 0 ] || continue
+  if [ "$hold_rc" -eq 1 ]; then
+    hold_error=
+  else
+    hold_error=$(fm_parent_channel_clean_note "$hold_error")
+    hold_error="captain-hold read failed (rc=$hold_rc)${hold_error:+: $hold_error}"
   fi
-done
-
-# A stall that ended since the last scan: its row is gone from the rebuilt set.
-while IFS=$'\t' read -r o_task o_url o_since o_last o_esc; do
-  [ -n "$o_task" ] && [ "$o_esc" = 1 ] || continue
-  case "$rows" in "$o_task"$'\t'"$o_url"$'\t'*|*$'\n'"$o_task"$'\t'"$o_url"$'\t'*) continue ;; esac
-  parent_report "resolved [key=$(stall_key "$o_task" "$o_url" "$o_since")]: merge stall $o_task: PR $o_url is merged or its worker no longer waits on this home" || exit 1
-done <<EOF
-$old
-EOF
-
-out=
-if [ -n "$due_row" ]; then
-  IFS=$'\t' read -r id url since last escalated <<EOF
-$due_row
-EOF
   forge=
   if fm_pr_url_parse "$url" && [ "$FM_PR_PROVIDER" = github ]; then
     if forge=$(fm_run_timed 25 "$PR_STATE_BIN" "$url" 2>/dev/null); then
@@ -194,24 +195,48 @@ EOF
   fi
   case "$forge" in
     'STATE: '*)
-      # The PR already merged or closed; the merge poll records the outcome.
       rows=$(printf '%s' "$rows" | awk -F '\t' -v t="$id" -v u="$url" '!($1 == t && $2 == u)')
       [ -z "$rows" ] || rows="$rows"$'\n'
-      if [ "$escalated" = 1 ]; then
-        parent_report "resolved [key=$(stall_key "$id" "$url" "$since")]: merge stall $id: PR $url ${forge#STATE: }" || exit 1
-      fi
-      due_row=
+      continue
       ;;
   esac
-fi
+  if [ -z "$due_last" ] || [ "$last" -lt "$due_last" ] \
+    || { [ "$last" -eq "$due_last" ] && [ "$since" -lt "$due_since" ]; }; then
+    due_row=$row due_since=$since due_last=$last due_line=$line
+    due_forge=$forge due_hold_error=$hold_error
+  fi
+done
+
+# A stall that ended since the last scan: its row is gone from the rebuilt set.
+while IFS=$'\t' read -r o_task o_url o_since o_last o_esc o_episode; do
+  [ -n "$o_task" ] && [ "$o_esc" = 1 ] || continue
+  if printf '%s' "$rows" | awk -F '\t' -v t="$o_task" -v u="$o_url" -v s="$o_since" -v e="$o_episode" \
+    '$1 == t && $2 == u && $3 == s && $6 == e { found = 1 } END { exit !found }'; then
+    continue
+  fi
+  parent_report "resolved [key=$(stall_key "$o_task" "$o_url" "$o_since" "$o_episode")]: merge stall $o_task: PR $o_url is merged, closed, or its worker waiting episode ended" || exit 1
+done <<EOF
+$old
+EOF
+
+out=
 if [ -n "$due_row" ]; then
+  IFS=$'\t' read -r id url since last escalated episode <<EOF
+$due_row
+EOF
+  forge=$due_forge
   age=$((NOW - since))
   wait_note=$(fm_parent_channel_clean_note "$(status_line_note "$due_line")" | cut -c1-200)
-  out="$id PR $url unmerged ${age}s while its worker waits on this home ($(status_line_verb "$due_line"): $wait_note); this home merges it without asking: merge it now with bin/fm-pr-merge.sh $id $url, and if that refuses, act on the refusal"
+  out="$id PR $url unmerged ${age}s while its worker waits on this home ($(status_line_verb "$due_line"): $wait_note)"
+  if [ -n "$due_hold_error" ]; then
+    out="$out; $due_hold_error; repair the captain-hold authorization check before merging"
+  else
+    out="$out; this home merges it without asking: merge it now with bin/fm-pr-merge.sh $id $url, and if that refuses, act on the refusal"
+  fi
   [ -z "$forge" ] || out="$out [forge: $forge]"
   if [ "$age" -ge "$ESCALATE" ]; then
     if [ "$escalated" = 0 ]; then
-      parent_report "blocked [key=$(stall_key "$id" "$url" "$since")]: merge stall $id: PR $url unmerged ${age}s while its worker waits on this home${forge:+ [forge: $forge]}" || exit 1
+      parent_report "blocked [key=$(stall_key "$id" "$url" "$since" "$episode")]: merge stall $id: PR $url unmerged ${age}s while its worker waits on this home${due_hold_error:+; $due_hold_error}${forge:+ [forge: $forge]}" || exit 1
     fi
     escalated=1
     if fm_parent_channel_home_id "$FM_HOME" >/dev/null 2>&1; then
@@ -225,9 +250,10 @@ if [ -n "$due_row" ]; then
   rows="$rows"$'\n'
 fi
 
-tmp=$(mktemp "$STATE/.merge-stall.XXXXXX") || exit 1
+tmp=$(mktemp "$STATE/.merge-stall.XXXXXX") || { echo 'fm-merge-stall: ledger temporary file creation failed' >&2; exit 1; }
 if ! printf '%s' "$rows" > "$tmp" || ! mv -f "$tmp" "$LEDGER"; then
   rm -f -- "$tmp"
+  echo 'fm-merge-stall: ledger write failed' >&2
   exit 1
 fi
 [ -z "$out" ] || printf '%s\n' "$out"
