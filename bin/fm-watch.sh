@@ -238,6 +238,7 @@ fi
 # disappeared, so the per-poll home-gone exit below applies only when it did.
 WATCH_HOME_EXISTED=0
 [ ! -d "$FM_HOME" ] || WATCH_HOME_EXISTED=1
+WATCHER_RUNTIME_ACTIVE=0
 
 # The native event fast-path and only its true dependencies have one narrow
 # production owner. The Herdr event-wait smoke test consumes this same owner
@@ -304,6 +305,54 @@ WATCH_HOME_EXISTED=0
 WATCH_LOCK="$STATE/.watch.lock"
 WATCH_PATH="$SCRIPT_DIR/fm-watch.sh"
 WATCHER_DOWNTIME_MARKER="$STATE/.watcher-down"
+
+# Home-gone exit: a deleted home, state directory, or code root means this
+# watcher's world is gone (a torn-down temporary home or a discarded
+# disposable checkout). Exit with a logged reason rather than writing state
+# into nothing, misreporting a teardown as a scan failure, or writing into a
+# live home from a checkout that no longer exists.
+# A detached or child helper this watcher started (home-summary refresh,
+# reconcile, captain-hold) can recreate a deleted state directory before the
+# next poll, so a lock with no holder at all is read as the same teardown when
+# the state directory is no longer the one this watcher holds open. A lock with
+# no holder in the same directory was released by a successor - one still
+# relinking the lock it reclaimed from this watcher, or one that already
+# delivered its wake and exited before this poll - so it is self-eviction.
+# Scoped to this process alone: no other watcher is signalled. Inactive while
+# this file is sourced for unit tests (WATCHER_RUNTIME_ACTIVE=0).
+watcher_exit_if_ground_gone() {
+  [ "${WATCHER_RUNTIME_ACTIVE:-0}" -eq 1 ] || return 0
+  if [ "$WATCH_HOME_EXISTED" -eq 1 ] && [ ! -d "$FM_HOME" ]; then
+    echo "watcher: exiting - home no longer exists: $FM_HOME" >&2
+    exit 1
+  elif [ ! -d "$STATE" ]; then
+    echo "watcher: exiting - state directory no longer exists: $STATE" >&2
+    exit 1
+  elif [ ! -e "$WATCH_LOCK/pid" ] \
+    && { [ "$WATCH_STATE_HELD" -ne 1 ] || [ ! /dev/fd/6 -ef "$STATE" ]; }; then
+    echo "watcher: exiting - state directory was torn down (singleton lock removed): $STATE" >&2
+    exit 1
+  elif [ ! -d "$SCRIPT_DIR" ]; then
+    echo "watcher: exiting - code root no longer exists: $SCRIPT_DIR" >&2
+    exit 1
+  fi
+}
+
+# On a mid-cycle error exit, classify a disappeared home/state/code-root first
+# so teardown never surfaces as an unlogged exit 1 or a misleading tick error.
+watcher_fail_exit() {  # [stderr-message]
+  watcher_exit_if_ground_gone
+  [ -z "${1:-}" ] || echo "$1" >&2
+  exit 1
+}
+
+# Recheck ground before and on failure of a wake-queue append so a torn-down
+# (or helper-recreated) state directory never receives a bogus wake row or
+# exits 1 silently.
+watcher_wake_append() {  # <kind> <key> <payload>
+  watcher_exit_if_ground_gone
+  fm_wake_append "$@" || watcher_fail_exit
+}
 # The singleton-lock acquisition, EXIT trap, and the blocking supervision loop
 # all live below the source guard at the very bottom of this file (see "Main
 # entry"). Sourcing this file for unit tests therefore loads the functions -
@@ -579,10 +628,9 @@ inbox_steer_escalate_unavailable() {  # <window> <task> <record>
     fm_task_inbox_due_action "$STATE" "$task" >/dev/null || true
     return 0
   fi
-  fm_wake_append stale "$w" "$reason" || exit 1
+  watcher_wake_append stale "$w" "$reason"
   if ! fm_task_inbox_record_escalated "$STATE" "$task" "$rec"; then
-    echo "error: stale wake was queued for $task but its inbox escalation marker could not be written" >&2
-    exit 1
+    watcher_fail_exit "error: stale wake was queued for $task but its inbox escalation marker could not be written"
   fi
   wake "$reason"
 }
@@ -668,7 +716,7 @@ inbox_steer_check() {  # <window> <task>
         fi
         if [ -d "${rec%/*}" ]; then
           reason="stale: $w (steering-inbox ladder bookkeeping unwritable: ${rec%/*}/.ring-state cannot be written while $rec stays unhandled; the doorbell cannot advance toward escalation - inspect the inbox directory)"
-          fm_wake_append stale "$w" "$reason" || exit 1
+          watcher_wake_append stale "$w" "$reason"
           wake "$reason"
         fi
       fi
@@ -680,7 +728,7 @@ inbox_steer_check() {  # <window> <task>
         fm_task_inbox_ring "$backend" "$w" "$rec" "$(window_label "$w")" || ring_rc=$?
       if ! fm_task_inbox_clear_retry "$STATE" "$task" "$rec" && [ -f "$rec" ]; then
         reason="stale: $w (steering-inbox retry mark unremovable: ${rec%/*}/.retry-ring cannot be removed, so $rec would ring on every poll - inspect the inbox directory)"
-        fm_wake_append stale "$w" "$reason" || exit 1
+        watcher_wake_append stale "$w" "$reason"
         wake "$reason"
       fi
       triage_log "steer-inbox retry ring: $task ${rec##*/} result=$ring_rc"
@@ -691,10 +739,9 @@ inbox_steer_check() {  # <window> <task>
         fm_task_inbox_due_action "$STATE" "$task" >/dev/null || true
         return 0
       fi
-      fm_wake_append stale "$w" "$reason" || exit 1
+      watcher_wake_append stale "$w" "$reason"
       if ! fm_task_inbox_record_escalated "$STATE" "$task" "$rec"; then
-        echo "error: stale wake was queued for $task but its inbox escalation marker could not be written" >&2
-        exit 1
+        watcher_fail_exit "error: stale wake was queued for $task but its inbox escalation marker could not be written"
       fi
       wake "$reason"
       ;;
@@ -1614,7 +1661,7 @@ resurface_absorbed() {  # <window> <throttle-marker> <age> <reason> [scope] [min
     [ "$age" -ge "$min_age" ] || return 0
     [ "$(age_of "$throttle")" -ge "$PAUSE_RESURFACE_SECS" ] || return 0   # 999999 when no prior re-surface
   fi
-  fm_wake_append stale "$win" "$reason" || exit 1
+  watcher_wake_append stale "$win" "$reason"
   if [ -n "$scope" ]; then printf '%s' "$scope" > "$throttle"; else date +%s > "$throttle"; fi
   wake "$reason"
 }
@@ -2000,7 +2047,7 @@ wedge_dead_record() {  # <window> <since-file> <triage-label> <idle-age> <pane-h
   # written ahead of a failed append outlives it, and the next sighting would then
   # absorb the retry - the one way this bound could swallow the report outright
   # rather than deliver it once.
-  fm_wake_append stale "$win" "$reason" || exit 1
+  watcher_wake_append stale "$win" "$reason"
   printf '%s %s' "$agent_state" "$id" > "$marker"
   clear_write_tracking "$key"
   wake "$reason"
@@ -2290,6 +2337,7 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
         _wrb_cap_status=0
         { echo "$n" > "$escalation_file"; } 2>/dev/null || _wrb_cap_status=1
         if [ "$_wrb_cap_status" -ne 0 ]; then
+          watcher_exit_if_ground_gone
           if [ "$FM_WEDGE_MAX_ESCALATIONS" -eq 0 ]; then
             triage_log "wedge_timer_check: escalation counter write FAILED for $win ($escalation_file); the next poll restarts this window's count at 1"
           else
@@ -2297,10 +2345,10 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
             _wedge_cap_rollback "$_wkey" "$escalation_file" "$since_file" 1 || _wrb_rm_status=$?
             if [ "$_wrb_rm_status" -eq 2 ]; then
               triage_log "wedge escalation counter write FAILED AND rollback AND sentinel write ALL FAILED on $win - the cap cannot be enforced and nothing could silence the wedge path; operator MUST intervene"
-              exit 1
+              watcher_fail_exit
             fi
             triage_log "wedge escalation counter write FAILED on $win - cap state rolled back and the wedge path silenced (TTL $FM_ROLLBACK_SENTINEL_TTL_SECS), since a ceiling whose count cannot be recorded cannot stop the next poll's escalation; operator can rm the sentinel for immediate re-engagement"
-            exit 1
+            watcher_fail_exit
           fi
         fi
         reason="stale: $win (idle ${age}s, possible wedge, escalation $n$guard_note)"
@@ -2325,24 +2373,28 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
           _wrb_cap_reason="$reason, PERMANENTLY-WEDGED: FM_WEDGE_MAX_ESCALATIONS=$FM_WEDGE_MAX_ESCALATIONS reached - no further wedge escalations for this WINDOW while its cap marker stands: until FM_CAP_HORIZON_SECS elapses, the crew resumes, or the operator manually removes STATE/.wedge-permanent-<key>"
           _wrb_cap_reason=$(stale_reason_naming_dialog "$_wrb_cap_reason" "$dialog")
           _wrb_cap_status=0
+          watcher_exit_if_ground_gone
           _wedge_cap_terminal_append "$win" "$_wkey" "$_wrb_cap_reason" || _wrb_cap_status=$?
           if [ "$_wrb_cap_status" -eq 3 ]; then
             triage_log "wedge cap for $win already has an unacknowledged PERMANENTLY-WEDGED wake queued; suppressing the duplicate terminal wake"
           elif [ "$_wrb_cap_status" -eq 4 ]; then
+            watcher_exit_if_ground_gone
             triage_log "wedge cap could not hold the wake-queue append lock for $win, no cap marker written (next poll will retry)"
             exit 1
           elif [ "$_wrb_cap_status" -ne 0 ]; then
+            watcher_exit_if_ground_gone
             triage_log "wedge fm_wake_append FAILED for cap on $win, no cap marker written (next poll will retry)"
             exit 1
           fi
           fm_epoch_seconds_to _wrb_cap_ts
           if ! { printf '%s\n' "$_wrb_cap_ts" > "$STATE/.wedge-permanent-$_wkey"; } 2>/dev/null; then
+            watcher_exit_if_ground_gone
             _wrb_rm_status=0
             _wedge_cap_rollback "$_wkey" "$escalation_file" "$since_file" || _wrb_rm_status=$?
             case "$_wrb_rm_status" in
-              2) triage_log "wedge cap-marker write FAILED AND rollback AND sentinel write ALL FAILED on $win - no queue-flood suppression; operator MUST intervene"; exit 1 ;;
-              1) triage_log "wedge cap-marker write FAILED AND rollback ALSO FAILED on $win - sentinel set (TTL $FM_ROLLBACK_SENTINEL_TTL_SECS); no wake-amplification"; exit 1 ;;
-              *) triage_log "wedge cap-marker write FAILED on $win - cap state rolled back"; exit 1 ;;
+              2) triage_log "wedge cap-marker write FAILED AND rollback AND sentinel write ALL FAILED on $win - no queue-flood suppression; operator MUST intervene"; watcher_fail_exit ;;
+              1) triage_log "wedge cap-marker write FAILED AND rollback ALSO FAILED on $win - sentinel set (TTL $FM_ROLLBACK_SENTINEL_TTL_SECS); no wake-amplification"; watcher_fail_exit ;;
+              *) triage_log "wedge cap-marker write FAILED on $win - cap state rolled back"; watcher_fail_exit ;;
             esac
           fi
           wedge_episode_end "$_wkey" 1
@@ -2356,12 +2408,13 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
           # capped wake never goes out inline off a reset that failed; the durable
           # terminal row this fire already queued stands for the drain.
           if ! { : > "$escalation_file"; } 2>/dev/null; then
+            watcher_exit_if_ground_gone
             _wrb_rm_status=0
             _wedge_cap_rollback "$_wkey" "$escalation_file" "$since_file" || _wrb_rm_status=$?
             case "$_wrb_rm_status" in
-              2) triage_log "wedge escalation-counter reset FAILED AND rollback AND sentinel write ALL FAILED on $win - the counter stays saturated once the marker's horizon elapses; operator MUST intervene"; exit 1 ;;
-              1) triage_log "wedge escalation-counter reset FAILED AND rollback ALSO FAILED on $win - sentinel set (TTL $FM_ROLLBACK_SENTINEL_TTL_SECS); no wake-amplification"; exit 1 ;;
-              *) triage_log "wedge escalation-counter reset FAILED on $win - escalation count rolled back; the cap marker stands, so this window stays silent until its horizon (FM_CAP_HORIZON_SECS) elapses or an episode-ending route releases it (an operator can delete the marker to re-engage at once)"; exit 1 ;;
+              2) triage_log "wedge escalation-counter reset FAILED AND rollback AND sentinel write ALL FAILED on $win - the counter stays saturated once the marker's horizon elapses; operator MUST intervene"; watcher_fail_exit ;;
+              1) triage_log "wedge escalation-counter reset FAILED AND rollback ALSO FAILED on $win - sentinel set (TTL $FM_ROLLBACK_SENTINEL_TTL_SECS); no wake-amplification"; watcher_fail_exit ;;
+              *) triage_log "wedge escalation-counter reset FAILED on $win - escalation count rolled back; the cap marker stands, so this window stays silent until its horizon (FM_CAP_HORIZON_SECS) elapses or an episode-ending route releases it (an operator can delete the marker to re-engage at once)"; watcher_fail_exit ;;
             esac
           fi
           triage_log "wedge permanently capped: $win (escalation $n, max $FM_WEDGE_MAX_ESCALATIONS, hash ${hash:0:12})"
@@ -2369,7 +2422,7 @@ wedge_timer_check() {  # <window> <since-file> <triage-label> <escalation-count-
           return 0
         fi
         reason=$(stale_reason_naming_dialog "$reason" "$dialog")
-        fm_wake_append stale "$win" "$reason" || exit 1
+        watcher_wake_append stale "$win" "$reason"
         # The ladder's own step, not an episode end: this pane is still wedged,
         # so the idle timer restarts for the next rung of the same escalation
         # count and the cap that fired stays exactly where it is.
@@ -2537,7 +2590,7 @@ busy_turn_bound_check() {  # <window> <task> <hash> <since-file> <escalation-fil
         return 0
       fi
       if [ "$(cat "$STATE/.stale-$key" 2>/dev/null || true)" != "$declared" ]; then
-        fm_wake_append stale "$win" "stale: $win" || exit 1
+        watcher_wake_append stale "$win" "stale: $win"
         printf '%s' "$declared" > "$STATE/.stale-$key"
         wake "stale: $win"
       fi
@@ -2908,7 +2961,7 @@ surface_nonterminal_stale() {  # <window> <hash> [dialog-name]
   fi
   if [ "$throttled" -ne 0 ]; then
     reason=$(stale_reason_naming_dialog "stale: $win" "$dialog")
-    fm_wake_append stale "$win" "$reason" || exit 1
+    watcher_wake_append stale "$win" "$reason"
     stale_wait_record "$key"
   fi
   printf '%s' "$h" > "$STATE/.stale-$key"
@@ -3715,50 +3768,15 @@ printf '%s\n' "$FM_WATCH_DELIVERY_IDENTITY" > "$WATCH_LOCK/pid-identity" 2>/dev/
 
 [ -e "$STATE/.last-heartbeat" ] || touch "$STATE/.last-heartbeat"
 
-# Home-gone exit: a deleted home, state directory, or code root means this
-# watcher's world is gone (a torn-down temporary home or a discarded
-# disposable checkout). Exit with a logged reason rather than writing state
-# into nothing, misreporting a teardown as a scan failure, or writing into a
-# live home from a checkout that no longer exists.
-# A detached helper this watcher started (home-summary refresh, reconcile)
-# can recreate a deleted state directory before the next poll, so a lock
-# with no holder at all is read as the same teardown when the state directory
-# is no longer the one this watcher holds open. A lock with no holder in the
-# same directory was released by a successor - one still relinking the lock
-# it reclaimed from this watcher, or one that already delivered its wake and
-# exited before this poll - so it is the self-eviction below.
-# Scoped to this process alone: no other watcher is signalled.
-watcher_exit_if_ground_gone() {
-  if [ "$WATCH_HOME_EXISTED" -eq 1 ] && [ ! -d "$FM_HOME" ]; then
-    echo "watcher: exiting - home no longer exists: $FM_HOME" >&2
-    exit 1
-  elif [ ! -d "$STATE" ]; then
-    echo "watcher: exiting - state directory no longer exists: $STATE" >&2
-    exit 1
-  elif [ ! -e "$WATCH_LOCK/pid" ] \
-    && { [ "$WATCH_STATE_HELD" -ne 1 ] || [ ! /dev/fd/6 -ef "$STATE" ]; }; then
-    echo "watcher: exiting - state directory was torn down (singleton lock removed): $STATE" >&2
-    exit 1
-  elif [ ! -d "$SCRIPT_DIR" ]; then
-    echo "watcher: exiting - code root no longer exists: $SCRIPT_DIR" >&2
-    exit 1
-  fi
-}
-
-# On a mid-cycle error exit, classify a disappeared home/state/code-root first
-# so teardown never surfaces as an unlogged exit 1 or a misleading tick error.
-watcher_fail_exit() {  # [stderr-message]
-  watcher_exit_if_ground_gone
-  [ -z "${1:-}" ] || echo "$1" >&2
-  exit 1
-}
+# Enable ground-gone checks now that the singleton lock and pid record exist.
+WATCHER_RUNTIME_ACTIVE=1
 
 # A merged poll may have queued its terminal wake and then lost the process
 # between receipt publication and fixed-path removal.
 # Finish only identity-bound retirement receipts before any check can run.
 if ! fm_pr_poll_retirement_recover_all "$STATE" "$SCRIPT_DIR/fm-pr-poll.sh"; then
   reason="check: rejected unauthenticated PR poll retirement receipts:$FM_PR_POLL_RETIREMENT_REJECTED"
-  fm_wake_append check pr-poll-retirement "$reason" || watcher_fail_exit
+  watcher_wake_append check pr-poll-retirement "$reason"
   touch "$STATE/.last-check"
   wake "$reason"
 fi
@@ -3949,7 +3967,7 @@ while :; do
       merge_stall_reason="check: merge stall: $merge_stall_out"
     fi
     if [ -n "$merge_stall_reason" ]; then
-      fm_wake_append check merge-stall "$merge_stall_reason" || watcher_fail_exit
+      watcher_wake_append check merge-stall "$merge_stall_reason"
       if [ "$merge_stall_rc" -ne 0 ]; then
         touch "$STATE/.last-check" || watcher_fail_exit
       fi
@@ -4000,6 +4018,7 @@ while :; do
           continue
         fi
       fi
+      watcher_exit_if_ground_gone
       if [ -n "$out" ]; then
         if [ "$(basename "$c")" = contributions.check.sh ]; then
           contribution_check_output=
@@ -4065,7 +4084,7 @@ EOF
           wake "$reason"
         fi
         pr_poll_control_release || watcher_fail_exit
-        fm_wake_append check "$c" "$reason" || watcher_fail_exit
+        watcher_wake_append check "$c" "$reason"
         touch "$STATE/.last-check"
         wake "$reason"
       fi
@@ -4073,7 +4092,7 @@ EOF
     done
     if [ -n "$rejected_checks" ]; then
       reason="check: rejected unauthenticated state checks:$rejected_checks"
-      fm_wake_append check unauthenticated-state-checks "$reason" || watcher_fail_exit
+      watcher_wake_append check unauthenticated-state-checks "$reason"
       touch "$STATE/.last-check"
       wake "$reason"
     fi
@@ -4160,7 +4179,7 @@ EOF
         [ -n "$sf" ] || continue
         file_reason="$reason"
         case " $FM_SIGNAL_NEEDS_DECISION_FILES " in *" $f "*) file_reason="needs-decision:$files" ;; esac
-        fm_wake_append signal "$(basename "$f")" "$file_reason" || watcher_fail_exit
+        watcher_wake_append signal "$(basename "$f")" "$file_reason"
       done <<EOF
 $pending
 EOF
@@ -4209,7 +4228,7 @@ EOF
       if [ "$signal_commit_error" -ne 0 ]; then
         while IFS=$(printf '\t') read -r sf sig f; do
           [ -n "$sf" ] || continue
-          fm_wake_append signal "$(basename "$f")" "$reason" || watcher_fail_exit
+          watcher_wake_append signal "$(basename "$f")" "$reason"
         done <<EOF
 $pending
 EOF
@@ -4285,7 +4304,7 @@ EOF
             triage_log "absorbed stale (captain-held, never rechecked while the away-posture record exists): $w"
           elif [ "$(cat "$sf" 2>/dev/null || true)" != "$h" ]; then
             stale_reason=$(stale_reason_naming_dialog "stale: $w" "$dialog")
-            fm_wake_append stale "$w" "$stale_reason" || watcher_fail_exit
+            watcher_wake_append stale "$w" "$stale_reason"
             printf '%s' "$h" > "$sf"
             _wedge_cap_markers_clear "$key"
             wake "$stale_reason"
@@ -4328,7 +4347,7 @@ EOF
               triage_log "absorbed stale (open captain call already surfaced for this status): $w"
             else
               stale_reason=$(stale_reason_naming_dialog "stale: $w" "$dialog")
-              fm_wake_append stale "$w" "$stale_reason" || watcher_fail_exit
+              watcher_wake_append stale "$w" "$stale_reason"
               stale_wait_record "$key"
               printf '%s' "$h" > "$sf"
               # Pre-cap shape kept the count here (keep-count contract).
@@ -4486,7 +4505,7 @@ EOF
     # without exiting); the away-mode daemon, when present, owns triage and wants
     # every heartbeat.
     if afk_present; then
-      fm_wake_append heartbeat heartbeat heartbeat || watcher_fail_exit
+      watcher_wake_append heartbeat heartbeat heartbeat
       touch "$STATE/.last-heartbeat"
       wake "heartbeat"
     elif heartbeat_scan_finds_actionable; then
@@ -4494,14 +4513,13 @@ EOF
       # Enqueue first, then record every status log surfaced through its end so the
       # next heartbeat does not re-fire it (enqueue-before-suppress preserved);
       # this wake sends firstmate to the whole fleet, so every log is read.
-      fm_wake_append heartbeat heartbeat heartbeat || watcher_fail_exit
+      watcher_wake_append heartbeat heartbeat heartbeat
       touch "$STATE/.last-heartbeat"
       mark_all_captain_relevant_surfaced || true
       wake "heartbeat" actionable
     else
       if ! mark_all_captain_relevant_surfaced; then
-        watcher_exit_if_ground_gone
-        fm_wake_append heartbeat heartbeat heartbeat || watcher_fail_exit
+        watcher_wake_append heartbeat heartbeat heartbeat
         touch "$STATE/.last-heartbeat"
         wake "heartbeat"
       fi

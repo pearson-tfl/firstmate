@@ -1637,6 +1637,21 @@ test_watcher_exits_when_its_state_directory_is_removed() {
   rm -rf "$dir/removed-state"
   pass "watch-arm: a watcher exits when its state directory is removed"
 }
+
+# Shared wait-and-assert tail for deterministic mid-cycle state-removal cases.
+assert_mid_cycle_state_gone_exit() {  # <label> <dir> <armout> <expected-reason>
+  local label=$1 dir=$2 armout=$3 expected_reason=$4
+  wait_for_pid_gone "$WATCH_PID" 400 \
+    || { kill -TERM "$WATCH_PID" 2>/dev/null; fail "watcher pid $WATCH_PID outlived its deleted state directory ($label)"; }
+  wait_for_exit "$ARM_PID" 100 >/dev/null 2>&1 || true
+  [ -d "$dir/removed-state" ] \
+    || fail "mid-cycle state removal trigger never fired ($label): $(cat "$armout")"
+  grep -qF "$expected_reason" "$armout" \
+    || fail "watcher did not log the state-gone exit reason ($label): $(cat "$armout")"
+  ! grep -q '^signal:\|^check:\|^stale:\|^heartbeat' "$armout" \
+    || fail "a mid-cycle state-gone exit was reported as an actionable wake ($label): $(cat "$armout")"
+}
+
 # A state directory removed mid-cycle right as the check sweep allocates its
 # capture file must still exit with the logged state-gone reason and never
 # turn the failed mktemp into a silent exit 1 or a bogus merge-stall wake -
@@ -1678,22 +1693,16 @@ EOF
   wait_for_path "$state/.last-check" 100 \
     || { kill -TERM "$WATCH_PID" 2>/dev/null; fail "initial check sweep did not finish: $(cat "$armout")"; }
   : > "$trigger"
-  wait_for_pid_gone "$WATCH_PID" 400 \
-    || { kill -TERM "$WATCH_PID" 2>/dev/null; fail "watcher pid $WATCH_PID outlived its mid-sweep removed state directory ($mode)"; }
-  wait_for_exit "$ARM_PID" 100 >/dev/null 2>&1 || true
-  [ -d "$dir/removed-state" ] \
-    || fail "mid-sweep state removal trigger never fired ($mode): $(cat "$armout")"
   if [ "$mode" = recreated ]; then
     expected_reason='watcher: exiting - state directory was torn down'
-    [ ! -e "$state/.wake-queue" ] \
-      || fail "recreated state directory received a bogus wake row: $(cat "$state/.wake-queue")"
   else
     expected_reason='watcher: exiting - state directory no longer exists'
   fi
-  grep -qF "$expected_reason" "$armout" \
-    || fail "watcher did not log the state-gone exit reason ($mode): $(cat "$armout")"
-  ! grep -q '^signal:\|^check:\|^stale:\|^heartbeat' "$armout" \
-    || fail "a mid-sweep state-gone exit was reported as an actionable wake ($mode): $(cat "$armout")"
+  assert_mid_cycle_state_gone_exit "mid-sweep:$mode" "$dir" "$armout" "$expected_reason"
+  if [ "$mode" = recreated ]; then
+    [ ! -e "$state/.wake-queue" ] \
+      || fail "recreated state directory received a bogus wake row: $(cat "$state/.wake-queue")"
+  fi
   rm -rf "$dir/removed-state"
   pass "watch-arm: a watcher logs state-gone and emits no wake when state disappears mid-sweep ($mode)"
 }
@@ -1729,19 +1738,51 @@ EOF
   wait_for_path "$state/.secondmate-liveness-tick" 100 \
     || { kill -TERM "$WATCH_PID" 2>/dev/null; fail "initial liveness tick did not finish: $(cat "$armout")"; }
   : > "$trigger"
-  wait_for_pid_gone "$WATCH_PID" 400 \
-    || { kill -TERM "$WATCH_PID" 2>/dev/null; fail "watcher pid $WATCH_PID outlived its mid-tick removed state directory"; }
-  wait_for_exit "$ARM_PID" 100 >/dev/null 2>&1 || true
-  [ -d "$dir/removed-state" ] \
-    || fail "mid-tick state removal trigger never fired: $(cat "$armout")"
-  grep -qF 'watcher: exiting - state directory no longer exists' "$armout" \
-    || fail "watcher did not log the state-gone exit reason on liveness tick: $(cat "$armout")"
+  assert_mid_cycle_state_gone_exit "liveness-tick" "$dir" "$armout" \
+    'watcher: exiting - state directory no longer exists'
   ! grep -qF 'secondmate liveness check failed' "$armout" \
     || fail "mid-tick state removal was misreported as a liveness check failure: $(cat "$armout")"
-  ! grep -q '^signal:\|^check:\|^stale:\|^heartbeat' "$armout" \
-    || fail "a mid-tick state-gone exit was reported as an actionable wake: $(cat "$armout")"
   rm -rf "$dir/removed-state"
   pass "watch-arm: a watcher logs state-gone when state disappears during a mid-cycle liveness tick"
+}
+
+# A state directory removed mid-cycle right as a stale-pane helper queues a
+# wake (surface_nonterminal_stale -> fm_wake_append) must also log the
+# state-gone exit reason rather than exiting 1 silently.
+test_watcher_exits_when_state_is_removed_during_stale_surface() {
+  local dir home state fakebin armout
+  dir=$(make_case state-removed-mid-stale-surface)
+  home="$dir/home"
+  state="$dir/state"
+  fakebin="$dir/fakebin"
+  armout="$dir/arm.out"
+  mkdir -p "$home/data"
+  : > "$state/home-summary.json"
+  printf 'idle prompt\n' > "$dir/pane.txt"
+  cat > "$state/t.meta" <<'META'
+backend=tmux
+window=firstmate:t
+kind=ship
+harness=claude
+META
+  cat > "$fakebin/remove-on-crew-state.sh" <<EOF
+#!/usr/bin/env bash
+if [ -d "$state" ]; then
+  mv "$state" "$dir/removed-state" || exit 1
+fi
+printf 'state: unknown · source: test · idle\n'
+EOF
+  chmod +x "$fakebin/remove-on-crew-state.sh"
+  FM_FAKE_TMUX_WINDOW=firstmate:t FM_FAKE_TMUX_CAPTURE="$dir/pane.txt" \
+    FM_FAKE_TMUX_CURRENT_COMMAND=claude \
+    FM_CREW_STATE_BIN="$fakebin/remove-on-crew-state.sh" \
+    start_owned_watcher "$home" "$state" "$fakebin" "$armout"
+  assert_mid_cycle_state_gone_exit "stale-surface" "$dir" "$armout" \
+    'watcher: exiting - state directory'
+  [ ! -e "$state/.wake-queue" ] \
+    || fail "torn-down state directory received a bogus stale wake row: $(cat "$state/.wake-queue")"
+  rm -rf "$dir/removed-state"
+  pass "watch-arm: a watcher logs state-gone when state disappears during stale helper wake append"
 }
 
 # The same for a deleted home whose state directory still exists elsewhere: the
@@ -2090,6 +2131,7 @@ test_watcher_exits_when_its_state_directory_is_removed
 test_watcher_exits_when_state_is_removed_during_check_sweep absent
 test_watcher_exits_when_state_is_removed_during_check_sweep recreated
 test_watcher_exits_when_state_is_removed_during_liveness_tick
+test_watcher_exits_when_state_is_removed_during_stale_surface
 test_watcher_exits_when_its_home_is_removed
 test_attached_arm_exits_when_its_root_is_removed
 test_reaper_stops_a_tracked_watcher
