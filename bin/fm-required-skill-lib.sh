@@ -99,7 +99,7 @@ fm_required_skill_line_proves() {  # <line> <start|shaped> <name> [corr]
     case "${line%%:*}" in *"[corr=$corr]"*) ;; *) return 1 ;; esac
   fi
   note=$(status_line_note "$line")
-  note=$(printf '%s' "$note" | sed 's/ (.*via-helper)$//')
+  note=$(printf '%s' "$note" | sed 's/ ([^()]*via-helper)$//')
   case "$kind" in
     start)
       case "$note" in "skill-start $name "*) ;; *) return 1 ;; esac

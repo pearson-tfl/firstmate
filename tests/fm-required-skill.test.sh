@@ -282,7 +282,30 @@ test_remote_start_proof_gates_answers() {
   pass "remote answers require every initial start proof"
 }
 
+test_helper_preserves_parenthesized_payload() {
+  local state parent mate corr body req
+  state=$(new_state parentheses)
+  parent=${state%/state}
+  mate="$parent/mate"
+  mkdir -p "$mate/state"
+  printf 'sm\n' > "$mate/.fm-secondmate-home"
+  printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$parent" > "$mate/.fm-secondmate-parent"
+  body=$(fm_required_skills_section tdd request)
+  corr=$(fm_pending_reply_create "$parent" "$state" sm "$body") || fail "could not create request"
+  fm_pending_reply_mark_delivered "$state" "$corr" || fail "could not mark delivery"
+  fm_pending_reply_embed_corr "$body" "$corr" req
+  fm_task_inbox_write "$state" sm "$req" >/dev/null || fail "could not deliver request"
+  FM_HOME="$mate" "$REPORT" working "skill-start tdd path=/s/tdd/SKILL.md route= (red test first)" || fail "could not report start"
+  assert_equals '' "$(fm_required_skills_missing "$state/sm.status" start tdd "$corr")" "parenthesized route was rejected"
+  FM_HOME="$mate" "$REPORT" working "skill-shaped tdd: (red test drove implementation)" || fail "could not report shaped proof"
+  assert_equals '' "$(fm_required_skills_missing "$state/sm.status" shaped tdd "$corr")" "parenthesized explanation was rejected"
+  FM_HOME="$mate" "$REPORT" done "implementation complete" || fail "parenthesized proofs did not satisfy completion"
+  fm_pending_reply_try_resolve "$state" "$corr" || fail "parent rejected parenthesized proofs"
+  pass "helper proofs preserve parenthesized routes and explanations"
+}
+
 fm_test_run \
+  test_helper_preserves_parenthesized_payload \
   test_remote_start_proof_gates_answers \
   test_infrastructure_does_not_precede_recipient \
   test_helper_metadata_is_not_proof \
