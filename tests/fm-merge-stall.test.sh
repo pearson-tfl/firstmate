@@ -937,6 +937,51 @@ test_discovered_pr_identity_is_bound() {
   pass "a discovered PR wakes the home only when bound to the task's own fork and branch"
 }
 
+test_retired_pr_is_not_restored_by_uncertainty() {
+  local route evidence failure channel key out next=https://github.com/owner/repo/pull/629
+  for route in local remote; do
+    for evidence in marker merged closed; do
+      for failure in activity-failure activity-unknown missing-worktree remote-identity timeout malformed ambiguous invalid-url replacement-forge; do
+        case "$evidence:$failure" in merged:activity-*|closed:activity-*) continue ;; esac
+        (
+          make_world "retired-$route-$evidence-$failure"; bind_mate "$route"
+          if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
+          write_unregistered_task "$MATE" child paused
+          printf 'pr=%s\n' "$URL" >> "$MATE/state/child.meta"
+          scan "$MATE" $((T0 + 1800)) >/dev/null || fail "retired PR fixture failed"
+          key=$(parent_open "$channel" | cut -f1)
+          [ -n "$key" ] || fail "retired PR fixture did not escalate"
+          case "$evidence" in
+            marker) observe_merge "$MATE" child || fail "could not record the first PR merge" ;;
+            merged) export FM_TEST_PR_STATE='STATE: merged' ;;
+            closed) export FM_TEST_CLOSED_URL="$URL" ;;
+          esac
+          case "$failure" in
+            activity-failure) export FM_TEST_BAD_TASK=child FM_TEST_ACTIVITY_RC=2 ;;
+            activity-unknown) export FM_TEST_BAD_TASK=child FM_TEST_ACTIVITY='state: unknown' ;;
+            missing-worktree) printf 'worktree=%s/missing\n' "$WORLD" >> "$MATE/state/child.meta" ;;
+            remote-identity) git -C "$MATE/copy" remote set-url origin https://gitlab.example/owner/repo.git || fail "could not change the push remote" ;;
+            timeout) export FM_TEST_DISCOVERY_RC=124 ;;
+            malformed) export FM_TEST_DISCOVERY_OUTPUT='not JSON' ;;
+            ambiguous) export FM_TEST_BRANCH_URL="$next" FM_TEST_BRANCH_DUP=1 ;;
+            invalid-url) export FM_TEST_BRANCH_URL='not-a-PR' ;;
+            replacement-forge) export FM_TEST_BRANCH_URL="$next" FM_TEST_PR_RC=2 FM_TEST_BAD_PR="$next" ;;
+          esac
+          out=$(scan "$MATE" $((T0 + 3600))) || fail "retired PR recovery scan failed"
+          case "$out" in *'evidence unavailable:'*) ;; *) fail "replacement uncertainty lost its diagnostic: $out" ;; esac
+          case "$out" in *'merge it now'*) fail "retired or uncertain PR received a merge instruction: $out" ;; esac
+          [ ! -s "$MATE/state/.merge-stall" ] || fail "uncertainty restored a retired candidate: $(cat "$MATE/state/.merge-stall")"
+          [ -z "$(parent_open "$channel")" ] || fail "uncertainty retained the retired PR's parent blocker"
+          channel_lines "$channel" | grep -Fq "resolved [key=$key]:" || fail "retirement resolved a different parent blocker"
+          [ "$(grep -c '^blocked' "$channel")" = 1 ] && [ "$(grep -c '^resolved' "$channel")" = 1 ] || fail "retirement duplicated parent events"
+        ) || fail "$route $evidence $failure restored a retired PR"
+      done
+    done
+  done
+  pass "confirmed terminal PRs resolve both parent routes despite activity, discovery, or replacement forge uncertainty"
+}
+
+test_retired_pr_is_not_restored_by_uncertainty
 test_replay_paused_worker_red_pr
 test_merged_or_released_ends_stall
 test_posture_and_holds_respected

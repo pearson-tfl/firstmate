@@ -172,7 +172,7 @@ task_uncertain() {
   diagnostics=$(fm_parent_channel_clean_note "${diagnostics:+$diagnostics; }$*")
   rows=$(printf '%s' "$rows" | awk -F '\t' -v t="$id" '$1 != t')
   [ -z "$rows" ] || rows="$rows"$'\n'
-  preserved=$(printf '%s' "$old" | awk -F '\t' -v t="$id" '$1 == t')
+  preserved=$(printf '%s' "$old" | awk -F '\t' -v t="$id" -v retired="$retired_url" '$1 == t && $2 != retired')
   [ -z "$preserved" ] || rows="$rows$preserved"$'\n'
 }
 
@@ -280,7 +280,7 @@ EOF
     'STATE: '*|'DRAFT: '*)
       rows=$(printf '%s' "$rows" | awk -F '\t' -v t="$id" -v u="$url" '!($1 == t && $2 == u)')
       [ -z "$rows" ] || rows="$rows"$'\n'
-      case "$forge" in 'STATE: '*) return 3 ;; esac
+      case "$forge" in 'STATE: '*) retired_url=$url; return 3 ;; esac
       return 0
       ;;
   esac
@@ -323,6 +323,7 @@ for meta in "$STATE"/*.meta; do
   [ "$(meta_get "$meta" yolo)" = on ] || continue
   [ "$(meta_get "$meta" mode)" != local-only ] || continue
   line=$(waiting_line "$STATE/$id.status") || continue
+  retired_url=
   url=$(meta_get "$meta" pr)
   if [ -n "$url" ]; then
     if ! fm_pr_url_parse "$url"; then
@@ -330,6 +331,7 @@ for meta in "$STATE"/*.meta; do
       continue
     fi
     if fm_pr_poll_merge_already_notified "$STATE" "$id" "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER"; then
+      retired_url=$url
       # A task with no branch copy left has no next PR to search for.
       [ -n "$(meta_get "$meta" branch)" ] || continue
       url=
