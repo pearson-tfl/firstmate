@@ -1,0 +1,71 @@
+CLI ['bin/fm-captain-hold.sh', 'hold', 't', '--title', 'Synthetic held task', '--reason', 'Await captain review'] exit 0 seconds 1.35 stdout 't\n' stderr ''
+CLI ['bin/fm-captain-hold.sh', 'open', 't'] exit 0 seconds 0.49 stdout '' stderr ''
+CLI ['bin/fm-crew-state.sh', 't'] exit 0 seconds 0.08 stdout 'state: unknown · source: none · worktree gone (torn down?)\n' stderr ''
+CLI ['bin/fm-merge-stall.sh', 'scan', '--now', '1795642426'] exit 0 seconds 0.53 stdout '' stderr ''
+CLI ['bin/fm-merge-stall.sh', 'scan', '--now', '1795643026'] exit 0 seconds 0.58 stdout '' stderr ''
+CLI ['bin/fm-merge-stall.sh', 'scan', '--now', '1795645426'] exit 0 seconds 0.57 stdout '' stderr ''
+SCENARIO held missing worker: silent across repeated intervals; no stall ledger
+API query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!)
+API query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!)
+API query PullRequestStatusChecks($id: ID!, $endCursor: String)
+CLI ['bin/fm-merge-stall.sh', 'scan', '--now', '1795645426'] exit 0 seconds 6.82 stdout '' stderr ''
+SCENARIO real gh six-second checks: no false unreadable diagnostic; held episode preserved
+API query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!)
+API query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!)
+API query PullRequestStatusChecks($id: ID!, $endCursor: String)
+CLI ['bin/fm-merge-stall.sh', 'scan', '--now', '1795645427'] exit 0 seconds 0.81 stdout 'evidence unavailable: forge state unreadable for t: https://github.com/o/r/pull/7: HTTP 503: 503 Service Unavailable (https://api.github.com/graphql) fm-pr-state: could not read required checks for https://github.com/o/r/pull/7\n' stderr ''
+SCENARIO actual local forge failure: diagnostic retained, no merge authorization
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 39888)
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 500, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 488, in handle_one_request
+    method()
+    ~~~~~~^^
+  File "{run-worktree}/.test-merge-lab/live.py", line 8, in do_CONNECT
+    conn=ctx.wrap_socket(self.connection,server_side=True)
+  File "/usr/lib/python3.14/ssl.py", line 455, in wrap_socket
+    return self.sslsocket_class._create(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        sock=sock,
+        ^^^^^^^^^^
+    ...<5 lines>...
+        session=session
+        ^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/usr/lib/python3.14/ssl.py", line 1076, in _create
+    self.do_handshake()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/ssl.py", line 1372, in do_handshake
+    self._sslobj.do_handshake()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+ssl.SSLError: [SSL: SSLV3_ALERT_BAD_CERTIFICATE] ssl/tls alert bad certificate (_ssl.c:1082)
+----------------------------------------
+API query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!)
+CLI ['bin/fm-merge-stall.sh', 'scan', '--now', '1795645428'] exit 0 seconds 0.71 stdout '' stderr ''
+SCENARIO held terminal PR CLOSED : ledger retired silently
+API query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!)
+CLI ['bin/fm-merge-stall.sh', 'scan', '--now', '1795645428'] exit 0 seconds 0.66 stdout '' stderr ''
+SCENARIO held terminal PR MERGED : ledger retired silently
+API query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!)
+API query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!)
+API query PullRequestStatusChecks($id: ID!, $endCursor: String)
+CLI signal SIGTERM exit 143 stdout '' stderr '' temp_files []
+API query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!)
+API query PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!)
+API query PullRequestStatusChecks($id: ID!, $endCursor: String)
+CLI signal SIGINT exit 130 stdout '' stderr '' temp_files []
+SCENARIO INT and TERM: expected exits and no deleted-temp reads or leftovers
+ALL LIVE LOCAL SCENARIOS PASSED; emulator stopped

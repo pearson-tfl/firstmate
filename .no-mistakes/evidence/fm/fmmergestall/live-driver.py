@@ -1,70 +1,84 @@
-import os, subprocess as sp, pathlib, ssl, socketserver, threading, json, time, signal
-root=pathlib.Path.cwd(); lab=root/'.test-merge-lab'; home=lab/'home'
-for p in ['state','data','config']: (home/p).mkdir(parents=True,exist_ok=True)
-sp.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-keyout',str(lab/'key.pem'),'-out',str(lab/'cert.pem'),'-days','1','-subj','/CN=api.github.com','-addext','subjectAltName=DNS:api.github.com,DNS:github.com'],stdout=sp.DEVNULL,stderr=sp.DEVNULL,check=True)
-ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx.load_cert_chain(lab/'cert.pem',lab/'key.pem')
-mode={'delay':0,'terminal':False}; calls=[]; ready=threading.Event()
-class Handler(socketserver.StreamRequestHandler):
- def handle(self):
-  try:
-   line=self.rfile.readline()
-   while self.rfile.readline() not in [b'\r\n',b'']: pass
-   self.wfile.write(b'HTTP/1.1 200 Connection established\r\n\r\n'); self.wfile.flush()
-   s=ctx.wrap_socket(self.connection,server_side=True); f=s.makefile('rb')
-   line=f.readline(); headers={}
-   while True:
-    h=f.readline()
-    if h in [b'\r\n',b'']: break
-    k,v=h.decode().split(':',1); headers[k.lower()]=v.strip()
-   body=f.read(int(headers.get('content-length','0'))).decode(); calls.append(line.decode()+body)
-   checks='statusCheckRollup' in body
-   if checks: ready.set(); time.sleep(mode['delay'])
-   pr={'id':'PR_test','number':7,'url':'https://github.com/o/r/pull/7','state':'MERGED' if mode['terminal'] else 'OPEN','mergedAt':'2026-11-26T00:00:00Z' if mode['terminal'] else None,'isDraft':False,'headRefOid':'a'*40,'author':{'login':'author','__typename':'User'},'mergeable':'MERGEABLE','reviewDecision':'APPROVED','baseRefName':'main','baseRef':{'branchProtectionRule':{'requiresStatusChecks':True,'requiredStatusCheckContexts':['ci']}},'statusCheckRollup':{'contexts':{'nodes':[{'__typename':'CheckRun','name':'ci','status':'COMPLETED','conclusion':'SUCCESS','isRequired':True,'checkSuite':{'workflowRun':{'workflow':{'name':'CI'}}}}],'pageInfo':{'hasNextPage':False,'endCursor':None}}}}
-   data={'data':{'repository':{'pullRequest':pr,'defaultBranchRef':{'name':'main'}}}}
-   if 'number,headRefName,id' in body: data={'data':{'repository':{'pullRequest':{'number':7,'headRefName':'test','id':'PR_test'}}}}
-   if '__type' in body: data={'data':{k:{'fields':[{'name':n} for n in ['statusCheckRollup','isRequired','workflow','workflowRun','event']]} for k in ['PullRequest','StatusCheckRollupContextConnection','WorkflowRun'] if k+': __type' in body}}
-   if 'node(' in body: data={'data':{'node':{'__typename':'PullRequest','statusCheckRollup':{'nodes':[{'commit':{'statusCheckRollup':pr['statusCheckRollup']}}]}}}}
-   if line.startswith(b'GET '): data={'required_status_checks':{'contexts':['ci'],'checks':[{'context':'ci','app_id':None}]}}
-   out=json.dumps(data).encode(); s.sendall(b'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: '+str(len(out)).encode()+b'\r\n\r\n'+out); s.close()
-  except (BrokenPipeError,ConnectionResetError,ssl.SSLError): pass
-class Server(socketserver.ThreadingTCPServer): allow_reuse_address=True; daemon_threads=True
-server=Server(('127.0.0.1',0),Handler); thread=threading.Thread(target=server.serve_forever);thread.start()
-env={k:v for k,v in os.environ.items() if not k.startswith(('FM_','TASKS_AXI_','GH_','GITHUB_'))}
-env['PATH']=str(lab/'tools')+':'+env['PATH']
-env.update(XDG_CACHE_HOME=str(lab/'cache'),MISE_OFFLINE='1',FM_HOME=str(home),GH_CONFIG_DIR=str(lab/'ghconfig'),GH_TOKEN='synthetic-local-only',HTTPS_PROXY=f'http://127.0.0.1:{server.server_address[1]}',HTTP_PROXY=f'http://127.0.0.1:{server.server_address[1]}',NO_PROXY='',SSL_CERT_FILE=str(lab/'cert.pem'),TMPDIR=str(lab))
-def run(args,**kw):
- p=sp.run(args,env=env,text=True,capture_output=True,**kw); print('$',' '.join(map(str,args)), '\nexit=',p.returncode,'stdout=',repr(p.stdout),'stderr=',repr(p.stderr),flush=True);return p
+import http.server, ssl, threading, subprocess, os, json, pathlib, time, signal, shutil
+root=pathlib.Path.cwd(); lab=root/'.test-merge-lab'
+mode={'state':'OPEN','delay':0,'failure':False}; ready=threading.Event()
+class H(http.server.BaseHTTPRequestHandler):
+ def log_message(self,*a): pass
+ def do_CONNECT(self):
+  self.send_response(200); self.end_headers(); self.wfile.flush()
+  conn=ctx.wrap_socket(self.connection,server_side=True)
+  H(conn,self.client_address,self.server)
+ def do_POST(self):
+  req=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+  print('API',req['query'].split('{')[0].strip(),flush=True)
+  pr={'state':mode['state'],'mergedAt':None,'isDraft':False,'headRefOid':'a'*40,'author':{'login':'author'},'mergeable':'MERGEABLE','reviewDecision':'APPROVED','id':'PR_lab','number':7,'title':'Synthetic PR','url':f'https://localhost:{self.server.server_port}/o/r/pull/7','baseRefName':'main','headRefName':'test','statusCheckRollup':{'nodes':[]},'commits':{'nodes':[]},'baseRef':{'branchProtectionRule':None}}
+  out={'data':{'repository':{'pullRequest':pr,'isFork':False,'name':'r','owner':{'login':'o'}},'viewer':{'login':'lab'}}}
+  
+  if 'PullRequestStatusChecks' in req['query']:
+   ready.set(); time.sleep(mode['delay'])
+   if mode['failure']:
+    self.send_response(503); self.end_headers(); self.wfile.write(b'unavailable'); return
+   out={'data':{'node':{'statusCheckRollup':{'nodes':[{'commit':{'statusCheckRollup':{'contexts':{'nodes':[{'__typename':'CheckRun','name':'build','status':'COMPLETED','conclusion':'SUCCESS','isRequired':True,'checkSuite':{'workflowRun':{'event':'push','workflow':{'name':'ci'}}}}], 'pageInfo':{'hasNextPage':False,'endCursor':None}}}}}]}}}}
+  if '__type(' in req['query']:
+   out={'data':{k:{'fields':[{'name':n} for n in names]} for k,names in [('WorkflowRun',['event']),('PullRequest',['statusCheckRollup']),('StatusCheckRollupContextConnection',['nodes'])] if k+':' in req['query']}}
+  body=json.dumps(out).encode(); self.send_response(200); self.send_header('Content-Type','application/json'); self.end_headers(); 
+  try: self.wfile.write(body)
+  except (BrokenPipeError,ssl.SSLError): pass
+s=http.server.ThreadingHTTPServer(('localhost',0),H); ctx=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);ctx.load_cert_chain(lab/'cert.pem',lab/'key.pem')
+t=threading.Thread(target=s.serve_forever);t.start()
+env=os.environ.copy();env['PATH']='~/.local/share/mise/installs/gh/latest/gh_2.101.0_linux_amd64/bin:~/.local/share/mise/installs/node/26.8.2/bin:'+env['PATH'];env.update(GH_HOST='github.com',GH_TOKEN='synthetic-local-token',HTTPS_PROXY=f'http://localhost:{s.server_port}',NO_PROXY='',SSL_CERT_FILE=str(lab/'cert.pem'),GH_PROMPT_DISABLED='1',GH_CONFIG_DIR=str(lab/'gh'),XDG_CACHE_HOME=str(lab/'cache'))
+home=lab/'home'
+for d in ['data','state','config','tmp']: (home/d).mkdir(parents=True,exist_ok=True)
+for k in list(env):
+ if k.startswith('FM_') or k.startswith('TASKS_AXI_'): env.pop(k)
+env.update(FM_HOME=str(home),TMPDIR=str(home/'tmp'),FM_STATE_OVERRIDE=str(home/'state'),FM_DATA_OVERRIDE=str(home/'data'),FM_CONFIG_OVERRIDE=str(home/'config'))
+(home/'.tasks.toml').write_text('backend = "markdown"\n[markdown]\npath = "data/backlog.md"\narchive = "data/archive.md"\n')
+url='https://github.com/o/r/pull/7'; t0=1795641826
+line=f'paused [at={t0}]: waiting for home'
+(home/'state/t.meta').write_text(f'kind=ship\nmode=direct-PR\nyolo=on\npr={url}\nworktree={home}/missing-worker\nbranch=fm/t\nbackend=tmux\nwindow=fm-lab:gone\n')
+(home/'state/t.status').write_text(line+'\n')
+ledger=home/'state/.merge-stall'
+def run(args,expected=0,extra=None):
+ e=env.copy();e.update(extra or {});start=time.monotonic()
+ p=subprocess.run(args,env=e,text=True,capture_output=True,timeout=35)
+ print('CLI',args,'exit',p.returncode,'seconds',round(time.monotonic()-start,2),'stdout',repr(p.stdout),'stderr',repr(p.stderr),flush=True)
+ assert p.returncode==expected,(args,p.returncode,p.stderr)
+ return p
 try:
- url='https://github.com/o/r/pull/7'
- (home/'.tasks.toml').write_text('[storage]\nbackend = "markdown"\n')
- p=run(['bin/fm-captain-hold.sh','hold','held','--title','Synthetic pending decision','--reason','Await approval','--repo','synthetic'],timeout=30); assert p.returncode==0
- (home/'state/held.meta').write_text('kind=ship\nyolo=on\npr='+url+'\n')
- line='paused [at=1000000000]: PR ready'
- (home/'state/held.status').write_text(line+'\n')
- p=run(['bin/fm-crew-state.sh','held'],timeout=30); assert 'unknown' in p.stdout
- for now in [1000000600,1000001200]:
-  p=run(['bin/fm-merge-stall.sh','scan','--now',str(now)],timeout=30); assert p.returncode==0 and p.stdout=='' and p.stderr==''
- print('SCENARIO held missing worker: two scans silent',flush=True)
- episode=sp.check_output(['cksum'],input=line.encode()).decode().split()[0]
- (home/'state/.merge-stall').write_text('held\t'+url+'\t1000000000\t0\t0\t'+episode+'\n')
- mode['delay']=6
- t=time.monotonic(); p=run(['bin/fm-merge-stall.sh','scan','--now','1000001800'],timeout=30)
- elapsed=time.monotonic()-t
- assert p.returncode==0 and not p.stdout and not p.stderr and elapsed>=6
- assert (home/'state/.merge-stall').stat().st_size>0
- print('SCENARIO six-second healthy forge read: silent, episode preserved; elapsed',round(elapsed,2),flush=True)
- mode['delay']=0;mode['terminal']=True
- p=run(['bin/fm-merge-stall.sh','scan','--now','1000002400'],timeout=30)
- assert p.returncode==0 and not p.stdout and not p.stderr and (home/'state/.merge-stall').stat().st_size==0
- print('SCENARIO merged held PR: episode retired',flush=True)
- mode['terminal']=False; mode['delay']=2
+ run(['bin/fm-captain-hold.sh','hold','t','--title','Synthetic held task','--reason','Await captain review'])
+ run(['bin/fm-captain-hold.sh','open','t'])
+ run(['bin/fm-crew-state.sh','t'])
+ for now in [t0+600,t0+1200,t0+3600]:
+  p=run(['bin/fm-merge-stall.sh','scan','--now',str(now)]); assert not p.stdout and not p.stderr
+ assert not ledger.read_text()
+ print('SCENARIO held missing worker: silent across repeated intervals; no stall ledger',flush=True)
+ episode=subprocess.run(['cksum'],input=line,text=True,capture_output=True,check=True).stdout.split()[0]
+ def seed(): ledger.write_text(f't\t{url}\t{t0}\t0\t0\t{episode}\n')
+ seed();before=ledger.read_text();mode['delay']=6
+ start=time.monotonic();p=run(['bin/fm-merge-stall.sh','scan','--now',str(t0+3600)])
+ assert time.monotonic()-start>=6 and not p.stdout and not p.stderr and ledger.read_text()==before
+ print('SCENARIO real gh six-second checks: no false unreadable diagnostic; held episode preserved',flush=True)
+ mode['delay']=0;mode['failure']=True
+ p=run(['bin/fm-merge-stall.sh','scan','--now',str(t0+3601)])
+ assert 'forge state unreadable' in p.stdout and 'merge it now' not in p.stdout and ledger.read_text()==before
+ print('SCENARIO actual local forge failure: diagnostic retained, no merge authorization',flush=True)
+ mode['failure']=False
+ for state in ['CLOSED','MERGED']:
+  seed();mode['state']=state
+  p=run(['bin/fm-merge-stall.sh','scan','--now',str(t0+3602)])
+  assert not p.stdout and not ledger.read_text()
+  print('SCENARIO held terminal PR',state,': ledger retired silently',flush=True)
+ mode['state']='OPEN';mode['delay']=2
  for sig,expected in [(signal.SIGTERM,143),(signal.SIGINT,130)]:
   ready.clear()
-  p=sp.Popen(['bin/fm-pr-state.sh',url],env=env,text=True,stdout=sp.PIPE,stderr=sp.PIPE,start_new_session=True)
-  assert ready.wait(10), 'checks request did not start'
-  os.killpg(p.pid,sig);out,err=p.communicate(timeout=10)
-  print('SCENARIO signal',sig.name,'exit',p.returncode,'stdout',repr(out),'stderr',repr(err),'temp files',list(lab.glob('fm-pr-state.*')),flush=True)
-  assert p.returncode==expected and not err and not list(lab.glob('fm-pr-state.*'))
- print('API REQUESTS',json.dumps(calls),flush=True)
+  p=subprocess.Popen(['bin/fm-pr-state.sh',url],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+  try:
+   assert ready.wait(10),'checks not reached'
+   os.killpg(p.pid,sig);out,err=p.communicate(timeout=8)
+   print('CLI signal',sig.name,'exit',p.returncode,'stdout',repr(out),'stderr',repr(err),'temp_files',[x.name for x in (home/'tmp').iterdir()],flush=True)
+   assert p.returncode==expected and not out and not err and not list((home/'tmp').glob('fm-pr-state.*'))
+  finally:
+   if p.poll() is None: os.killpg(p.pid,signal.SIGKILL);p.communicate()
+ print('SCENARIO INT and TERM: expected exits and no deleted-temp reads or leftovers',flush=True)
 finally:
- server.shutdown();server.server_close();thread.join()
+ s.shutdown();s.server_close();t.join()
+print('ALL LIVE LOCAL SCENARIOS PASSED; emulator stopped',flush=True)
