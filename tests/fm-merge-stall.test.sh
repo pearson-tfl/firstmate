@@ -25,6 +25,7 @@ make_world() {  # <name>
   cat > "$WORLD/fakebin/pr-state" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$1" >> "${FM_TEST_FORGE_LOG:?}"
+if [ -n "${FM_TEST_FORGE_SLEEP:-}" ]; then sleep "$FM_TEST_FORGE_SLEEP"; fi
 if [ "${FM_TEST_HANG_READ:-}" = forge ] && [ "$1" = "${FM_TEST_BAD_PR:-}" ]; then exec "${0%/*}/hang-read"; fi
 if [ "${FM_TEST_PR_RC:-0}" != 0 ] && { [ -z "${FM_TEST_BAD_PR:-}" ] || [ "$1" = "$FM_TEST_BAD_PR" ]; }; then exit "$FM_TEST_PR_RC"; fi
 if [ "$1" = "${FM_TEST_CLOSED_URL:-}" ]; then
@@ -372,7 +373,7 @@ start_watcher() {
     FM_MERGE_STALL_PR_STATE_BIN="$WORLD/fakebin/pr-state" \
     FM_MERGE_STALL_CAPTAIN_HOLD_BIN="$WORLD/fakebin/captain-hold" FM_TEST_FORGE_LOG="$WORLD/forge.log" \
     FM_TEST_LOOKUP_LOG="$WORLD/lookup.log" FM_MERGE_STALL_CREW_STATE_BIN="$WORLD/fakebin/crew-state" \
-    FM_CHECK_TIMEOUT="${FM_TEST_CHECK_TIMEOUT:-30}" FM_MERGE_STALL_READ_TIMEOUT="${FM_TEST_READ_TIMEOUT:-5}" \
+    FM_CHECK_TIMEOUT="${FM_TEST_CHECK_TIMEOUT:-30}" FM_MERGE_STALL_READ_TIMEOUT="${FM_TEST_READ_TIMEOUT:-20}" \
     FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=300 FM_HEARTBEAT=999999 bash "$WATCH" > "$WORLD/watch.out" 2>&1 &
   WATCH_PID=$!
 }
@@ -856,7 +857,7 @@ test_sweep_budget_reaches_every_registered_task() {
 }
 
 test_terminal_state_retires_held_stalls() {
-  local route poll terminal channel out key before hold_reads
+  local route poll terminal channel out key before activity_reads
   for route in local remote; do
     for poll in present missing mismatched; do
       for terminal in closed merged; do
@@ -866,6 +867,7 @@ test_terminal_state_retires_held_stalls() {
         scan "$MATE" $((T0 + 1800)) >/dev/null || fail "held stall fixture failed"
         key=$(parent_open "$channel" | cut -f1)
         [ -n "$key" ] || fail "held stall fixture did not escalate"
+        activity_reads=$(wc -l < "$WORLD/activity.log" | tr -d ' ')
         case "$poll" in
           missing) mv "$MATE/state/child.pr-poll" "$WORLD/poll.saved" ;;
           mismatched) printf 'github\nhttps://github.com/owner/repo/pull/999\ngithub.com\nowner/repo\n999\n' > "$MATE/state/child.pr-poll" ;;
@@ -876,12 +878,11 @@ test_terminal_state_retires_held_stalls() {
         out=$(FM_TEST_HELD=child FM_TEST_PR_RC=2 scan "$MATE" $((T0 + 3601))) || fail "unreadable held PR scan failed"
         case "$out" in *'evidence unavailable: forge state unreadable for child'*) ;; *) fail "held PR evidence failure stayed silent: $out" ;; esac
         [ "$(cat "$MATE/state/.merge-stall")" = "$before" ] || fail "unknown terminal evidence discarded the held episode"
-        hold_reads=$(wc -l < "$WORLD/hold.log" | tr -d ' ')
         out=$(FM_TEST_HELD=child FM_TEST_PR_STATE="STATE: $terminal" scan "$MATE" $((T0 + 3602))) || fail "held terminal PR scan failed"
         [ -z "$out" ] && [ ! -s "$MATE/state/.merge-stall" ] || fail "confirmed $terminal PR retained its held stall: $out"
         [ -z "$(parent_open "$channel")" ] || fail "confirmed $terminal PR retained its upstream blocker with $poll poll"
         channel_lines "$channel" | grep -Fq "resolved [key=$key]:" || fail "terminal state closed the wrong held episode"
-        [ "$(wc -l < "$WORLD/hold.log" | tr -d ' ')" = "$hold_reads" ] || fail "terminal state retirement still consulted captain-hold suppression"
+        [ "$(wc -l < "$WORLD/activity.log" | tr -d ' ')" = "$activity_reads" ] || fail "held stall scans consulted worker activity"
         [ "$(grep -c '^resolved' "$channel")" = 1 ] || fail "held terminal episode was resolved more than once"
       done
     done
@@ -1141,6 +1142,59 @@ SH
   pass "gone workers are skipped quietly while unreadable or other unknown activity still raises a diagnostic"
 }
 
+test_slow_forge_read_succeeds_under_default_timeout() {
+  local out
+  make_world slow-forge-default-timeout
+  write_task "$MAIN" t on "done [at=$T0]: PR $URL checks green"
+  out=$(unset FM_MERGE_STALL_READ_TIMEOUT; FM_TEST_FORGE_SLEEP=6 scan "$MAIN" $((T0 + 600))) || fail "slow forge scan failed"
+  case "$out" in
+    *'forge state unreadable'*|*'evidence unavailable'*) fail "6s healthy forge read falsely timed out under default bound: $out" ;;
+  esac
+  case "$out" in
+    "t PR $URL unmerged 600s"*"merge it now with bin/fm-pr-merge.sh t $URL"*"[forge: no blockers seen]") ;;
+    *) fail "6s healthy forge read did not produce the expected merge wake: $out" ;;
+  esac
+  pass "a 6s healthy forge read completes cleanly under the default read timeout"
+}
+
+test_held_task_with_gone_worker_stays_silent() {
+  local verb failure now out channel activity_reads
+  for verb in "done" paused; do
+    for failure in unknown rc; do
+      make_world "held-gone-$verb-$failure"
+      write_task "$MAIN" t on "$verb [at=$T0]: PR $URL ready"
+      for now in $((T0 + 600)) $((T0 + 1200)); do
+        if [ "$failure" = unknown ]; then
+          out=$(FM_TEST_HELD=t FM_TEST_BAD_TASK=t FM_TEST_ACTIVITY='state: unknown · source: none · endpoint gone' scan "$MAIN" "$now") || fail "held gone-worker ($verb/$failure) scan failed"
+        else
+          out=$(FM_TEST_HELD=t FM_TEST_BAD_TASK=t FM_TEST_ACTIVITY_RC=2 scan "$MAIN" "$now") || fail "held gone-worker ($verb/$failure) scan failed"
+        fi
+        [ -z "$out" ] || fail "held task with gone worker ($verb/$failure) re-woke home at $now: $out"
+        [ ! -s "$WORLD/activity.log" ] || fail "captain-hold did not precede worker activity read for held task ($verb/$failure)"
+        [ ! -s "$WORLD/forge.log" ] || fail "held task with no prior stall read the forge ($verb/$failure)"
+      done
+    done
+  done
+  make_world held-escalated-gone; bind_mate local
+  channel="$MAIN/state/mate.status"
+  write_task "$MATE" child on "paused [at=$T0]: PR $URL ready"
+  scan "$MATE" $((T0 + 1800)) >/dev/null || fail "escalated held-gone fixture failed"
+  activity_reads=$(wc -l < "$WORLD/activity.log" | tr -d ' ')
+  for now in $((T0 + 3600)) $((T0 + 4200)); do
+    out=$(FM_TEST_HELD=child FM_TEST_BAD_TASK=child FM_TEST_ACTIVITY='state: unknown · source: none · endpoint gone' scan "$MATE" "$now") || fail "escalated held gone-worker scan failed"
+    [ -z "$out" ] || fail "escalated held task with gone worker re-woke home at $now: $out"
+    [ "$(wc -l < "$WORLD/activity.log" | tr -d ' ')" = "$activity_reads" ] || fail "escalated held task read worker activity while held"
+    [ -n "$(parent_open "$channel")" ] || fail "escalated held open PR lost its parent blocker"
+  done
+  out=$(FM_TEST_HELD=child FM_TEST_BAD_TASK=child FM_TEST_ACTIVITY='state: unknown · source: none · endpoint gone' FM_TEST_PR_STATE='STATE: merged' scan "$MATE" $((T0 + 4800))) || fail "escalated held gone-worker terminal scan failed"
+  [ -z "$out" ] && [ ! -s "$MATE/state/.merge-stall" ] || fail "merged PR did not retire escalated held stall with gone worker: $out"
+  [ -z "$(parent_open "$channel")" ] || fail "merged PR did not resolve escalated held parent blocker with gone worker"
+  [ "$(wc -l < "$WORLD/activity.log" | tr -d ' ')" = "$activity_reads" ] || fail "terminal retirement of held task read worker activity"
+  pass "held tasks with gone workers stay silent without reading worker activity and still retire when merged"
+}
+
+test_slow_forge_read_succeeds_under_default_timeout
+test_held_task_with_gone_worker_stays_silent
 test_retired_pr_is_not_restored_by_uncertainty
 test_replay_paused_worker_red_pr
 test_merged_or_released_ends_stall

@@ -25,6 +25,10 @@ OLD_HEAD_2=4dc2291e6969de1bf204fbdb53c9e57a8353d4e2
 cat > "$FAKEBIN/gh" <<'SH'
 #!/usr/bin/env bash
 set -o pipefail
+if [ "${1:-} ${2:-}" = "pr checks" ] && [ -n "${FM_TEST_CHECKS_READY_FILE-}" ]; then
+  printf '%s\n' "$$" > "$FM_TEST_CHECKS_READY_FILE"
+  exec sleep 30
+fi
 head=c2eac54c17a1ddc2633ad51b83e21e5fe888142e
 serve() {
   case "$*" in
@@ -321,6 +325,45 @@ test_refusals_exit_nonzero() {
   pass "argument and lookup refusals exit nonzero"
 }
 
+test_signal_trap_exits_without_reading_deleted_temp_file() {
+  local sig expected subtmp ready out_file err_file pid i status err leftover
+  for sig in TERM INT; do
+    if [ "$sig" = TERM ]; then expected=143; else expected=130; fi
+    subtmp="$TMP_ROOT/sig-$sig"
+    mkdir -p "$subtmp"
+    ready="$TMP_ROOT/ready-$sig"
+    out_file="$TMP_ROOT/out-$sig"
+    err_file="$TMP_ROOT/err-$sig"
+    rm -f "$ready" "$out_file" "$err_file"
+    TMPDIR="$subtmp" PATH="$FAKEBIN:$PATH" FM_TEST_CHECKS_READY_FILE="$ready" \
+      perl -e 'setpgrp(0, 0); $SIG{INT} = "DEFAULT"; exec @ARGV' \
+      "$SCRIPT" https://github.com/o/r/pull/7 > "$out_file" 2> "$err_file" &
+    pid=$!
+    i=0
+    while [ ! -s "$ready" ] && [ "$i" -lt 250 ]; do
+      sleep 0.02
+      i=$((i + 1))
+    done
+    if [ ! -s "$ready" ]; then
+      kill -KILL -- "-$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      fail "slow gh pr checks fixture did not start for $sig"
+    fi
+    kill -"$sig" -- "-$pid" 2>/dev/null || true
+    status=0
+    wait "$pid" || status=$?
+    err=$(cat "$err_file")
+    [ "$status" -eq "$expected" ] \
+      || fail "$sig trap must exit $expected instead of continuing, got status=$status stderr=$err"
+    [ -z "$err" ] \
+      || fail "$sig trap must not continue to read the deleted temp file, got stderr=$err"
+    leftover=$(find "$subtmp" -maxdepth 1 -name 'fm-pr-state.*' 2>/dev/null)
+    [ -z "$leftover" ] \
+      || fail "$sig trap left temporary files behind: $leftover"
+  done
+  pass "INT and TERM traps exit cleanly and remove the temp file without continuing to read it"
+}
+
 test_clean_pr_is_silent_and_ignores_skipped_checks
 test_terminal_state_is_the_whole_report
 test_draft_is_a_blocker
@@ -339,3 +382,4 @@ test_protected_base_reports_only_required_checks
 test_help_states_what_silence_means_and_what_is_out_of_scope
 test_unknown_mergeability_is_a_blocker
 test_refusals_exit_nonzero
+test_signal_trap_exits_without_reading_deleted_temp_file
