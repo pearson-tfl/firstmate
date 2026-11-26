@@ -1,0 +1,51 @@
+SCENARIO intake: scaffold repeated skill flags into generated brief
+scaffolded: {run-worktree}/.test-required-skills/parent/data/skill-scout/brief.md (scout; replace {TASK} and {FIRSTMATE_SPEC})
+# Required skills
+Required skills: poteto-mode,tdd
+The request named these skills, so each one must shape this work, and firstmate checks the record mechanically.
+1. Before any other status line, load each skill (`/poteto-mode`, `/tdd`) through the skill tool or read its complete SKILL.md, then report one start proof per skill: `working [at=<epoch>]: skill-start <name> path=<SKILL.md path you read> route=<your first routing decision under it>`
+   Firstmate leaves a start-proof record in your steering inbox and keeps ringing it until every start proof is present, even after you acknowledge it.
+2. Before reporting done, report one line per skill saying how it shaped the work: `working [at=<epoch>]: skill-shaped <name>: <how the skill shaped the work>`
+   A done without one is refused, naming the missing skill.
+
+# Definition of done
+Write your findings to `{run-worktree}/.test-required-skills/parent/data/skill-scout/report.md`.
+The report must stand alone: what you did, what you found, the evidence (commands run, output, file:line references), and what you recommend.
+Lavish is unavailable (lavish-axi is missing or below its supported version floor), so deliver your findings as a text report without Lavish, even for a visual deliverable.
+Before reporting done, read and follow `{run-worktree}/.agents/skills/captain-hold-lifecycle/SKILL.md` and pass its shared completion gate for the report and any visual review.
+Only when the reviewed inventory is empty, run `FM_HOME='{run-worktree}/.test-required-skills/parent' bash '{run-worktree}/bin/fm-captain-hold.sh' complete 'skill-scout' --none`.
+This exception permits only that command, not direct metadata edits, another task, or any backlog write.
+If any captain call remains, ask firstmate to register the inventory and attest completion before you report done.
+If the command refuses, report the refusal to firstmate and stop rather than bypassing the completion gate.
+When the report is complete, append `done [at=<epoch>]: {one-line conclusion}` to the status file and stop.
+If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.
+error: --required-skill needs a skill name such as poteto-mode or /tdd (got 'bad name')
+exit=1 (expected refusal)
+SCENARIO request: original acknowledgement plus automatic recovery preserves requirements
+Recovery required skills: poteto-mode
+error: done refused: required skill poteto-mode has no start proof before other status lines; required skill poteto-mode has no record of how it shaped the work; required forms: `bin/fm-secondmate-report.sh working f4a2cc1cb35dcc98 "skill-start poteto-mode path=<SKILL.md path you read> route=<your first routing decision under it>"`; `bin/fm-secondmate-report.sh working f4a2cc1cb35dcc98 "skill-shaped poteto-mode: <how the skill shaped the work>"`; start proofs must precede other status lines
+exit=1 (expected refusal)
+SCENARIO empty helper payloads cannot unlock done
+error: done refused: required skill poteto-mode has no start proof before other status lines; required skill poteto-mode has no record of how it shaped the work; required forms: `bin/fm-secondmate-report.sh working f4a2cc1cb35dcc98 "skill-start poteto-mode path=<SKILL.md path you read> route=<your first routing decision under it>"`; `bin/fm-secondmate-report.sh working f4a2cc1cb35dcc98 "skill-shaped poteto-mode: <how the skill shaped the work>"`; start proofs must precede other status lines
+exit=1 (expected refusal)
+SCENARIO correlated ordered proof after infrastructure permits secondmate and parent completion
+error: done refused: required skill tdd has no record of how it shaped the work; required forms: `bin/fm-secondmate-report.sh working e8f03fe03031ac85 "skill-shaped tdd: <how the skill shaped the work>"`; start proofs must precede other status lines
+exit=1 (expected refusal)
+Parent accepted correlated completion
+working [corr=f4a2cc1cb35dcc98] [at=1795704163]: skill-start poteto-mode path=/synthetic/SKILL.md route= (via-helper)
+working [corr=f4a2cc1cb35dcc98] [at=1795704163]: skill-shaped poteto-mode: (via-helper)
+note [source=firstmate] [corr=e8f03fe03031ac85]: synthetic launch warning
+working [corr=e8f03fe03031ac85] [at=1795704164]: skill-start tdd path=/synthetic/tdd/SKILL.md route=exercise CLI refusal before completion (via-helper)
+working [corr=e8f03fe03031ac85] [at=1795704165]: skill-shaped tdd: refusal was observed before adding the completion proof (via-helper)
+done [corr=e8f03fe03031ac85] [at=1795704165]: synthetic CLI exercise finished (via-helper)
+SCENARIO acknowledgement reopens and escalates; late worker proofs remain refused
+ring {run-worktree}/.test-required-skills/parent/state/worker.inbox/001.msg
+escalate {run-worktree}/.test-required-skills/parent/state/worker.inbox/001.msg 2
+done refused: required skill tdd has no start proof before other status lines; required forms: `working [at=<epoch>]: skill-start tdd path=<SKILL.md path you read> route=<your first routing decision under it>`; start proofs must precede other status lines
+exit=1 (expected refusal)
+SCENARIO infrastructure diagnostics do not invalidate ordered worker proofs
+quiet
+Worker completion accepted
+SCENARIO unrequired request retains ordinary completion behavior
+done [corr=f46b15ce6faf6c47] [at=1795704166]: plain audit finished (via-helper)
+All live CLI and durable-state scenarios completed
