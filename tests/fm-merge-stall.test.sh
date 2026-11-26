@@ -29,7 +29,8 @@ printf '%s\n' "$1" >> "${FM_TEST_FORGE_LOG:?}"
 SH
   cat > "$WORLD/fakebin/captain-hold" <<'SH'
 #!/usr/bin/env bash
-[ "${FM_TEST_HELD:-}" = "$2" ]
+[ "${FM_TEST_HELD:-}" = "$2" ] && exit 0
+exit "${FM_TEST_HOLD_RC:-1}"
 SH
   chmod +x "$WORLD/fakebin"/*
   : > "$WORLD/forge.log"
@@ -67,9 +68,9 @@ channel_lines() {  # <file> -> lines with stamps removed
 # The stall as it happened: a direct-PR yolo task reports its fix PR in a
 # working: line, then declares paused: waits on its home, and the PR's only
 # failing check is reported but not required.
-test_vcpr_replay() {
+test_replay_paused_worker_red_pr() {
   local out P
-  make_world vcpr
+  make_world paused-red-pr
   write_task "$MAIN" wf-wiki-grill-session on \
     "working [at=$T0]: Ready fix PR $URL is OPEN, isDraft=false; no merge or auto-merge." \
     "paused [at=$T0] [key=advisory-032-native-and-ci-results]: awaits native job; await firstmate if Python fails." \
@@ -131,11 +132,13 @@ test_posture_and_holds_respected() {
   write_task "$MAIN" t on "done [at=$T0]: PR $URL checks green"
   out=$(FM_TEST_HELD=t scan "$MAIN" $((T0 + 3600)))
   [ -z "$out" ] || fail "a task held for the captain was told to merge: $out"
+  out=$(FM_TEST_HOLD_RC=2 scan "$MAIN" $((T0 + 3600)))
+  [ -z "$out" ] || fail "an unreadable captain-hold answer still let the home merge: $out"
   make_world captain-held
   write_task "$MAIN" t on "captain-held [at=$T0]: captain reviews the PR"
   out=$(scan "$MAIN" $((T0 + 3600)))
   [ -z "$out" ] || fail "a captain-held transfer was told to merge: $out"
-  pass "a home that asks first, and a task held for the captain, are left alone"
+  pass "a home that asks first, a task held for the captain, and an unreadable hold are left alone"
 }
 
 # The same lever in a secondmate home also reaches main through the parent
@@ -193,7 +196,7 @@ test_watcher_poll_wakes_home() {
   pass "the real watcher poll queues the merge-stall wake"
 }
 
-test_vcpr_replay
+test_replay_paused_worker_red_pr
 test_merged_or_released_ends_stall
 test_posture_and_holds_respected
 test_secondmate_routes

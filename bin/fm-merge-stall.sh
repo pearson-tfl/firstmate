@@ -20,7 +20,8 @@
 #     same URL, so no merge of it has been observed;
 #   - its worker waits on the home: the declared wait is a `paused:` line, or
 #     the newest status event is `done:`;
-#   - no captain hold is open on it (bin/fm-captain-hold.sh open).
+#   - bin/fm-captain-hold.sh open confirms no captain call is open on it;
+#     a held or unreadable answer leaves it alone.
 # A candidate's stall starts at its waiting line's [at=] time, or when first
 # seen, and is kept across scans and watcher restarts in state/.merge-stall
 # (<task> TAB <url> TAB <since> TAB <last-wake> TAB <escalated>).
@@ -158,8 +159,11 @@ EOF
   interval=$STALL
   [ "$escalated" = 0 ] || interval=$ESCALATE
   [ "$last" -eq 0 ] || [ $((NOW - last)) -ge "$interval" ] || continue
-  # A captain call on the task owns it; exit 0 means still held.
-  FM_HOME="$FM_HOME" "$CAPTAIN_HOLD_BIN" open "$id" >/dev/null 2>&1 && continue
+  # Only a confirmed absence of a captain call (exit 1) lets the home act;
+  # held (0) or cannot tell (2) leaves the task to the captain.
+  hold_rc=0
+  FM_HOME="$FM_HOME" "$CAPTAIN_HOLD_BIN" open "$id" >/dev/null 2>&1 || hold_rc=$?
+  [ "$hold_rc" -eq 1 ] || continue
   if [ -z "$due_since" ] || [ "$since" -lt "$due_since" ]; then
     due_row=$row due_since=$since due_line=$line
   fi
