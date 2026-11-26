@@ -760,6 +760,103 @@ test_direct_pr_unpushed_commit_refuses_registration() {
   pass "fm-pr-check refuses a direct-PR registration while a later commit is only in the copy"
 }
 
+# A lane launched on another host (for example dell-v100) records a worktree
+# path that does not exist on the host checking or merging the PR. Registration
+# and guarded merge must verify the PR head against the forge and record pr_head=,
+# while refusing when the forge has no valid head or the recorded path is empty
+# or not absent locally.
+test_missing_worktree_records_and_merges_against_forge_head() {
+  local dir expected missing_wt regular_file broken_link mode id url rc wt_val
+  expected=0123456789abcdef0123456789abcdef01234567
+
+  for mode in no-mistakes direct-PR; do
+    dir=$(make_case "missing-wt-$mode")
+    missing_wt="$dir/dell-v100/anw-851-$mode"
+    id="anw-851-$mode"
+    url='https://github.com/o/r/pull/1019'
+    fm_write_meta "$dir/home/state/$id.meta" \
+      "window=firstmate:fm-$id" "endpoint_task_id=$id" "worktree=$missing_wt" \
+      "project=$dir/project" "kind=ship" "mode=$mode"
+
+    FM_TEST_GH_HEAD=$expected run_check_entry "$dir" "$id" "$url" \
+      > "$dir/stdout" 2> "$dir/stderr" \
+      || fail "$mode: fm-pr-check refused absent remote worktree with valid forge head: $(cat "$dir/stderr")"
+    grep -qxF "pr=$url" "$dir/home/state/$id.meta" \
+      || fail "$mode: absent remote worktree did not record pr="
+    grep -qxF "pr_head=$expected" "$dir/home/state/$id.meta" \
+      || fail "$mode: absent remote worktree did not record pr_head="
+    fm_pr_poll_artifacts_valid "$dir/home/state" "$id" "$POLL" \
+      || fail "$mode: absent remote worktree did not arm a valid poll"
+
+    : > "$dir/gh.log"
+    FM_TEST_GH_HEAD=$expected run_merge_entry "$dir" "$id" "$url" \
+      > "$dir/merge.out" 2> "$dir/merge.err" \
+      || fail "$mode: fm-pr-merge failed for absent remote worktree with valid forge head: $(cat "$dir/merge.err")"
+    grep -qxF "pr merge 1019 --repo o/r --match-head-commit $expected --squash" "$dir/gh.log" \
+      || fail "$mode: fm-pr-merge did not merge pinned to the verified forge head"
+  done
+
+  for mode in no-mistakes direct-PR; do
+    dir=$(make_case "missing-wt-no-head-$mode")
+    missing_wt="$dir/dell-v100/anw-852-$mode"
+    id="anw-852-$mode"
+    url='https://github.com/o/r/pull/1020'
+    fm_write_meta "$dir/home/state/$id.meta" \
+      "window=firstmate:fm-$id" "endpoint_task_id=$id" "worktree=$missing_wt" \
+      "project=$dir/project" "kind=ship" "mode=$mode"
+
+    set +e
+    FM_TEST_GH_HEAD=unavailable run_check_entry "$dir" "$id" "$url" \
+      > "$dir/stdout" 2> "$dir/stderr"
+    rc=$?
+    set -e
+    [ "$rc" -ne 0 ] || fail "$mode: absent remote worktree accepted an unavailable forge head"
+    grep -Fq "named head cannot be verified: worktree missing" "$dir/stderr" \
+      || fail "$mode: unavailable forge head refusal was unexpected: $(cat "$dir/stderr")"
+    ! grep -q '^pr=' "$dir/home/state/$id.meta" || fail "$mode: refused check recorded pr="
+    ! grep -q '^pr_head=' "$dir/home/state/$id.meta" || fail "$mode: refused check recorded pr_head="
+    [ ! -e "$dir/home/state/$id.check.sh" ] || fail "$mode: refused check armed a poll"
+
+    : > "$dir/gh.log"
+    set +e
+    FM_TEST_GH_HEAD=unavailable run_merge_entry "$dir" "$id" "$url" \
+      > "$dir/merge.out" 2> "$dir/merge.err"
+    rc=$?
+    set -e
+    [ "$rc" -ne 0 ] || fail "$mode: fm-pr-merge proceeded with an unavailable forge head"
+    ! grep -q '^pr merge ' "$dir/gh.log" || fail "$mode: refused merge still called gh pr merge"
+  done
+
+  # Empty worktree=, a local non-directory path, and a broken symlink still refuse even when the forge reports a head.
+  dir=$(make_case missing-wt-corrupt-local)
+  regular_file="$dir/not-a-directory"
+  broken_link="$dir/broken-worktree-link"
+  : > "$regular_file"
+  ln -s "$dir/no-such-target" "$broken_link"
+  for id in empty-wt file-wt link-wt; do
+    case "$id" in
+      empty-wt) wt_val='' ;;
+      file-wt)  wt_val=$regular_file ;;
+      link-wt)  wt_val=$broken_link ;;
+    esac
+    fm_write_meta "$dir/home/state/$id.meta" \
+      "window=firstmate:fm-$id" "endpoint_task_id=$id" "worktree=$wt_val" \
+      "project=$dir/project" "kind=ship" "mode=no-mistakes"
+    set +e
+    FM_TEST_GH_HEAD=$expected run_check_entry "$dir" "$id" https://github.com/o/r/pull/1021 \
+      > "$dir/$id.out" 2> "$dir/$id.err"
+    rc=$?
+    set -e
+    [ "$rc" -ne 0 ] || fail "$id: corrupt local worktree path bypassed refusal"
+    grep -Fq "named head cannot be verified: worktree missing" "$dir/$id.err" \
+      || fail "$id: unexpected refusal: $(cat "$dir/$id.err")"
+    ! grep -q '^pr=' "$dir/home/state/$id.meta" || fail "$id: refused check recorded pr="
+    [ ! -e "$dir/home/state/$id.check.sh" ] || fail "$id: refused check armed a poll"
+  done
+
+  pass "fm-pr-check and fm-pr-merge verify absent remote worktrees against the forge and still refuse unverified or corrupt paths"
+}
+
 test_valid_recording_and_merge_derivation() {
   local dir expected sidecar count rc
   dir=$(make_case valid-recording)
@@ -3794,6 +3891,7 @@ test_draft_pull_request_is_not_armed
 test_secondmate_record_refuses_a_pr_watch
 test_unpushed_named_head_refuses_registration
 test_direct_pr_unpushed_commit_refuses_registration
+test_missing_worktree_records_and_merges_against_forge_head
 test_valid_recording_and_merge_derivation
 test_rejected_metacharacter_bytes_are_inert
 test_static_poll_contract

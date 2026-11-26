@@ -596,6 +596,188 @@ test_external_rule_one_forbids_every_task_push
 test_external_dod_renders_the_adapter
 test_external_review_done_without_backup_is_accepted_on_the_url
 test_external_review_done_with_backup_needs_the_copy
+test_missing_worktree_verifies_named_head_against_forge() {
+  local dir fakebin cfg state meta missing_wt regular_file broken_link head reason rc gh_log gerrit_log bad_head bad_wt
+  dir="$TMP_ROOT/missing-wt-forge"
+  fakebin="$dir/fakebin"
+  cfg="$dir/config"
+  state="$dir/state"
+  mkdir -p "$fakebin" "$cfg" "$state"
+  missing_wt="$dir/remote-dell-host/anw-851-land"
+  regular_file="$dir/not-a-dir"
+  broken_link="$dir/broken-wt-link"
+  : > "$regular_file"
+  ln -s "$dir/no-such-target" "$broken_link"
+  head=0123456789abcdef0123456789abcdef01234567
+  gh_log="$dir/gh.log"
+  gerrit_log="$dir/gerrit.log"
+  : > "$gh_log"
+  : > "$gerrit_log"
+
+  cat > "$fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+printf 'host=%s args=%s\n' "${GH_HOST:-}" "$*" >> "${FM_TEST_GH_LOG:?}"
+if [ "${FM_TEST_GH_FAIL:-0}" != 0 ]; then exit 1; fi
+case " $* " in
+  *" headRefOid "*) printf '%s\n' "${FM_TEST_GH_HEAD:?}" ;;
+  *) exit 1 ;;
+esac
+SH
+  cat > "$fakebin/glab" <<'SH'
+#!/usr/bin/env bash
+if [ "${FM_TEST_GLAB_FAIL:-0}" != 0 ]; then exit 1; fi
+printf '%s\n' "${FM_TEST_GLAB_JSON:?}"
+SH
+  cat > "$fakebin/tea" <<'SH'
+#!/usr/bin/env bash
+case "${1:-} ${2:-}" in
+  "login list")
+    printf '[{"name":"forgejo-test","url":"https://git.example"}]\n'
+    ;;
+  "api "*)
+    if [ "${FM_TEST_TEA_FAIL:-0}" != 0 ]; then exit 1; fi
+    printf '%s\n' "${FM_TEST_TEA_JSON:?}"
+    ;;
+  *) exit 1 ;;
+esac
+SH
+  cat > "$fakebin/gerrit-axi" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${FM_TEST_GERRIT_LOG:?}"
+exit 0
+SH
+  chmod +x "$fakebin/gh" "$fakebin/glab" "$fakebin/tea" "$fakebin/gerrit-axi"
+
+  meta="$state/anw-851-land.meta"
+  fm_write_meta "$meta" kind=ship mode=no-mistakes "worktree=$missing_wt" "project=$dir/project"
+
+  # Recorded worktree lives on another host: accept when the forge confirms the PR head.
+  PATH="$fakebin:$PATH" FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_HEAD="$head" \
+    accept_done ship no-mistakes "$missing_wt" "$dir/project" \
+      "done: PR https://github.com/o/r/pull/1019 checks green" "$state" anw-851-land "$meta" \
+    || fail "no-mistakes done with absent local worktree and valid GitHub forge head was refused"
+  PATH="$fakebin:$PATH" FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_HEAD="$head" \
+    accept_done ship "" "$missing_wt" "$dir/project" \
+      "done: PR https://github.com/o/r/pull/1019 checks green" "$state" anw-851-land "$meta" \
+    || fail "empty-mode done with absent local worktree and valid GitHub forge head was refused"
+  fm_write_meta "$meta" kind=ship mode=direct-PR "worktree=$missing_wt" "project=$dir/project"
+  PATH="$fakebin:$PATH" FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_HEAD="$head" \
+    accept_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: PR https://github.com/o/r/pull/1019" "$state" anw-851-land "$meta" \
+    || fail "direct-PR done with absent local worktree and valid GitHub forge head was refused"
+
+  # GitHub Enterprise host allowed via config/github-hosts: GH_HOST scoped to the read.
+  printf 'ghe.example.test\n' > "$cfg/github-hosts"
+  : > "$gh_log"
+  unset GH_HOST
+  PATH="$fakebin:$PATH" FM_CONFIG_OVERRIDE="$cfg" FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_HEAD="$head" \
+    accept_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: PR https://ghe.example.test/o/r/pull/42" "$state" anw-851-land "$meta" \
+    || fail "GHE done with absent local worktree and valid forge head was refused"
+  assert_grep 'host=ghe.example.test args=' "$gh_log" "GHE forge verification did not pass GH_HOST"
+  [ -z "${GH_HOST:-}" ] || fail "GHE forge verification leaked GH_HOST into caller shell"
+
+  # Unregistered host is refused without calling gh.
+  : > "$gh_log"
+  rc=0
+  reason=$(PATH="$fakebin:$PATH" FM_CONFIG_OVERRIDE="$cfg" FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_HEAD="$head" \
+    accept_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: PR https://rogue.example.test/o/r/pull/1" "$state" anw-851-land "$meta") || rc=$?
+  [ "$rc" -eq 1 ] || fail "unregistered GitHub-shaped host was accepted"
+  assert_contains "$reason" "named head cannot be verified: worktree missing" \
+    "unregistered host refusal lost the worktree-missing reason"
+  [ ! -s "$gh_log" ] || fail "unregistered host still invoked gh"
+
+  # GitLab and Forgejo verify their remote head commits the same way.
+  PATH="$fakebin:$PATH" FM_TEST_GLAB_JSON="{\"state\":\"opened\",\"sha\":\"$head\"}" \
+    accept_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: PR https://gitlab.example/group/sub/repo/-/merge_requests/12" "$state" anw-851-land "$meta" \
+    || fail "GitLab done with absent local worktree and valid remote sha was refused"
+  rc=0
+  PATH="$fakebin:$PATH" FM_TEST_GLAB_FAIL=1 FM_TEST_GLAB_JSON="{\"state\":\"opened\",\"sha\":\"$head\"}" \
+    accept_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: PR https://gitlab.example/group/sub/repo/-/merge_requests/12" "$state" anw-851-land "$meta" >/dev/null || rc=$?
+  [ "$rc" -eq 1 ] || fail "GitLab done was accepted when glab failed"
+  rc=0
+  PATH="$fakebin:$PATH" FM_TEST_GLAB_JSON='{"state":"opened","sha":null}' \
+    accept_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: PR https://gitlab.example/group/sub/repo/-/merge_requests/12" "$state" anw-851-land "$meta" >/dev/null || rc=$?
+  [ "$rc" -eq 1 ] || fail "GitLab done was accepted with null sha"
+
+  PATH="$fakebin:$PATH" FM_TEST_TEA_JSON="{\"state\":\"open\",\"merged\":false,\"head\":{\"sha\":\"$head\"}}" \
+    accept_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: PR https://git.example/o/r/pulls/8" "$state" anw-851-land "$meta" \
+    || fail "Forgejo done with absent local worktree and valid remote head was refused"
+  rc=0
+  PATH="$fakebin:$PATH" FM_TEST_TEA_JSON='{"message":"not found"}' \
+    accept_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: PR https://git.example/o/r/pulls/8" "$state" anw-851-land "$meta" >/dev/null || rc=$?
+  [ "$rc" -eq 1 ] || fail "Forgejo done was accepted on an HTTP error body"
+
+  # Missing or invalid remote head on GitHub must stay refused.
+  rc=0
+  reason=$(PATH="$fakebin:$PATH" FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_FAIL=1 FM_TEST_GH_HEAD="$head" \
+    accept_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: PR https://github.com/o/r/pull/1019" "$state" anw-851-land "$meta") || rc=$?
+  [ "$rc" -eq 1 ] || fail "absent local worktree was accepted when gh failed"
+  assert_contains "$reason" "named head cannot be verified: worktree missing" \
+    "forge failure refusal did not report missing worktree"
+
+  for bad_head in "" "null" "not-a-sha" "$(printf '%s\nwindow=injected' "$head")"; do
+    rc=0
+    PATH="$fakebin:$PATH" FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_HEAD="$bad_head" \
+      accept_done ship direct-PR "$missing_wt" "$dir/project" \
+        "done: PR https://github.com/o/r/pull/1019" "$state" anw-851-land "$meta" >/dev/null || rc=$?
+    [ "$rc" -eq 1 ] || fail "absent local worktree accepted invalid forge head: $bad_head"
+  done
+
+  # Empty worktree, local non-directory / broken symlink, local-only, no PR URL,
+  # Gerrit, published-for-review on non-Gerrit, no-forge, and meta-locked must all refuse without probing.
+  : > "$gh_log"
+  : > "$gerrit_log"
+  for bad_wt in "" "$regular_file" "$broken_link"; do
+    rc=0
+    PATH="$fakebin:$PATH" FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_HEAD="$head" \
+      accept_done ship direct-PR "$bad_wt" "$dir/project" \
+        "done: PR https://github.com/o/r/pull/1019" "$state" anw-851-land "$meta" >/dev/null || rc=$?
+    [ "$rc" -eq 1 ] || fail "non-absent/empty worktree '$bad_wt' bypassed refusal"
+  done
+  rc=0
+  PATH="$fakebin:$PATH" FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_HEAD="$head" \
+    accept_done ship local-only "$missing_wt" "$dir/project" \
+      "done: PR https://github.com/o/r/pull/1019" >/dev/null || rc=$?
+  [ "$rc" -eq 1 ] || fail "local-only with absent worktree bypassed refusal via forge"
+  rc=0
+  PATH="$fakebin:$PATH" FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_HEAD="$head" \
+    accept_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: pushed branch fm/anw-851-land" "$state" anw-851-land "$meta" >/dev/null || rc=$?
+  [ "$rc" -eq 1 ] || fail "done without canonical PR URL bypassed refusal"
+  rc=0
+  PATH="$fakebin:$PATH" FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_HEAD="$head" \
+    accept_done ship no-mistakes "$missing_wt" "$dir/project" \
+      "done: PR https://github.com/o/r/pull/1019 published for review" "$state" anw-851-land "$meta" >/dev/null || rc=$?
+  [ "$rc" -eq 1 ] || fail "published-for-review naming a GitHub PR bypassed refusal"
+  rc=0
+  PATH="$fakebin:$PATH" FM_TEST_GERRIT_LOG="$gerrit_log" \
+    accept_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: PR https://gerrit.example/c/group/repo/+/4201 published for review" "$state" anw-851-land "$meta" >/dev/null || rc=$?
+  [ "$rc" -eq 1 ] || fail "Gerrit change with absent worktree bypassed local tree check"
+  rc=0
+  PATH="$fakebin:$PATH" FM_CREW_STATE_NO_FORGE=1 FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_HEAD="$head" \
+    accept_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: PR https://github.com/o/r/pull/1019" "$state" anw-851-land "$meta" >/dev/null || rc=$?
+  [ "$rc" -eq 1 ] || fail "FM_CREW_STATE_NO_FORGE=1 still probed the forge"
+  rc=0
+  PATH="$fakebin:$PATH" FM_TEST_GH_LOG="$gh_log" FM_TEST_GH_HEAD="$head" \
+    fm_dod_accept_ship_done ship direct-PR "$missing_wt" "$dir/project" \
+      "done: PR https://github.com/o/r/pull/1019" "$state" anw-851-land "$meta" meta-locked >/dev/null || rc=$?
+  [ "$rc" -eq 1 ] || fail "meta-locked caller probed the forge across a lock"
+  [ ! -s "$gh_log" ] || fail "refusal boundary cases invoked gh: $(cat "$gh_log")"
+  [ ! -s "$gerrit_log" ] || fail "Gerrit absent-worktree case invoked gerrit-axi"
+
+  pass "absent local worktree verifies the PR head against the forge and preserves all refusal boundaries"
+}
+test_missing_worktree_verifies_named_head_against_forge
 
 test_worker_role_names_skill_and_fallback_file
 

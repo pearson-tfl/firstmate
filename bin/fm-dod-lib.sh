@@ -43,7 +43,12 @@
 # named head is the worker copy's HEAD, except that a done naming the task's
 # recorded pr= passes when the forge holds that head: a forge-reported
 # pr_head= in no-mistakes mode, or a recorded merge
-# (state/<id>.pr-poll-merge-notified). A push to Gerrit's refs/for/ leaves no
+# (state/<id>.pr-poll-merge-notified). When a PR-based task's recorded worktree
+# path does not exist on this host (for example a lane whose worktree lives on
+# another host), the gate instead verifies that the forge holds a valid head
+# commit for the canonical PR/MR URL; missing remote heads, empty or non-absent
+# local paths, local-only, forge=external, Gerrit, no-forge, and meta-locked
+# callers still refuse. A push to Gerrit's refs/for/ leaves no
 # ref a fetch can see, so a done naming a Gerrit change skips the remote-tracking
 # reachability test entirely: it passes when that change is already the task's
 # recorded pr=, which bin/fm-pr-check.sh writes only after this gate accepted it
@@ -903,6 +908,51 @@ fm_dod_recorded_pr_on_forge() {  # <state> <id> <meta> <mode> <url>
         "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER"; } )
 }
 
+# Print the PR/MR head commit read live from the forge for a canonical URL, or
+# return non-zero when the forge cannot confirm one. Bounded so a hung CLI
+# never wedges the caller, and executed in a subshell so caller FM_PR_* globals
+# and GH_HOST stay untouched while non-exported FM_HOME / FM_CONFIG_OVERRIDE
+# remain visible to fm_pr_url_parse for GHE host checks.
+fm_dod_pr_forge_head() {  # <url>
+  local url=$1 lib head=''
+  [ "${FM_CREW_STATE_NO_FORGE:-0}" = 1 ] && return 1
+  lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fm-pr-lib.sh"
+  head=$(
+    fm_pr_url_parse "$url" || exit 1
+    case "$FM_PR_PROVIDER" in
+      github|gitlab|forgejo) ;;
+      *) exit 1 ;;
+    esac
+    # shellcheck disable=SC2016  # The inner script expands after bash -c receives positional args.
+    fm_run_timed 10 bash -c '
+      . "$1"
+      case "$2" in
+        github)
+          command -v gh >/dev/null 2>&1 || exit 1
+          fm_pr_github_host_export "$4"
+          gh pr view "$3" --json headRefOid -q .headRefOid 2>/dev/null
+          ;;
+        gitlab)
+          command -v glab >/dev/null 2>&1 || exit 1
+          command -v jq >/dev/null 2>&1 || exit 1
+          json=$(GITLAB_HOST="$4" glab mr view "$6" -R "https://$4/$5" -F json 2>/dev/null) || exit 1
+          [ -n "$json" ] || exit 1
+          printf "%s" "$json" | jq -er '\''if type == "object" and (.sha | type) == "string" then .sha else error("missing sha") end'\'' 2>/dev/null
+          ;;
+        forgejo)
+          fm_pr_forgejo_read_record "$4" "$5" "$6" || exit 1
+          printf "%s\n" "$FM_PR_RECORD_HEAD"
+          ;;
+        *)
+          exit 1
+          ;;
+      esac
+    ' _ "$lib" "$FM_PR_PROVIDER" "$FM_PR_URL" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER" 2>/dev/null
+  ) || return 1
+  fm_pr_head_valid "$head" || return 1
+  printf '%s\n' "$head"
+}
+
 # 0 when <url> names a Gerrit change whose current patch set carries the tree of
 # the worktree's HEAD. The revision is read live and bounded, because the server
 # is the only place a refs/for/ push leaves it, and it must already be an object
@@ -980,8 +1030,10 @@ fm_dod_named_head_reachable_outside_worktree() {  # <worktree> <project> <mode> 
 
 # 0 when <line> is not a ship done: to gate, when the task's meta records
 # forge=external and fm_dod_accept_external_review_done accepts it, when it
-# names the task's recorded PR whose head the forge holds, when it names a
-# Gerrit change whose current patch set carries the worker copy's HEAD tree, or otherwise when its named
+# names the task's recorded PR whose head the forge holds, when the recorded
+# worktree path is absent on this host and the forge confirms a valid PR/MR
+# head commit for the named URL, when it names a Gerrit change whose current
+# patch set carries the worker copy's HEAD tree, or otherwise when its named
 # head - the worker copy's HEAD - is reachable outside that disposable copy. A
 # published-for-review report that names no Gerrit change is refused.
 # There is no free-text SHA scan: a SHA that happens to appear in the note is
@@ -1010,6 +1062,12 @@ fm_dod_accept_ship_done() {  # <kind> <mode> <worktree> <project> <line> [<state
     return 0
   fi
   if [ -z "$wt" ] || [ ! -d "$wt" ]; then
+    if [ -n "$wt" ] && [ ! -e "$wt" ] && [ ! -L "$wt" ] \
+      && [ "$mode" != local-only ] && [ "${9:-}" != meta-locked ] \
+      && [ -n "$url" ] && ! fm_dod_note_reports_published_change "$(status_line_note "$line")" \
+      && fm_dod_pr_forge_head "$url" >/dev/null; then
+      return 0
+    fi
     printf '%s\n' "named head cannot be verified: worktree missing"
     return 1
   fi
