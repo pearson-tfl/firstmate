@@ -1,0 +1,713 @@
+[
+  {
+    "name": "baseline-no-mistakes",
+    "command": "{run-worktree}/.tmp-live-pr/base/bin/fm-pr-check.sh lane https://github.com/o/r/pull/1019",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nerror: named head cannot be verified: worktree missing\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/baseline-no-mistakes/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/baseline-no-mistakes/project\nkind=ship\nmode=no-mistakes\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "lane.meta"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {isDraft,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "baseline-direct-PR",
+    "command": "{run-worktree}/.tmp-live-pr/base/bin/fm-pr-check.sh lane https://github.com/o/r/pull/1019",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nerror: named head cannot be verified: worktree missing\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/baseline-direct-PR/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/baseline-direct-PR/project\nkind=ship\nmode=direct-PR\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "lane.meta"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {isDraft,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "register-no-mistakes",
+    "command": "bin/fm-pr-check.sh lane https://github.com/o/r/pull/1019",
+    "exit": 0,
+    "stdout": "armed: state/lane.check.sh\n",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/register-no-mistakes/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/register-no-mistakes/project\nkind=ship\nmode=no-mistakes\npr=https://github.com/o/r/pull/1019\npr_head=0123456789abcdef0123456789abcdef01234567\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "contributions.check-trust",
+      "contributions.check.sh",
+      "lane.check.sh",
+      "lane.meta",
+      "lane.pr-poll",
+      "lane.pr-poll-registration"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {isDraft,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "register-direct-PR",
+    "command": "bin/fm-pr-check.sh lane https://github.com/o/r/pull/1019",
+    "exit": 0,
+    "stdout": "armed: state/lane.check.sh\n",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/register-direct-PR/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/register-direct-PR/project\nkind=ship\nmode=direct-PR\npr=https://github.com/o/r/pull/1019\npr_head=0123456789abcdef0123456789abcdef01234567\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "contributions.check-trust",
+      "contributions.check.sh",
+      "lane.check.sh",
+      "lane.meta",
+      "lane.pr-poll",
+      "lane.pr-poll-registration"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {isDraft,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "register-enterprise",
+    "command": "bin/fm-pr-check.sh lane https://ghe.example.test/o/r/pull/1019",
+    "exit": 0,
+    "stdout": "armed: state/lane.check.sh\n",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/register-enterprise/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/register-enterprise/project\nkind=ship\nmode=direct-PR\npr=https://ghe.example.test/o/r/pull/1019\npr_head=0123456789abcdef0123456789abcdef01234567\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "contributions.check-trust",
+      "contributions.check.sh",
+      "lane.check.sh",
+      "lane.meta",
+      "lane.pr-poll",
+      "lane.pr-poll-registration"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/api/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {isDraft,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "invalid-head-no-mistakes",
+    "command": "bin/fm-pr-check.sh lane https://github.com/o/r/pull/1019",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nerror: named head cannot be verified: worktree missing\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/invalid-head-no-mistakes/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/invalid-head-no-mistakes/project\nkind=ship\nmode=no-mistakes\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "lane.meta"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {isDraft,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/",
+        "body": {}
+      },
+      {
+        "method": "GET",
+        "path": "/",
+        "body": {}
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "invalid-head-direct-PR",
+    "command": "bin/fm-pr-check.sh lane https://github.com/o/r/pull/1019",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nerror: named head cannot be verified: worktree missing\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/invalid-head-direct-PR/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/invalid-head-direct-PR/project\nkind=ship\nmode=direct-PR\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "lane.meta"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {isDraft,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "corrupt-empty",
+    "command": "bin/fm-pr-check.sh lane https://github.com/o/r/pull/1019",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nerror: named head cannot be verified: worktree missing\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree=\nproject={run-worktree}/.tmp-live-pr/corrupt-empty/project\nkind=ship\nmode=direct-PR\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "lane.meta"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {isDraft,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "corrupt-file",
+    "command": "bin/fm-pr-check.sh lane https://github.com/o/r/pull/1019",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nerror: named head cannot be verified: worktree missing\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/corrupt-file/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/corrupt-file/project\nkind=ship\nmode=direct-PR\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "lane.meta"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {isDraft,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "corrupt-link",
+    "command": "bin/fm-pr-check.sh lane https://github.com/o/r/pull/1019",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nerror: named head cannot be verified: worktree missing\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/corrupt-link/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/corrupt-link/project\nkind=ship\nmode=direct-PR\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "lane.meta"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {isDraft,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "local-only",
+    "command": "bin/fm-pr-check.sh lane https://github.com/o/r/pull/1019",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nerror: named head cannot be verified: worktree missing\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/local-only/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/local-only/project\nkind=ship\nmode=local-only\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "lane.meta"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {isDraft,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "merge-no-mistakes",
+    "command": "bin/fm-pr-merge.sh lane https://github.com/o/r/pull/1019",
+    "exit": 0,
+    "stdout": "armed: state/lane.check.sh\nverified: https://github.com/o/r/pull/1019 is merged (state=MERGED, merged=true, isInMergeQueue=false)\n",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nverified: https://github.com/o/r/pull/1019 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 0123456789abcdef0123456789abcdef01234567\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/merge-no-mistakes/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/merge-no-mistakes/project\nkind=ship\nmode=no-mistakes\npr=https://github.com/o/r/pull/1019\npr_head=0123456789abcdef0123456789abcdef01234567\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      ".wake-queue",
+      ".wake-queue.seq",
+      ".watcher-down",
+      "contributions.check-trust",
+      "contributions.check.sh",
+      "lane.check.sh",
+      "lane.merge-authority",
+      "lane.meta",
+      "lane.pr-poll",
+      "lane.pr-poll-merge-notified",
+      "lane.pr-poll-registration"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup: commits(last: 1) {nodes {commit {statusCheckRollup {contexts(first:100) {nodes {__typename...on StatusContext {context,state,targetUrl,createdAt,description},...on CheckRun {name,checkSuite{workflowRun{workflow{name}}},status,conclusion,startedAt,completedAt,detailsUrl}},pageInfo{hasNextPage,endCursor}}}}}},id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/repos/o/r/branches/main",
+        "body": {}
+      },
+      {
+        "method": "GET",
+        "path": "/repos/o/r/rules/branches/main?per_page=100",
+        "body": {}
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {id,number,state,title,commits(last:1){nodes{commit{oid}}},mergeStateStatus,headRefName,baseRefName,headRefOid,isCrossRepository,isInMergeQueue,isMergeQueueEnabled}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "mutation PullRequestMerge($input:MergePullRequestInput!){mergePullRequest(input: $input){clientMutationId}}",
+          "variables": {
+            "input": {
+              "pullRequestId": "PR_local_1019",
+              "expectedHeadOid": "0123456789abcdef0123456789abcdef01234567",
+              "mergeMethod": "SQUASH"
+            }
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){state merged isInMergeQueue baseRefName}}}",
+          "variables": {
+            "number": 1019,
+            "owner": "o",
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "merge-direct-PR",
+    "command": "bin/fm-pr-merge.sh lane https://github.com/o/r/pull/1019",
+    "exit": 0,
+    "stdout": "armed: state/lane.check.sh\nverified: https://github.com/o/r/pull/1019 is merged (state=MERGED, merged=true, isInMergeQueue=false)\n",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nverified: https://github.com/o/r/pull/1019 is open and mergeable, with every unwaived required check reported and every unwaived check green at head 0123456789abcdef0123456789abcdef01234567\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/merge-direct-PR/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/merge-direct-PR/project\nkind=ship\nmode=direct-PR\npr=https://github.com/o/r/pull/1019\npr_head=0123456789abcdef0123456789abcdef01234567\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      ".wake-queue",
+      ".wake-queue.seq",
+      ".watcher-down",
+      "contributions.check-trust",
+      "contributions.check.sh",
+      "lane.check.sh",
+      "lane.merge-authority",
+      "lane.meta",
+      "lane.pr-poll",
+      "lane.pr-poll-merge-notified",
+      "lane.pr-poll-registration"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {state,isDraft,mergeable,mergeStateStatus,headRefOid,baseRefName,statusCheckRollup: commits(last: 1) {nodes {commit {statusCheckRollup {contexts(first:100) {nodes {__typename...on StatusContext {context,state,targetUrl,createdAt,description},...on CheckRun {name,checkSuite{workflowRun{workflow{name}}},status,conclusion,startedAt,completedAt,detailsUrl}},pageInfo{hasNextPage,endCursor}}}}}},id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/repos/o/r/branches/main",
+        "body": {}
+      },
+      {
+        "method": "GET",
+        "path": "/repos/o/r/rules/branches/main?per_page=100",
+        "body": {}
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {id,number,state,title,commits(last:1){nodes{commit{oid}}},mergeStateStatus,headRefName,baseRefName,headRefOid,isCrossRepository,isInMergeQueue,isMergeQueueEnabled}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "mutation PullRequestMerge($input:MergePullRequestInput!){mergePullRequest(input: $input){clientMutationId}}",
+          "variables": {
+            "input": {
+              "pullRequestId": "PR_local_1019",
+              "expectedHeadOid": "0123456789abcdef0123456789abcdef01234567",
+              "mergeMethod": "SQUASH"
+            }
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){state merged isInMergeQueue baseRefName}}}",
+          "variables": {
+            "number": 1019,
+            "owner": "o",
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "merge-invalid-no-mistakes",
+    "command": "bin/fm-pr-merge.sh lane https://github.com/o/r/pull/1019",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nerror: named head cannot be verified: worktree missing\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/merge-invalid-no-mistakes/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/merge-invalid-no-mistakes/project\nkind=ship\nmode=no-mistakes\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "lane.meta"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "merge-invalid-direct-PR",
+    "command": "bin/fm-pr-merge.sh lane https://github.com/o/r/pull/1019",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u25cf  WATCHER DOWN - SUPERVISION IS OFF\n\u25cf  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).\n\u25cf  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.\n\u25cf  This is a supervision warning only; the guarded operation WILL still run.\n\u25cf  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.\n\u25cf\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nerror: named head cannot be verified: worktree missing\n",
+    "metadata": "window=fm-lane\nendpoint_task_id=lane\nworktree={run-worktree}/.tmp-live-pr/merge-invalid-direct-PR/remote-dell-copy\nproject={run-worktree}/.tmp-live-pr/merge-invalid-direct-PR/project\nkind=ship\nmode=direct-PR\n",
+    "artifacts": [
+      ".guard-watcher-stale-banner",
+      "lane.meta"
+    ],
+    "api_requests": [
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/graphql",
+        "body": {
+          "query": "\n\tquery PullRequestByNumber($owner: String!, $repo: String!, $pr_number: Int!) {\n\t\trepository(owner: $owner, name: $repo) {\n\t\t\tpullRequest(number: $pr_number) {headRefOid,id,number}\n\t\t}\n\t}",
+          "variables": {
+            "owner": "o",
+            "pr_number": 1019,
+            "repo": "r"
+          }
+        }
+      }
+    ]
+  }
+]

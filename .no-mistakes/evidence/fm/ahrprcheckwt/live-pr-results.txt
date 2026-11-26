@@ -1,0 +1,15 @@
+baseline-no-mistakes: exit 1; refused; no PR registration or poll
+baseline-direct-PR: exit 1; refused; no PR registration or poll
+register-no-mistakes: exit 0; registered exact head and armed poll
+register-direct-PR: exit 0; registered exact head and armed poll
+register-enterprise: exit 0; registered exact head and armed poll
+invalid-head-no-mistakes: exit 1; refused; no PR registration or poll
+invalid-head-direct-PR: exit 1; refused; no PR registration or poll
+corrupt-empty: exit 1; refused; no PR registration or poll
+corrupt-file: exit 1; refused; no PR registration or poll
+corrupt-link: exit 1; refused; no PR registration or poll
+local-only: exit 1; refused; no PR registration or poll
+merge-no-mistakes: exit 0; registered exact head and armed poll; merge mutation pinned to exact head and confirmed MERGED
+merge-direct-PR: exit 0; registered exact head and armed poll; merge mutation pinned to exact head and confirmed MERGED
+merge-invalid-no-mistakes: exit 1; refused; no PR registration or poll
+merge-invalid-direct-PR: exit 1; refused; no PR registration or poll

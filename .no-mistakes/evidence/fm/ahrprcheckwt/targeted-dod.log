@@ -1,0 +1,2 @@
+all fm-dod-lib tests passed
+ok - absent local worktree verifies the PR head against the forge and preserves all refusal boundaries

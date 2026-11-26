@@ -1,0 +1,2 @@
+ok - fm-pr-check and fm-pr-merge verify absent remote worktrees against the forge and still refuse unverified or corrupt paths
+ok - fm-pr-check refuses a direct-PR registration while a later commit is only in the copy
