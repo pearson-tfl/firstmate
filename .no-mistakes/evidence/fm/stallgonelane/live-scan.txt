@@ -1,0 +1,38 @@
+$ git -C {run-worktree}/.merge-live-ubgn7vei/wt init -q
+exit=0
+$ tmux -S {run-worktree}/.ms new-session -d -s fm-lab-merge-stall -x 100 -y 30
+exit=0
+
+SCENARIO Removed local copy
+$ bash bin/fm-crew-state.sh lane
+state: unknown · source: none · worktree gone (torn down?)
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 1795645426
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 1795645786
+exit=0
+RESULT: quiet on both sweeps, empty stall ledger
+
+SCENARIO Removed window, existing local copy
+$ bash bin/fm-crew-state.sh lane
+state: unknown · source: none · backend target gone: fm-lab-merge-stall:missing
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 1795645426
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 1795645786
+exit=0
+RESULT: quiet on both sweeps, empty stall ledger
+
+SCENARIO Unknown activity: target metadata missing
+$ bash bin/fm-crew-state.sh lane
+state: unknown · source: none · no backend target recorded
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 1795645426
+evidence unavailable: current activity unreadable for lane: state: unknown · source: none · no backend target recorded
+exit=0
+$ bash bin/fm-merge-stall.sh scan --now 1795645786
+evidence unavailable: current activity unreadable for lane: state: unknown · source: none · no backend target recorded
+exit=0
+RESULT: diagnostic on both sweeps, no merge instruction
+Private server cleanup exit=0
+Disposable home removed

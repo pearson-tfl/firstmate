@@ -1,0 +1,6 @@
+{run-worktree}/bin/.fm-merge-stall-before-test.sh
+evidence unavailable: current activity unreadable for lane: state: unknown · source: none · worktree gone (torn down?)
+exit=0
+bin/fm-merge-stall.sh
+exit=0
+Same removed-copy input reproduces the diagnostic before the change and stays quiet after it.
