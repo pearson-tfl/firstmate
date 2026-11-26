@@ -25,8 +25,11 @@ make_world() {  # <name>
   cat > "$WORLD/fakebin/pr-state" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$1" >> "${FM_TEST_FORGE_LOG:?}"
+[ "${FM_TEST_PR_RC:-0}" = 0 ] || exit "$FM_TEST_PR_RC"
 if [ "$1" = "${FM_TEST_CLOSED_URL:-}" ]; then
   printf 'STATE: closed\n'
+elif [ "$1" = "${FM_TEST_PR_DRAFT_URL:-}" ]; then
+  printf 'DRAFT: pull request is not ready for review\n'
 else
   [ -z "${FM_TEST_PR_STATE:-}" ] || printf '%s\n' "$FM_TEST_PR_STATE"
 fi
@@ -37,14 +40,28 @@ SH
 [ -z "${FM_TEST_HOLD_ERROR:-}" ] || printf '%s\n' "$FM_TEST_HOLD_ERROR" >&2
 exit "${FM_TEST_HOLD_RC:-1}"
 SH
-  cat > "$WORLD/fakebin/gh-axi" <<'SH'
+  cat > "$WORLD/fakebin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s|%s\n' "$PWD" "$*" >> "${FM_TEST_LOOKUP_LOG:?}"
 case "$*" in
-  'pr list --state open --head fm/unregistered --limit 1 --fields url') ;;
+  'pr list --state open --head fm/unregistered --limit 1 --json url,isDraft') ;;
   *) exit 2 ;;
 esac
-printf 'pull_requests[1]{url}:\n  "%s"\n' "${FM_TEST_BRANCH_URL:-}"
+if [ "${FM_TEST_DISCOVERY_RC:-0}" != 0 ]; then
+  printf '%s\n' "${FM_TEST_DISCOVERY_ERROR:-discovery unavailable}" >&2
+  exit "$FM_TEST_DISCOVERY_RC"
+fi
+if [ "${FM_TEST_DISCOVERY_OUTPUT+x}" ]; then
+  printf '%s\n' "$FM_TEST_DISCOVERY_OUTPUT"
+elif [ -n "${FM_TEST_BRANCH_URL:-}" ]; then
+  printf '[{"url":"%s","isDraft":%s}]\n' "$FM_TEST_BRANCH_URL" "${FM_TEST_BRANCH_DRAFT:-false}"
+else
+  printf '[]\n'
+fi
+SH
+  cat > "$WORLD/fakebin/crew-state" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "${FM_TEST_ACTIVITY:-state: paused · source: status-log · waiting on home}"
 SH
   chmod +x "$WORLD/fakebin"/*
   : > "$WORLD/forge.log"
@@ -74,6 +91,7 @@ scan() {  # <home> <now>
     FM_HOME="$1" FM_STATE_OVERRIDE="$1/state" \
     FM_MERGE_STALL_PR_STATE_BIN="$WORLD/fakebin/pr-state" \
     FM_MERGE_STALL_CAPTAIN_HOLD_BIN="$WORLD/fakebin/captain-hold" \
+    FM_MERGE_STALL_CREW_STATE_BIN="${FM_TEST_CREW_STATE_BIN:-$WORLD/fakebin/crew-state}" \
     FM_TEST_FORGE_LOG="$WORLD/forge.log" bash "$SCAN" scan --now "$2"
 }
 
@@ -170,14 +188,14 @@ check_mate_route() {  # <local|remote>
   [ ! -e "$channel" ] || fail "$route mate escalated before the captain bound"
   out=$(scan "$MATE" $((T0 + 1800)))
   case "$out" in *"stalled past 1800s: reported to the captain through the parent channel") ;; *) fail "$route mate wake did not name the escalation: $out" ;; esac
-  key=$(channel_lines "$channel" | sed -n 's/^blocked \[key=\(merge-stall-child-[0-9]*\)\]: merge stall child: PR .* unmerged 1800s while its worker waits on this home \[forge: .*\]$/\1/p')
+  key=$(channel_lines "$channel" | sed -n 's/^blocked \[key=\(merge-stall-child-[0-9]*\)\]: merge stall child: PR .* unmerged while its worker waits on this home (waiting since [0-9]*)$/\1/p')
   [ -n "$key" ] || fail "$route mate did not publish the stall on its parent channel: $(cat "$channel" 2>/dev/null)"
   scan "$MATE" $((T0 + 3600)) >/dev/null
   [ "$(grep -c "^blocked" "$channel")" = 1 ] || fail "$route mate re-published one stall"
   rm "$MATE/state/child.pr-poll"
   out=$(scan "$MATE" $((T0 + 3700)))
   [ -z "$out" ] || fail "$route mate woke after the merge was observed: $out"
-  channel_lines "$channel" | grep -Fxq "resolved [key=$key]: merge stall child: PR $URL is merged, closed, or its worker waiting episode ended" \
+  channel_lines "$channel" | grep -Fxq "resolved [key=$key]: merge stall child: PR $URL is no longer a merge candidate or its worker waiting episode ended" \
     || fail "$route mate did not resolve the stall upstream: $(cat "$channel")"
 }
 
@@ -205,7 +223,7 @@ test_unregistered_pr() {
       out=$(FM_TEST_BRANCH_URL="$URL" scan "$home" $((T0 + 600))) || fail "unregistered PR scan failed"
       case "$out" in "t PR $URL unmerged 600s"*"merge it now with bin/fm-pr-merge.sh t $URL"*) ;; *) fail "unregistered $route $verb PR was missed: $out" ;; esac
       [ "$(wc -l < "$WORLD/lookup.log" | tr -d ' ')" = 1 ] || fail "unregistered PR needed more than one forge lookup"
-      grep -Fxq "$home/copy|pr list --state open --head fm/unregistered --limit 1 --fields url" "$WORLD/lookup.log" || fail "lookup did not address the task branch in its repository"
+      grep -Fxq "$home/copy|pr list --state open --head fm/unregistered --limit 1 --json url,isDraft" "$WORLD/lookup.log" || fail "lookup did not address the task branch in its repository"
       [ ! -e "$home/state/t.pr-poll" ] || fail "lookup created a second PR registry"
       out=$(FM_TEST_BRANCH_URL="$URL" scan "$home" $((T0 + 900))) || fail "unregistered PR rescan failed"
       [ -z "$out" ] || fail "unregistered PR bypassed reminder backoff: $out"
@@ -290,7 +308,7 @@ run_watcher() {
     FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
     FM_MERGE_STALL_PR_STATE_BIN="$WORLD/fakebin/pr-state" \
     FM_MERGE_STALL_CAPTAIN_HOLD_BIN="$WORLD/fakebin/captain-hold" FM_TEST_FORGE_LOG="$WORLD/forge.log" \
-    FM_TEST_LOOKUP_LOG="$WORLD/lookup.log" \
+    FM_TEST_LOOKUP_LOG="$WORLD/lookup.log" FM_MERGE_STALL_CREW_STATE_BIN="$WORLD/fakebin/crew-state" \
     FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=300 FM_HEARTBEAT=999999 bash "$WATCH" > "$WORLD/watch.out" 2>&1 &
   pid=$!
   while [ "$i" -lt 100 ]; do
@@ -394,6 +412,160 @@ test_hold_failure_diagnostic() {
   pass "captain-hold read diagnostics reach the home without a merge instruction"
 }
 
+test_discovery_failure_preserves_episode() {
+  local route kind channel before out rc
+  for route in local remote; do
+    make_world "unknown-discovery-$route"; bind_mate "$route"
+    if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
+    write_unregistered_task "$MATE" child paused
+    FM_TEST_BRANCH_URL="$URL" scan "$MATE" $((T0 + 1800)) >/dev/null || fail "unregistered escalation failed"
+    before=$(cat "$MATE/state/.merge-stall")
+    for kind in timeout malformed invalid-url invalid-draft invalid-shape no-output empty-url invalid-draft-url whitespace multiple-payloads; do
+      rc=0
+      case "$kind" in
+        timeout) out=$(FM_TEST_DISCOVERY_RC=124 FM_TEST_DISCOVERY_ERROR='lookup timed out' scan "$MATE" $((T0 + 3600)) 2>&1) || rc=$? ;;
+        malformed) out=$(FM_TEST_DISCOVERY_OUTPUT='not JSON' scan "$MATE" $((T0 + 3600)) 2>&1) || rc=$? ;;
+        invalid-url) out=$(FM_TEST_DISCOVERY_OUTPUT='[{"url":"not-a-PR","isDraft":false}]' scan "$MATE" $((T0 + 3600)) 2>&1) || rc=$? ;;
+        invalid-draft) out=$(FM_TEST_DISCOVERY_OUTPUT='[{"url":"https://github.com/owner/repo/pull/628","isDraft":"false"}]' scan "$MATE" $((T0 + 3600)) 2>&1) || rc=$? ;;
+        invalid-shape) out=$(FM_TEST_DISCOVERY_OUTPUT='{}' scan "$MATE" $((T0 + 3600)) 2>&1) || rc=$? ;;
+        no-output) out=$(FM_TEST_DISCOVERY_OUTPUT='' scan "$MATE" $((T0 + 3600)) 2>&1) || rc=$? ;;
+        empty-url) out=$(FM_TEST_DISCOVERY_OUTPUT='[{"url":"","isDraft":false}]' scan "$MATE" $((T0 + 3600)) 2>&1) || rc=$? ;;
+        invalid-draft-url) out=$(FM_TEST_DISCOVERY_OUTPUT='[{"url":"not-a-PR","isDraft":true}]' scan "$MATE" $((T0 + 3600)) 2>&1) || rc=$? ;;
+        whitespace) out=$(FM_TEST_DISCOVERY_OUTPUT='   ' scan "$MATE" $((T0 + 3600)) 2>&1) || rc=$? ;;
+        multiple-payloads) out=$(FM_TEST_DISCOVERY_OUTPUT='[] []' scan "$MATE" $((T0 + 3600)) 2>&1) || rc=$? ;;
+      esac
+      [ "$rc" = 1 ] || fail "$kind discovery did not fail visibly: $out"
+      case "$out" in *'PR discovery'*'child'*) ;; *) fail "$kind discovery omitted its task diagnostic: $out" ;; esac
+      [ "$(cat "$MATE/state/.merge-stall")" = "$before" ] || fail "$kind discovery discarded an existing episode"
+      [ "$(wc -l < "$channel" | tr -d ' ')" = 1 ] || fail "$kind discovery falsely resolved the parent blocker"
+    done
+    out=$(FM_TEST_BRANCH_URL="$URL" scan "$MATE" $((T0 + 3600))) || fail "discovery recovery failed"
+    case "$out" in *'unmerged 3600s'*) ;; *) fail "recovered lookup reset the waiting episode: $out" ;; esac
+    [ "$(grep -c '^blocked' "$channel")" = 1 ] || fail "discovery recovery repeated escalation"
+    before=$(cat "$MATE/state/.merge-stall")
+    rc=0
+    out=$(FM_TEST_BRANCH_URL="$URL" FM_TEST_PR_RC=1 scan "$MATE" $((T0 + 5400)) 2>&1) || rc=$?
+    [ "$rc" = 1 ] || fail "unreadable PR state did not fail visibly"
+    case "$out" in *'forge state unreadable for child'*) ;; *) fail "PR state failure omitted its diagnostic: $out" ;; esac
+    [ "$(cat "$MATE/state/.merge-stall")" = "$before" ] || fail "unreadable PR state discarded an existing episode"
+    [ "$(wc -l < "$channel" | tr -d ' ')" = 1 ] || fail "unreadable PR state falsely resolved the parent blocker"
+    out=$(scan "$MATE" $((T0 + 5500))) || fail "confirmed empty discovery failed"
+    [ -z "$out" ] && [ ! -s "$MATE/state/.merge-stall" ] || fail "confirmed empty discovery retained a candidate"
+    [ "$(grep -c '^resolved' "$channel")" = 1 ] || fail "positive absence did not close the old episode"
+  done
+  make_world watcher-discovery
+  write_unregistered_task "$MAIN" t paused
+  FM_TEST_DISCOVERY_RC=124 FM_TEST_DISCOVERY_ERROR='lookup timed out' run_watcher "$MAIN"
+  grep -Fq 'PR discovery failed for t (rc=124): lookup timed out' "$MAIN/state/.wake-queue" || fail "watcher swallowed discovery failure"
+  pass "unknown discovery preserves both parent routes and wakes the home; confirmed absence resolves"
+}
+
+test_drafts_are_not_candidates() {
+  local registration route home channel out
+  for route in main local remote; do
+    for registration in recorded discovered; do
+      make_world "draft-$route-$registration"
+      home=$MAIN
+      if [ "$route" != main ]; then bind_mate "$route"; home=$MATE; fi
+      if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
+      if [ "$registration" = recorded ]; then
+        write_task "$home" t on "paused [at=$T0]: intentionally held draft"
+      else
+        write_unregistered_task "$home" t paused
+      fi
+      out=$(FM_TEST_BRANCH_URL="$URL" FM_TEST_BRANCH_DRAFT=true FM_TEST_PR_DRAFT_URL="$URL" scan "$home" $((T0 + 3600))) || fail "draft scan failed"
+      [ -z "$out" ] || fail "a $registration draft received a merge instruction: $out"
+      [ ! -s "$home/state/.merge-stall" ] || fail "a $registration draft retained a stall"
+      [ ! -e "$channel" ] || fail "a $registration draft escalated upstream"
+      out=$(FM_TEST_BRANCH_URL="$URL" scan "$home" $((T0 + 3700))) || fail "ready PR scan failed"
+      case "$out" in "t PR $URL unmerged 3700s"*'merge it now'*) ;; *) fail "a ready $registration PR was excluded with drafts: $out" ;; esac
+    done
+  done
+  pass "recorded and discovered drafts stay silent in every route while ready PRs wake"
+}
+
+test_active_validation_is_not_a_merge_wait() {
+  local registration verb out head state
+  fm_git_identity fmtest fmtest@example.invalid
+  for registration in recorded discovered; do
+    for verb in paused done; do
+      make_world "validation-$registration-$verb"
+      write_unregistered_task "$MAIN" t "$verb"
+      printf 'mode=no-mistakes\n' >> "$MAIN/state/t.meta"
+      if [ "$registration" = recorded ]; then
+        printf 'pr=%s\n' "$URL" >> "$MAIN/state/t.meta"
+        printf 'github\n%s\ngithub.com\nowner/repo\n628\n' "$URL" > "$MAIN/state/t.pr-poll"
+      fi
+      git -C "$MAIN/copy" init -q
+      git -C "$MAIN/copy" symbolic-ref HEAD refs/heads/fm/unregistered
+      git -C "$MAIN/copy" commit -q --allow-empty -m fixture
+      head=$(git -C "$MAIN/copy" rev-parse HEAD)
+      cat > "$WORLD/fakebin/no-mistakes" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  'daemon status') printf 'daemon running\n' ;;
+  'axi logs --step ci --run 01RUN --full') printf '%s\n' "${FM_TEST_CI_LOG:-CI checks running, waiting for results...}" ;;
+  axi|'axi status'|'axi status --run 01RUN')
+    cat <<EOF
+run:
+  id: "01RUN"
+  branch: fm/unregistered
+  status: running
+  head: "$FM_TEST_RUN_HEAD"
+  pr: "https://github.com/owner/repo/pull/628"
+  findings: none
+  steps[4]{step,status,findings,duration_ms}:
+    intent,completed,0,0
+    review,completed,0,0
+    push,completed,0,0
+    ci,running,0,0
+EOF
+    ;;
+  *) exit 2 ;;
+esac
+SH
+      chmod +x "$WORLD/fakebin/no-mistakes"
+      state=$(PATH="$WORLD/fakebin:$PATH" FM_TEST_RUN_HEAD="$head" FM_HOME="$MAIN" FM_CREW_STATE_NO_FORGE=1 bash "$ROOT/bin/fm-crew-state.sh" t)
+      case "$state" in 'state: working · source: run-step'*) ;; *) fail "pending CI fixture is not actively validating: $state" ;; esac
+      out=$(FM_TEST_RUN_HEAD="$head" FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" FM_TEST_BRANCH_URL="$URL" scan "$MAIN" $((T0 + 3600))) || fail "active validation scan failed"
+      [ -z "$out" ] && [ ! -s "$MAIN/state/.merge-stall" ] || fail "$registration $verb during active CI was a merge stall: $out"
+      [ ! -s "$WORLD/lookup.log" ] || fail "active validation performed branch discovery"
+      state=$(PATH="$WORLD/fakebin:$PATH" FM_TEST_RUN_HEAD="$head" FM_TEST_CI_LOG='all CI checks passed - still monitoring until merged or closed' FM_HOME="$MAIN" FM_CREW_STATE_NO_FORGE=1 bash "$ROOT/bin/fm-crew-state.sh" t)
+      case "$state" in 'state: done · source: run-step'*'checks green'*) ;; *) fail "green CI fixture is not waiting for merge: $state" ;; esac
+      out=$(FM_TEST_RUN_HEAD="$head" FM_TEST_CI_LOG='all CI checks passed - still monitoring until merged or closed' FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" FM_TEST_BRANCH_URL="$URL" scan "$MAIN" $((T0 + 3700))) || fail "green monitor scan failed"
+      case "$out" in "t PR $URL unmerged 3700s"*'merge it now'*) ;; *) fail "green merge monitor stayed classified as validation: $out" ;; esac
+    done
+  done
+  pass "real crew-state excludes pending CI for paused and done declarations and accepts a green monitor"
+}
+
+test_escalation_retry_is_idempotent() {
+  local route channel rc real_mv before after
+  real_mv=$(command -v mv)
+  for route in local remote; do
+    make_world "retry-$route"; bind_mate "$route"
+    if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
+    write_task "$MATE" child on "done [at=$T0]: PR ready"
+    scan "$MATE" $((T0 + 600)) >/dev/null || fail "retry fixture first wake failed"
+    before=$(cat "$MATE/state/.merge-stall")
+    printf '#!/usr/bin/env bash\nfor arg in "$@"; do case "$arg" in */.merge-stall) exit 1 ;; esac; done\nexec "%s" "$@"\n' "$real_mv" > "$WORLD/fakebin/mv"
+    chmod +x "$WORLD/fakebin/mv"
+    rc=0
+    FM_TEST_PR_STATE='REQUIRED CHECK: tests (PENDING)' scan "$MATE" $((T0 + 1800)) > "$WORLD/scan.out" 2> "$WORLD/scan.err" || rc=$?
+    [ "$rc" = 1 ] || fail "ledger failure fixture did not fail"
+    [ "$(cat "$MATE/state/.merge-stall")" = "$before" ] || fail "failed ledger write changed notification state"
+    [ "$(grep -c '^blocked' "$channel")" = 1 ] || fail "first parent publication missing"
+    after=$(channel_lines "$channel")
+    mv "$WORLD/fakebin/mv" "$WORLD/mv.saved"
+    FM_TEST_PR_STATE='MERGEABILITY: conflicting' scan "$MATE" $((T0 + 2100)) >/dev/null || fail "ledger retry failed"
+    [ "$(channel_lines "$channel")" = "$after" ] || fail "new age or forge state duplicated the episode blocker"
+    [ "$(grep -c '^blocked' "$channel")" = 1 ] || fail "retry published multiple parent blockers"
+    scan "$MATE" $((T0 + 3900)) >/dev/null || fail "post-retry reminder failed"
+    [ "$(grep -c '^blocked' "$channel")" = 1 ] || fail "post-retry reminder re-published escalation"
+  done
+  pass "parent escalation stays singular across failed ledger writes and changing age or blockers"
+}
+
 test_replay_paused_worker_red_pr
 test_merged_or_released_ends_stall
 test_posture_and_holds_respected
@@ -405,3 +577,7 @@ test_hold_failure_diagnostic
 test_watcher_poll_wakes_home
 test_chatty_check_cannot_starve_scan
 test_scanner_failures_wake_home
+test_discovery_failure_preserves_episode
+test_drafts_are_not_candidates
+test_active_validation_is_not_a_merge_wait
+test_escalation_retry_is_idempotent
