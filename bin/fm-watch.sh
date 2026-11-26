@@ -246,6 +246,8 @@ WATCH_HOME_EXISTED=0
 . "$SCRIPT_DIR/fm-push-transition-lib.sh"
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
+# shellcheck source=bin/fm-timeout-lib.sh
+. "$SCRIPT_DIR/fm-timeout-lib.sh"
 # Only for the arm-time check on FM_PROCEVENT_LAUNCH_CONFIRM_SECONDS below;
 # the per-cycle reconcile itself runs as a separate process.
 # shellcheck source=bin/fm-procevent-lib.sh
@@ -3126,7 +3128,7 @@ fm_active_check_stop() {
   [ -z "$pgid" ] || kill -TERM -- "-$pgid" 2>/dev/null || true
   [ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null || true
   i=0
-  while [ -n "$pgid" ] && kill -0 -- "-$pgid" 2>/dev/null && [ "$i" -lt 20 ]; do
+  while [ -n "$pgid" ] && kill -0 -- "-$pgid" 2>/dev/null && [ "$i" -lt 300 ]; do
     sleep 0.01
     i=$((i + 1))
   done
@@ -3237,6 +3239,11 @@ watcher_waited() {  # <command...>
   WATCHER_CAPTURE=$(cat "$FM_CAPTURE_OUTPUT" 2>/dev/null || true)
   fm_capture_output_cleanup
   return "$rc"
+}
+
+merge_stall_scan() {
+  fm_exec_timed "$CHECK_TIMEOUT" 2 env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+    bash "$SCRIPT_DIR/fm-merge-stall.sh" scan 2>&1
 }
 
 # watcher_capture: fm_backend_capture through watcher_waited.
@@ -3901,8 +3908,11 @@ while :; do
   if [ "$(age_of "$STATE/.last-check")" -ge "$CHECK_INTERVAL" ]; then
     merge_stall_reason=
     merge_stall_rc=0
-    merge_stall_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-      "$SCRIPT_DIR/fm-merge-stall.sh" scan 2>&1) || merge_stall_rc=$?
+    watcher_waited merge_stall_scan || merge_stall_rc=$?
+    merge_stall_out=$WATCHER_CAPTURE
+    if fm_timed_out "$merge_stall_rc"; then
+      merge_stall_out="scan deadline ${CHECK_TIMEOUT}s exceeded${merge_stall_out:+: $merge_stall_out}"
+    fi
     if [ "$merge_stall_rc" -ne 0 ]; then
       merge_stall_out=$(printf '%s' "$merge_stall_out" | LC_ALL=C tr '\t\r\n' '   ' | cut -c1-1200)
       merge_stall_reason="check: merge stall: scan failed (rc=$merge_stall_rc): ${merge_stall_out:-no diagnostic}; repair bin/fm-merge-stall.sh before relying on merge-stall detection"

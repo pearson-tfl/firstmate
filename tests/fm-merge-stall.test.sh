@@ -25,7 +25,8 @@ make_world() {  # <name>
   cat > "$WORLD/fakebin/pr-state" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$1" >> "${FM_TEST_FORGE_LOG:?}"
-[ "${FM_TEST_PR_RC:-0}" = 0 ] || exit "$FM_TEST_PR_RC"
+if [ "${FM_TEST_HANG_READ:-}" = forge ] && [ "$1" = "${FM_TEST_BAD_PR:-}" ]; then exec "${0%/*}/hang-read"; fi
+if [ "${FM_TEST_PR_RC:-0}" != 0 ] && { [ -z "${FM_TEST_BAD_PR:-}" ] || [ "$1" = "$FM_TEST_BAD_PR" ]; }; then exit "$FM_TEST_PR_RC"; fi
 if [ "$1" = "${FM_TEST_CLOSED_URL:-}" ]; then
   printf 'STATE: closed\n'
 elif [ "$1" = "${FM_TEST_PR_DRAFT_URL:-}" ]; then
@@ -36,6 +37,7 @@ fi
 SH
   cat > "$WORLD/fakebin/captain-hold" <<'SH'
 #!/usr/bin/env bash
+if [ "${FM_TEST_HANG_READ:-}" = hold ] && [ "$2" = "${FM_TEST_BAD_TASK:-}" ]; then exec "${0%/*}/hang-read"; fi
 [ "${FM_TEST_HELD:-}" = "$2" ] && exit 0
 [ -z "${FM_TEST_HOLD_ERROR:-}" ] || printf '%s\n' "$FM_TEST_HOLD_ERROR" >&2
 exit "${FM_TEST_HOLD_RC:-1}"
@@ -47,6 +49,7 @@ case "$*" in
   'pr list --state open --head fm/unregistered --limit 1 --json url,isDraft') ;;
   *) exit 2 ;;
 esac
+if [ "${FM_TEST_HANG_READ:-}" = discovery ]; then exec "${0%/*}/hang-read"; fi
 if [ "${FM_TEST_DISCOVERY_RC:-0}" != 0 ]; then
   printf '%s\n' "${FM_TEST_DISCOVERY_ERROR:-discovery unavailable}" >&2
   exit "$FM_TEST_DISCOVERY_RC"
@@ -61,7 +64,21 @@ fi
 SH
   cat > "$WORLD/fakebin/crew-state" <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "${FM_TEST_ACTIVITY:-state: paused · source: status-log · waiting on home}"
+if [ "$1" = "${FM_TEST_BAD_TASK:-}" ]; then
+  if [ "${FM_TEST_HANG_READ:-}" = crew ]; then exec "${0%/*}/hang-read"; fi
+  [ "${FM_TEST_ACTIVITY_RC:-0}" = 0 ] || exit "$FM_TEST_ACTIVITY_RC"
+  printf '%s\n' "${FM_TEST_ACTIVITY:-state: paused · source: status-log · waiting on home}"
+else
+  printf 'state: paused · source: status-log · waiting on home\n'
+fi
+SH
+  cat > "$WORLD/fakebin/hang-read" <<'SH'
+#!/usr/bin/env bash
+trap '' TERM
+printf '%s\n' "$$" > "${FM_TEST_READ_PIDS:?}"
+sleep 600 &
+printf '%s\n' "$!" >> "$FM_TEST_READ_PIDS"
+wait
 SH
   chmod +x "$WORLD/fakebin"/*
   : > "$WORLD/forge.log"
@@ -93,6 +110,42 @@ scan() {  # <home> <now>
     FM_MERGE_STALL_CAPTAIN_HOLD_BIN="$WORLD/fakebin/captain-hold" \
     FM_MERGE_STALL_CREW_STATE_BIN="${FM_TEST_CREW_STATE_BIN:-$WORLD/fakebin/crew-state}" \
     FM_TEST_FORGE_LOG="$WORLD/forge.log" bash "$SCAN" scan --now "$2"
+}
+
+observe_merge() (
+  local fixture_home=$1 task=$2
+  # shellcheck source=/dev/null
+  . "$ROOT/bin/fm-pr-lib.sh"
+  fm_pr_url_parse "$URL" && fm_pr_poll_merge_mark_notified "$fixture_home/state" "$task" "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER" || exit 1
+  rm -f "$fixture_home/state/$task.pr-poll"
+)
+
+parent_open() (
+  # shellcheck source=/dev/null
+  . "$ROOT/bin/fm-classify-lib.sh"
+  status_open_decisions "$1"
+)
+
+fail_ledger_commit() {
+  local real_mv
+  real_mv=$(command -v mv)
+  printf '%s\n' "$real_mv" > "$WORLD/real-mv"
+  : > "$WORLD/renames"
+  cat > "$WORLD/fakebin/mv" <<'SH'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    */.merge-stall)
+      dir=${0%/fakebin/mv}
+      printf 'rename\n' >> "$dir/renames"
+      [ "$(wc -l < "$dir/renames" | tr -d ' ')" != 2 ] || exit 1
+      ;;
+  esac
+done
+IFS= read -r real_mv < "${0%/fakebin/mv}/real-mv"
+exec "$real_mv" "$@"
+SH
+  chmod +x "$WORLD/fakebin/mv"
 }
 
 channel_lines() {  # <file> -> lines with stamps removed
@@ -145,7 +198,7 @@ test_merged_or_released_ends_stall() {
 
   make_world retired
   write_task "$MAIN" t on "done [at=$T0]: PR $URL checks green"
-  rm "$MAIN/state/t.pr-poll"
+  observe_merge "$MAIN" t || fail "could not record the merged PR identity"
   out=$(scan "$MAIN" $((T0 + 600)))
   [ -z "$out" ] || fail "a PR whose merge was observed still woke the home: $out"
 
@@ -192,7 +245,7 @@ check_mate_route() {  # <local|remote>
   [ -n "$key" ] || fail "$route mate did not publish the stall on its parent channel: $(cat "$channel" 2>/dev/null)"
   scan "$MATE" $((T0 + 3600)) >/dev/null
   [ "$(grep -c "^blocked" "$channel")" = 1 ] || fail "$route mate re-published one stall"
-  rm "$MATE/state/child.pr-poll"
+  observe_merge "$MATE" child || fail "could not record the mate PR merge"
   out=$(scan "$MATE" $((T0 + 3700)))
   [ -z "$out" ] || fail "$route mate woke after the merge was observed: $out"
   channel_lines "$channel" | grep -Fxq "resolved [key=$key]: merge stall child: PR $URL is no longer a merge candidate or its worker waiting episode ended" \
@@ -302,15 +355,22 @@ test_replaced_waiting_episode() {
   pass "paused and done episode replacements reset age, reminders and escalation on both parent routes"
 }
 
-run_watcher() {
-  local home=$1 pid i=0
-  PATH="$WORLD/fakebin:$PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
-    FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
+start_watcher() {
+  local fixture_home=$1
+  PATH="$WORLD/fakebin:$PATH" FM_HOME="$fixture_home" FM_STATE_OVERRIDE="$fixture_home/state" \
+    FM_DATA_OVERRIDE="$fixture_home/data" FM_CONFIG_OVERRIDE="$fixture_home/config" \
     FM_MERGE_STALL_PR_STATE_BIN="$WORLD/fakebin/pr-state" \
     FM_MERGE_STALL_CAPTAIN_HOLD_BIN="$WORLD/fakebin/captain-hold" FM_TEST_FORGE_LOG="$WORLD/forge.log" \
     FM_TEST_LOOKUP_LOG="$WORLD/lookup.log" FM_MERGE_STALL_CREW_STATE_BIN="$WORLD/fakebin/crew-state" \
+    FM_CHECK_TIMEOUT="${FM_TEST_CHECK_TIMEOUT:-30}" FM_MERGE_STALL_READ_TIMEOUT="${FM_TEST_READ_TIMEOUT:-5}" \
     FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=300 FM_HEARTBEAT=999999 bash "$WATCH" > "$WORLD/watch.out" 2>&1 &
-  pid=$!
+  WATCH_PID=$!
+}
+
+run_watcher() {
+  local pid i=0
+  start_watcher "$1"
+  pid=$WATCH_PID
   while [ "$i" -lt 100 ]; do
     kill -0 "$pid" 2>/dev/null || break
     sleep 0.1
@@ -392,7 +452,8 @@ test_scanner_failures_wake_home() {
     grep -Fq 'check: merge stall: scan failed (rc=1):' "$home/state/.wake-queue" || fail "$kind detector failure stayed silent: $(cat "$WORLD/watch.out")"
     case "$kind" in
       ledger-*) grep -Fq 'ledger' "$home/state/.wake-queue" || fail "$kind failure omitted its cause" ;;
-      parent-*|resolved-*) grep -Fq "parent channel append failed (rc=4):" "$home/state/.wake-queue" && grep -Fq "PR $URL" "$home/state/.wake-queue" || fail "$kind failure omitted the detected stall" ;;
+      parent-*) grep -Fq "parent channel append failed (rc=4):" "$home/state/.wake-queue" && grep -Fq "PR $URL" "$home/state/.wake-queue" || fail "$kind failure omitted the detected stall" ;;
+      resolved-*) grep -Fq 'parent channel read failed' "$home/state/.wake-queue" && grep -Fq "PR $URL" "$home/state/.wake-queue" || fail "$kind failure omitted the unresolved episode" ;;
     esac
     [ "$(wc -l < "$home/state/.wake-queue" | tr -d ' ')" = 1 ] || fail "$kind failure queued more than one wake"
     [ -f "$home/state/.last-check" ] || fail "$kind failure did not retain bounded sweep cadence"
@@ -434,7 +495,7 @@ test_discovery_failure_preserves_episode() {
         whitespace) out=$(FM_TEST_DISCOVERY_OUTPUT='   ' scan "$MATE" $((T0 + 3600)) 2>&1) || rc=$? ;;
         multiple-payloads) out=$(FM_TEST_DISCOVERY_OUTPUT='[] []' scan "$MATE" $((T0 + 3600)) 2>&1) || rc=$? ;;
       esac
-      [ "$rc" = 1 ] || fail "$kind discovery did not fail visibly: $out"
+      [ "$rc" = 0 ] || fail "$kind discovery prevented scan completion: $out"
       case "$out" in *'PR discovery'*'child'*) ;; *) fail "$kind discovery omitted its task diagnostic: $out" ;; esac
       [ "$(cat "$MATE/state/.merge-stall")" = "$before" ] || fail "$kind discovery discarded an existing episode"
       [ "$(wc -l < "$channel" | tr -d ' ')" = 1 ] || fail "$kind discovery falsely resolved the parent blocker"
@@ -445,7 +506,7 @@ test_discovery_failure_preserves_episode() {
     before=$(cat "$MATE/state/.merge-stall")
     rc=0
     out=$(FM_TEST_BRANCH_URL="$URL" FM_TEST_PR_RC=1 scan "$MATE" $((T0 + 5400)) 2>&1) || rc=$?
-    [ "$rc" = 1 ] || fail "unreadable PR state did not fail visibly"
+    [ "$rc" = 0 ] || fail "unreadable PR state prevented scan completion"
     case "$out" in *'forge state unreadable for child'*) ;; *) fail "PR state failure omitted its diagnostic: $out" ;; esac
     [ "$(cat "$MATE/state/.merge-stall")" = "$before" ] || fail "unreadable PR state discarded an existing episode"
     [ "$(wc -l < "$channel" | tr -d ' ')" = 1 ] || fail "unreadable PR state falsely resolved the parent blocker"
@@ -540,16 +601,14 @@ SH
 }
 
 test_escalation_retry_is_idempotent() {
-  local route channel rc real_mv before after
-  real_mv=$(command -v mv)
+  local route channel rc before after
   for route in local remote; do
     make_world "retry-$route"; bind_mate "$route"
     if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
     write_task "$MATE" child on "done [at=$T0]: PR ready"
     scan "$MATE" $((T0 + 600)) >/dev/null || fail "retry fixture first wake failed"
     before=$(cat "$MATE/state/.merge-stall")
-    printf '#!/usr/bin/env bash\nfor arg in "$@"; do case "$arg" in */.merge-stall) exit 1 ;; esac; done\nexec "%s" "$@"\n' "$real_mv" > "$WORLD/fakebin/mv"
-    chmod +x "$WORLD/fakebin/mv"
+    fail_ledger_commit
     rc=0
     FM_TEST_PR_STATE='REQUIRED CHECK: tests (PENDING)' scan "$MATE" $((T0 + 1800)) > "$WORLD/scan.out" 2> "$WORLD/scan.err" || rc=$?
     [ "$rc" = 1 ] || fail "ledger failure fixture did not fail"
@@ -564,6 +623,193 @@ test_escalation_retry_is_idempotent() {
     [ "$(grep -c '^blocked' "$channel")" = 1 ] || fail "post-retry reminder re-published escalation"
   done
   pass "parent escalation stays singular across failed ledger writes and changing age or blockers"
+}
+
+test_interrupted_registration_is_detected() {
+  local route poll fixture_home out channel
+  for route in main local remote; do
+    for poll in missing mismatched; do
+      make_world "registration-$route-$poll"
+      fixture_home=$MAIN
+      if [ "$route" != main ]; then bind_mate "$route"; fixture_home=$MATE; fi
+      write_task "$fixture_home" t on "paused [at=$T0]: ready PR awaits home"
+      if [ "$poll" = missing ]; then
+        mv "$fixture_home/state/t.pr-poll" "$WORLD/poll.saved"
+      else
+        printf 'github\nhttps://github.com/owner/repo/pull/999\ngithub.com\nowner/repo\n999\n' > "$fixture_home/state/t.pr-poll"
+      fi
+      out=$(scan "$fixture_home" $((T0 + 1800))) || fail "interrupted registration scan failed"
+      case "$out" in "t PR $URL unmerged 1800s"*'merge it now'*) ;; *) fail "$poll poll excluded the ready PR: $out" ;; esac
+      out=$(scan "$fixture_home" $((T0 + 3600))) || fail "interrupted registration repeat failed"
+      case "$out" in "t PR $URL unmerged 3600s"*) ;; *) fail "$poll poll ended a live episode: $out" ;; esac
+      out=$(FM_TEST_PR_STATE='STATE: merged' scan "$fixture_home" $((T0 + 5400))) || fail "positive merged observation failed"
+      [ -z "$out" ] && [ ! -s "$fixture_home/state/.merge-stall" ] || fail "confirmed merge retained the stall"
+      if [ "$route" != main ]; then
+        if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
+        [ "$(grep -c '^blocked' "$channel")" = 1 ] && [ "$(grep -c '^resolved' "$channel")" = 1 ] || fail "interrupted registration broke parent episode continuity"
+      fi
+    done
+  done
+  pass "missing and mismatched polls remain eligible until positive merge evidence in every home route"
+}
+
+test_publication_failure_then_terminal_recovery() {
+  local route phase ending channel rc key out
+  for route in local remote; do
+    for phase in first existing; do
+      for ending in resumed merged; do
+        make_world "terminal-retry-$route-$phase-$ending"; bind_mate "$route"
+        if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
+        write_task "$MATE" child on "done [at=$T0]: ready PR"
+        if [ "$phase" = existing ]; then scan "$MATE" $((T0 + 600)) >/dev/null || fail "existing episode fixture failed"; fi
+        fail_ledger_commit
+        rc=0
+        scan "$MATE" $((T0 + 1800)) > "$WORLD/scan.out" 2> "$WORLD/scan.err" || rc=$?
+        [ "$rc" = 1 ] || fail "post-publication ledger failure did not occur"
+        [ -s "$MATE/state/.merge-stall" ] || fail "parent publication left no recoverable episode"
+        key=$(parent_open "$channel" | cut -f1)
+        [ -n "$key" ] || fail "failed commit did not leave a parent blocker"
+        [ "$(awk -F '\t' '$1 == "child" { print $5 }' "$MATE/state/.merge-stall")" = 0 ] || fail "fixture unexpectedly committed escalation"
+        mv "$WORLD/fakebin/mv" "$WORLD/mv.failed"
+        if [ "$ending" = resumed ]; then
+          printf 'working [at=%s]: resumed work\n' "$((T0 + 1900))" >> "$MATE/state/child.status"
+        fi
+        if [ "$phase:$ending" = first:resumed ]; then
+          fail_ledger_commit
+          rc=0
+          scan "$MATE" $((T0 + 3600)) > "$WORLD/close.out" 2> "$WORLD/close.err" || rc=$?
+          [ "$rc" = 1 ] || fail "resolution commit failure did not occur"
+          [ -z "$(parent_open "$channel")" ] || fail "failed resolution commit left the parent key open"
+          mv "$WORLD/fakebin/mv" "$WORLD/mv.close-failed"
+        fi
+        out=$(FM_TEST_PR_STATE='STATE: merged' scan "$MATE" $((T0 + 3601))) || fail "terminal recovery failed"
+        [ -z "$out" ] && [ ! -s "$MATE/state/.merge-stall" ] || fail "terminal recovery retained a stale episode: $out"
+        [ -z "$(parent_open "$channel")" ] || fail "terminal recovery left the parent blocker open"
+        channel_lines "$channel" | grep -Fq "resolved [key=$key]:" || fail "terminal recovery closed a different parent key"
+        [ "$(grep -c '^blocked' "$channel")" = 1 ] && [ "$(grep -c '^resolved' "$channel")" = 1 ] || fail "terminal recovery duplicated parent events"
+      done
+    done
+  done
+  pass "first and existing episodes close after failed publication even with an uncommitted escalation flag"
+}
+
+test_short_checksum_has_a_valid_parent_key() {
+  local route channel out
+  for route in local remote; do
+    make_world "short-checksum-$route"; bind_mate "$route"
+    if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
+    printf '#!/usr/bin/env bash\ncat >/dev/null\nprintf "1234567 42\\n"\n' > "$WORLD/fakebin/cksum"
+    chmod +x "$WORLD/fakebin/cksum"
+    write_task "$MATE" child on "done [at=$T0]: PR ready"
+    scan "$MATE" $((T0 + 1800)) >/dev/null || fail "short checksum escalation failed"
+    [ "$(parent_open "$channel" | cut -f1)" = merge-stall-child-1234567 ] || fail "short checksum produced a key the parent classifier rejects"
+    printf 'working [at=%s]: resumed\n' "$((T0 + 1900))" >> "$MATE/state/child.status"
+    out=$(scan "$MATE" $((T0 + 2000))) || fail "short checksum resolution failed"
+    [ -z "$out" ] && [ -z "$(parent_open "$channel")" ] || fail "short checksum resolution left a blocker open"
+    channel_lines "$channel" | grep -Fq 'resolved [key=merge-stall-child-1234567]:' || fail "resolution did not reuse the valid short key"
+  done
+  pass "seven-digit cksum records produce parent keys that open and resolve on both routes"
+}
+
+test_uncertain_task_does_not_block_siblings() {
+  local route kind id fixture_home channel out before after bad_url=https://github.com/owner/repo/pull/777
+  for route in local remote; do
+    for kind in unknown activity-failure missing-branch discovery-failure malformed invalid-url forge-failure unknown-late; do
+      make_world "uncertain-$route-$kind"; bind_mate "$route"
+      fixture_home=$MATE
+      if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
+      id=a
+      [ "$kind" != unknown-late ] || id=z
+      case "$kind" in
+        missing-branch|discovery-failure|malformed)
+          write_unregistered_task "$fixture_home" "$id" paused
+          FM_TEST_BRANCH_URL="$bad_url" scan "$fixture_home" $((T0 + 1800)) >/dev/null || fail "uncertain discovery fixture failed"
+          ;;
+        *)
+          URL="$bad_url" write_task "$fixture_home" "$id" on "done [at=$T0]: ready PR"
+          scan "$fixture_home" $((T0 + 1800)) >/dev/null || fail "uncertain recorded fixture failed"
+          ;;
+      esac
+      before=$(awk -F '\t' -v t="$id" '$1 == t' "$fixture_home/state/.merge-stall")
+      write_task "$fixture_home" b on "done [at=$((T0 + 1))]: another ready PR"
+      case "$kind" in
+        unknown|unknown-late) out=$(FM_TEST_BAD_TASK="$id" FM_TEST_ACTIVITY='state: unknown · source: none · endpoint gone' scan "$fixture_home" $((T0 + 3600))) ;;
+        activity-failure) out=$(FM_TEST_BAD_TASK="$id" FM_TEST_ACTIVITY_RC=2 scan "$fixture_home" $((T0 + 3600))) ;;
+        missing-branch) printf 'branch=\n' >> "$fixture_home/state/$id.meta"; out=$(scan "$fixture_home" $((T0 + 3600))) ;;
+        discovery-failure) out=$(FM_TEST_DISCOVERY_RC=124 scan "$fixture_home" $((T0 + 3600))) ;;
+        malformed) out=$(FM_TEST_DISCOVERY_OUTPUT='not JSON' scan "$fixture_home" $((T0 + 3600))) ;;
+        invalid-url) printf 'pr=not-a-PR\n' >> "$fixture_home/state/$id.meta"; out=$(scan "$fixture_home" $((T0 + 3600))) ;;
+        forge-failure) out=$(FM_TEST_PR_RC=2 FM_TEST_BAD_PR="$bad_url" scan "$fixture_home" $((T0 + 3600))) ;;
+      esac
+      case "$out" in "b PR $URL unmerged 3599s"*'merge it now'*'evidence unavailable:'*"$id"*) ;; *) fail "$kind suppressed the readable sibling or its diagnostic: $out" ;; esac
+      after=$(awk -F '\t' -v t="$id" '$1 == t' "$fixture_home/state/.merge-stall")
+      [ -n "$before" ] && [ "$before" = "$after" ] || fail "$kind changed the uncertain episode"
+      [ "$(parent_open "$channel" | awk 'END { print NR }')" = 2 ] || fail "$kind did not retain the old blocker and escalate the readable sibling"
+      [ "$(grep -c '^resolved' "$channel")" = 0 ] || fail "$kind falsely resolved uncertain evidence"
+    done
+  done
+  pass "unreadable tasks retain their episodes while earlier and later readable siblings still escalate"
+}
+
+assert_reads_stopped() {
+  local pid i=0 live
+  [ -s "$WORLD/read.pids" ] || fail "hanging read fixture never started"
+  while [ "$i" -lt 100 ]; do
+    live=0
+    while IFS= read -r pid; do
+      kill -0 "$pid" 2>/dev/null && live=1
+    done < "$WORLD/read.pids"
+    [ "$live" = 1 ] || return 0
+    sleep 0.02
+    i=$((i + 1))
+  done
+  fail "bounded read left a live process: $(cat "$WORLD/read.pids")"
+}
+
+test_read_deadlines_and_watcher_cancellation() {
+  local kind now out pid i
+  for kind in crew hold discovery forge; do
+    make_world "read-deadline-$kind"
+    now=$(date +%s)
+    if [ "$kind" = discovery ]; then
+      write_unregistered_task "$MAIN" a paused
+    else
+      write_task "$MAIN" a on "done [at=$((now - 700))]: PR ready"
+    fi
+    if [ "$kind" = crew ]; then write_task "$MAIN" b on "done [at=$((now - 701))]: sibling PR ready"; fi
+    FM_TEST_HANG_READ="$kind" FM_TEST_BAD_TASK=a FM_TEST_BAD_PR="$URL" FM_TEST_READ_PIDS="$WORLD/read.pids" FM_TEST_READ_TIMEOUT=1 FM_TEST_CHECK_TIMEOUT=8 run_watcher "$MAIN"
+    out=$(cat "$MAIN/state/.wake-queue")
+    case "$kind" in
+      crew) case "$out" in *"b PR $URL unmerged"*'current activity read failed for a (rc=124)'*) ;; *) fail "crew read timeout blocked its sibling: $out" ;; esac ;;
+      hold) case "$out" in *'captain-hold read failed (rc=124)'*) ;; *) fail "hold read was not bounded: $out" ;; esac ;;
+      discovery) case "$out" in *'PR discovery failed for a (rc=124)'*) ;; *) fail "discovery was not bounded: $out" ;; esac ;;
+      forge) case "$out" in *'forge state unreadable for a'*) ;; *) fail "forge state read was not bounded: $out" ;; esac ;;
+    esac
+    assert_reads_stopped
+  done
+  make_world scan-deadline
+  now=$(date +%s)
+  write_task "$MAIN" a on "done [at=$((now - 700))]: PR ready"
+  FM_TEST_HANG_READ=crew FM_TEST_BAD_TASK=a FM_TEST_READ_PIDS="$WORLD/read.pids" FM_TEST_READ_TIMEOUT=30 FM_TEST_CHECK_TIMEOUT=1 run_watcher "$MAIN"
+  grep -Fq 'scan deadline 1s exceeded' "$MAIN/state/.wake-queue" || fail "whole scan did not surface its deadline"
+  assert_reads_stopped
+
+  make_world scan-cancellation
+  now=$(date +%s)
+  write_task "$MAIN" a on "done [at=$((now - 700))]: PR ready"
+  FM_TEST_HANG_READ=crew FM_TEST_BAD_TASK=a FM_TEST_READ_PIDS="$WORLD/read.pids" FM_TEST_READ_TIMEOUT=30 start_watcher "$MAIN"
+  pid=$WATCH_PID
+  i=0
+  while [ ! -s "$WORLD/read.pids" ] && [ "$i" -lt 200 ]; do sleep 0.02; i=$((i + 1)); done
+  [ -s "$WORLD/read.pids" ] || { reap "$pid"; fail "cancellation read did not start"; }
+  kill -TERM "$pid"
+  i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 300 ]; do sleep 0.02; i=$((i + 1)); done
+  if kill -0 "$pid" 2>/dev/null; then reap "$pid"; fail "watcher ignored cancellation while scanning"; fi
+  wait "$pid" 2>/dev/null || true
+  assert_reads_stopped
+  [ ! -s "$MAIN/state/.watch.lock/pid" ] || fail "watcher retained its lock after scanner cancellation"
+  pass "task reads and the whole scan have deadlines and watcher cancellation stops read descendants"
 }
 
 test_replay_paused_worker_red_pr
@@ -581,3 +827,8 @@ test_discovery_failure_preserves_episode
 test_drafts_are_not_candidates
 test_active_validation_is_not_a_merge_wait
 test_escalation_retry_is_idempotent
+test_interrupted_registration_is_detected
+test_publication_failure_then_terminal_recovery
+test_short_checksum_has_a_valid_parent_key
+test_uncertain_task_does_not_block_siblings
+test_read_deadlines_and_watcher_cancellation
