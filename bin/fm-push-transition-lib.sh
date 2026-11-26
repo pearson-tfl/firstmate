@@ -151,6 +151,11 @@ _push_transition_check_ground() {
   ! declare -F watcher_exit_if_ground_gone >/dev/null || watcher_exit_if_ground_gone
 }
 
+_push_transition_fail_exit() {
+  _push_transition_check_ground
+  exit 1
+}
+
 # Act on a fresh actionable transition from a push-capable backend.
 handle_push_transition() {  # <backend> <session> <record>
   local backend=$1 session=$2 record=$3 pane_id to detail window task reason span_record rest surface_end='' surface_ident='' note
@@ -166,7 +171,7 @@ handle_push_transition() {  # <backend> <session> <record>
   # and leave the bounded re-surface to the watcher's own pause cadence.
   if status_is_paused_or_captain_held "$(status_declared_wait_line "$STATE/$task.status")"; then
     triage_log "absorbed push $to (declared wait, awaiting external or captain): $window"
-    fm_backend_commit_transition "$backend" "$STATE" "$session" "$record" || { _push_transition_check_ground; exit 1; }
+    fm_backend_commit_transition "$backend" "$STATE" "$session" "$record" || _push_transition_fail_exit
     return
   fi
   span_record=$(status_span_first_actionable_record "$STATE/$task.status" \
@@ -177,8 +182,8 @@ handle_push_transition() {  # <backend> <session> <record>
   note=$(fm_backend_transition_note "$backend" "$record" 2>/dev/null || true)
   reason="stale: $window ($backend: agent $to${detail:+ ($detail)} - waiting on human${note:+: $note}, escalated immediately, not via wedge timer)"
   _push_transition_check_ground
-  fm_wake_append stale "$window" "$reason" || { _push_transition_check_ground; exit 1; }
-  fm_backend_commit_transition "$backend" "$STATE" "$session" "$record" || { _push_transition_check_ground; exit 1; }
+  fm_wake_append stale "$window" "$reason" || _push_transition_fail_exit
+  fm_backend_commit_transition "$backend" "$STATE" "$session" "$record" || _push_transition_fail_exit
   mark_surfaced "$STATE/$task.status" "$surface_end" "$surface_ident"
   wake "$reason"
 }

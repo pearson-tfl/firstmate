@@ -1254,6 +1254,7 @@ EOF
     fi
     notify_key="secondmate-wake-loop-$task-$row_key"
     reason="check: secondmate wake-loop stalled: mate=$task row=$seq idle=${idle}s"
+    watcher_exit_if_ground_gone
     queued=$(fm_wake_queued_keys check)
     if ! printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1; then
       fm_wake_append check "$notify_key" "$reason" || return 1
@@ -1367,6 +1368,7 @@ secondmate_liveness_tick() {
         ;;
     esac
     if [ -n "$reason" ]; then
+      watcher_exit_if_ground_gone
       queued=$(fm_wake_queued_keys check)
       if printf '%s\n' "$queued" | grep -Fx "$notify_key" >/dev/null 2>&1 \
         || fm_wake_append check "$notify_key" "$reason"; then
@@ -2826,6 +2828,7 @@ $open
 EOF
   done
   if [ -n "$due_task" ]; then
+    watcher_exit_if_ground_gone
     reason="check: open decision overdue: $due_task key=$due_key age=$((now - due_opened))s"
     fm_wake_append check "open-decision:$due_task:$due_key" "$reason" || return 1
     rows=$(printf '%s' "$rows" | awk -F '\t' -v OFS='\t' -v task="$due_task" -v key="$due_key" \
