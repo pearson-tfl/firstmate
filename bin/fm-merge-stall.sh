@@ -21,7 +21,7 @@
 #     the newest status event is `done:`, with current activity reconciled
 #     by bin/fm-crew-state.sh before either declaration is accepted;
 #   - bin/fm-captain-hold.sh open confirms no captain call is open on it;
-#     a held answer leaves it alone; an unreadable answer wakes the home
+#     a held answer suppresses merge reminders; an unreadable answer wakes the home
 #     to repair the authorization read without instructing it to merge.
 # A candidate's stall starts at its waiting line's [at=] time, or when first
 # seen, and is kept across scans and watcher restarts in state/.merge-stall
@@ -268,16 +268,6 @@ EOF
   interval=$STALL
   [ "$escalated" = 0 ] || interval=$ESCALATE
   [ "$last" -eq 0 ] || [ $((NOW - last)) -ge "$interval" ] || continue
-  hold_rc=0
-  hold_error=$(fm_exec_timed "$READ_TIMEOUT" 1 env FM_HOME="$FM_HOME" "$CAPTAIN_HOLD_BIN" open "$id" 2>&1) || hold_rc=$?
-  scan_active
-  [ "$hold_rc" -ne 0 ] || continue
-  if [ "$hold_rc" -eq 1 ]; then
-    hold_error=
-  else
-    hold_error=$(fm_parent_channel_clean_note "$hold_error")
-    hold_error="captain-hold read failed (rc=$hold_rc)${hold_error:+: $hold_error}"
-  fi
   forge=
   if fm_pr_url_parse "$url" && [ "$FM_PR_PROVIDER" = github ]; then
     if forge=$(fm_exec_timed "$READ_TIMEOUT" 1 "$PR_STATE_BIN" "$url" 2>&1); then
@@ -296,6 +286,16 @@ EOF
       continue
       ;;
   esac
+  hold_rc=0
+  hold_error=$(fm_exec_timed "$READ_TIMEOUT" 1 env FM_HOME="$FM_HOME" "$CAPTAIN_HOLD_BIN" open "$id" 2>&1) || hold_rc=$?
+  scan_active
+  [ "$hold_rc" -ne 0 ] || continue
+  if [ "$hold_rc" -eq 1 ]; then
+    hold_error=
+  else
+    hold_error=$(fm_parent_channel_clean_note "$hold_error")
+    hold_error="captain-hold read failed (rc=$hold_rc)${hold_error:+: $hold_error}"
+  fi
   if [ -z "$due_last" ] || [ "$last" -lt "$due_last" ] \
     || { [ "$last" -eq "$due_last" ] && [ "$since" -lt "$due_since" ]; }; then
     due_row=$row due_since=$since due_last=$last due_line=$line

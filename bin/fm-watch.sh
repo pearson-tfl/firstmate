@@ -3242,7 +3242,20 @@ watcher_waited() {  # <command...>
 }
 
 merge_stall_scan() {
-  fm_exec_timed "$CHECK_TIMEOUT" 2 env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+  local meta task_count=0 read_timeout=${FM_MERGE_STALL_READ_TIMEOUT:-5} value task_budget scan_budget
+  for value in "$CHECK_TIMEOUT" "$read_timeout"; do
+    case "$value" in
+      ''|0*|*[!0-9]*) printf 'fm-merge-stall: timeouts must be positive whole seconds\n'; return 2 ;;
+    esac
+    [ "${#value}" -le 12 ] || { printf 'fm-merge-stall: timeouts must be positive whole seconds\n'; return 2; }
+  done
+  for meta in "$STATE"/*.meta; do
+    [ -f "$meta" ] && [ ! -L "$meta" ] || continue
+    task_count=$((task_count + 1))
+  done
+  task_budget=$((CHECK_TIMEOUT + 4 * (read_timeout + 1)))
+  scan_budget=$((CHECK_TIMEOUT + task_count * task_budget))
+  fm_exec_timed "$scan_budget" 2 env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
     bash "$SCRIPT_DIR/fm-merge-stall.sh" scan 2>&1
 }
 
@@ -3911,7 +3924,7 @@ while :; do
     watcher_waited merge_stall_scan || merge_stall_rc=$?
     merge_stall_out=$WATCHER_CAPTURE
     if fm_timed_out "$merge_stall_rc"; then
-      merge_stall_out="scan deadline ${CHECK_TIMEOUT}s exceeded${merge_stall_out:+: $merge_stall_out}"
+      merge_stall_out="scan deadline exceeded${merge_stall_out:+: $merge_stall_out}"
     fi
     if [ "$merge_stall_rc" -ne 0 ]; then
       merge_stall_out=$(printf '%s' "$merge_stall_out" | LC_ALL=C tr '\t\r\n' '   ' | cut -c1-1200)

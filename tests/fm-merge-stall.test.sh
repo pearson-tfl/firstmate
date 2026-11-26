@@ -37,6 +37,7 @@ fi
 SH
   cat > "$WORLD/fakebin/captain-hold" <<'SH'
 #!/usr/bin/env bash
+printf '%s\n' "$2" >> "${0%/fakebin/captain-hold}/hold.log"
 if [ "${FM_TEST_HANG_READ:-}" = hold ] && [ "$2" = "${FM_TEST_BAD_TASK:-}" ]; then exec "${0%/*}/hang-read"; fi
 [ "${FM_TEST_HELD:-}" = "$2" ] && exit 0
 [ -z "${FM_TEST_HOLD_ERROR:-}" ] || printf '%s\n' "$FM_TEST_HOLD_ERROR" >&2
@@ -64,6 +65,10 @@ fi
 SH
   cat > "$WORLD/fakebin/crew-state" <<'SH'
 #!/usr/bin/env bash
+printf '%s\n' "$1" >> "${0%/fakebin/crew-state}/activity.log"
+if [ "${FM_TEST_SLOW_CREW:-0}" = 1 ]; then
+  case "$1" in slow-*) sleep 600 ;; esac
+fi
 if [ "$1" = "${FM_TEST_BAD_TASK:-}" ]; then
   if [ "${FM_TEST_HANG_READ:-}" = crew ]; then exec "${0%/*}/hang-read"; fi
   [ "${FM_TEST_ACTIVITY_RC:-0}" = 0 ] || exit "$FM_TEST_ACTIVITY_RC"
@@ -371,7 +376,7 @@ run_watcher() {
   local pid i=0
   start_watcher "$1"
   pid=$WATCH_PID
-  while [ "$i" -lt 100 ]; do
+  while [ "$i" -lt "${FM_TEST_WATCH_LIMIT:-100}" ]; do
     kill -0 "$pid" 2>/dev/null || break
     sleep 0.1
     i=$((i + 1))
@@ -767,7 +772,7 @@ assert_reads_stopped() {
 }
 
 test_read_deadlines_and_watcher_cancellation() {
-  local kind now out pid i
+  local kind now out pid i real_mktemp
   for kind in crew hold discovery forge; do
     make_world "read-deadline-$kind"
     now=$(date +%s)
@@ -788,10 +793,11 @@ test_read_deadlines_and_watcher_cancellation() {
     assert_reads_stopped
   done
   make_world scan-deadline
-  now=$(date +%s)
-  write_task "$MAIN" a on "done [at=$((now - 700))]: PR ready"
-  FM_TEST_HANG_READ=crew FM_TEST_BAD_TASK=a FM_TEST_READ_PIDS="$WORLD/read.pids" FM_TEST_READ_TIMEOUT=30 FM_TEST_CHECK_TIMEOUT=1 run_watcher "$MAIN"
-  grep -Fq 'scan deadline 1s exceeded' "$MAIN/state/.wake-queue" || fail "whole scan did not surface its deadline"
+  real_mktemp=$(command -v mktemp)
+  printf '#!/usr/bin/env bash\ncase "$1" in */.merge-stall.??????) exec "${0%%/*}/hang-read" ;; esac\nexec "%s" "$@"\n' "$real_mktemp" > "$WORLD/fakebin/mktemp"
+  chmod +x "$WORLD/fakebin/mktemp"
+  FM_TEST_READ_PIDS="$WORLD/read.pids" FM_TEST_READ_TIMEOUT=1 FM_TEST_CHECK_TIMEOUT=1 run_watcher "$MAIN"
+  grep -Fq 'scan deadline exceeded' "$MAIN/state/.wake-queue" || fail "whole scan did not surface its deadline"
   assert_reads_stopped
 
   make_world scan-cancellation
@@ -810,6 +816,66 @@ test_read_deadlines_and_watcher_cancellation() {
   assert_reads_stopped
   [ ! -s "$MAIN/state/.watch.lock/pid" ] || fail "watcher retained its lock after scanner cancellation"
   pass "task reads and the whole scan have deadlines and watcher cancellation stops read descendants"
+}
+
+test_sweep_budget_reaches_every_registered_task() {
+  local route fixture_home n now task out channel
+  for route in main local remote; do
+    make_world "sweep-budget-$route"
+    fixture_home=$MAIN
+    if [ "$route" != main ]; then bind_mate "$route"; fixture_home=$MATE; fi
+    now=$(date +%s)
+    for n in 1 2 3 4 5 6; do
+      write_task "$fixture_home" "slow-$n" on "done [at=$((now - 2000))]: ready PR"
+    done
+    write_task "$fixture_home" z-ready on "done [at=$((now - 2000))]: ready PR"
+    FM_TEST_SLOW_CREW=1 FM_TEST_READ_TIMEOUT=1 FM_TEST_CHECK_TIMEOUT=1 FM_TEST_WATCH_LIMIT=400 run_watcher "$fixture_home"
+    out=$(cat "$fixture_home/state/.wake-queue")
+    case "$out" in *"z-ready PR $URL unmerged"*'merge it now'*'current activity read failed for slow-1 (rc=124)'*) ;; *) fail "earlier timed-out tasks starved z-ready: $out" ;; esac
+    for task in slow-1 slow-2 slow-3 slow-4 slow-5 slow-6 z-ready; do
+      [ "$(grep -Fxc "$task" "$WORLD/activity.log")" = 1 ] || fail "sweep did not reach $task exactly once"
+    done
+    case "$out" in *'scan failed'*|*'scan deadline exceeded'*) fail "whole-sweep budget expired before finishing its bounded tasks: $out" ;; esac
+    if [ "$route" != main ]; then
+      if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
+      parent_open "$channel" | grep -Fq 'merge-stall-z-ready-' || fail "later ready task did not escalate after earlier read timeouts"
+    fi
+  done
+  pass "every registered task is reached after six earlier read timeouts in every home route"
+}
+
+test_terminal_state_retires_held_stalls() {
+  local route poll terminal channel out key before hold_reads
+  for route in local remote; do
+    for poll in present missing mismatched; do
+      for terminal in closed merged; do
+        make_world "held-terminal-$route-$poll-$terminal"; bind_mate "$route"
+        if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
+        write_task "$MATE" child on "paused [at=$T0]: ready PR awaits home"
+        scan "$MATE" $((T0 + 1800)) >/dev/null || fail "held stall fixture failed"
+        key=$(parent_open "$channel" | cut -f1)
+        [ -n "$key" ] || fail "held stall fixture did not escalate"
+        case "$poll" in
+          missing) mv "$MATE/state/child.pr-poll" "$WORLD/poll.saved" ;;
+          mismatched) printf 'github\nhttps://github.com/owner/repo/pull/999\ngithub.com\nowner/repo\n999\n' > "$MATE/state/child.pr-poll" ;;
+        esac
+        out=$(FM_TEST_HELD=child scan "$MATE" $((T0 + 3600))) || fail "held open PR scan failed"
+        [ -z "$out" ] && [ -n "$(parent_open "$channel")" ] || fail "holding an open PR either authorized merging or discarded its episode: $out"
+        before=$(cat "$MATE/state/.merge-stall")
+        out=$(FM_TEST_HELD=child FM_TEST_PR_RC=2 scan "$MATE" $((T0 + 3601))) || fail "unreadable held PR scan failed"
+        case "$out" in *'evidence unavailable: forge state unreadable for child'*) ;; *) fail "held PR evidence failure stayed silent: $out" ;; esac
+        [ "$(cat "$MATE/state/.merge-stall")" = "$before" ] || fail "unknown terminal evidence discarded the held episode"
+        hold_reads=$(wc -l < "$WORLD/hold.log" | tr -d ' ')
+        out=$(FM_TEST_HELD=child FM_TEST_PR_STATE="STATE: $terminal" scan "$MATE" $((T0 + 3602))) || fail "held terminal PR scan failed"
+        [ -z "$out" ] && [ ! -s "$MATE/state/.merge-stall" ] || fail "confirmed $terminal PR retained its held stall: $out"
+        [ -z "$(parent_open "$channel")" ] || fail "confirmed $terminal PR retained its upstream blocker with $poll poll"
+        channel_lines "$channel" | grep -Fq "resolved [key=$key]:" || fail "terminal state closed the wrong held episode"
+        [ "$(wc -l < "$WORLD/hold.log" | tr -d ' ')" = "$hold_reads" ] || fail "terminal state retirement still consulted captain-hold suppression"
+        [ "$(grep -c '^resolved' "$channel")" = 1 ] || fail "held terminal episode was resolved more than once"
+      done
+    done
+  done
+  pass "closed and merged PRs retire held escalations across both routes and all poll states"
 }
 
 test_replay_paused_worker_red_pr
@@ -832,3 +898,5 @@ test_publication_failure_then_terminal_recovery
 test_short_checksum_has_a_valid_parent_key
 test_uncertain_task_does_not_block_siblings
 test_read_deadlines_and_watcher_cancellation
+test_sweep_budget_reaches_every_registered_task
+test_terminal_state_retires_held_stalls
