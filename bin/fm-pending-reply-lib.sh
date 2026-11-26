@@ -1192,13 +1192,15 @@ fm_pending_reply_escalation_payload() {  # <record-path> <kind>
 # that exact escalation remains open. If an unrelated decision has since taken
 # over that key, the close is withheld so the unrelated decision is not cleared.
 fm_pending_reply_escalation_line() {  # <status-file> <record-path> <corr_id>
-  local status_file=$1 rec=$2 corr=$3 line found='' kind payload own_key untimed
+  local status_file=$1 rec=$2 corr=$3 line found='' kind payload own_key untimed head
   [ -f "$status_file" ] || return 0
   [ "$(fm_pending_reply_get "$rec" corr_id)" = "$corr" ] || return 0
   own_key=$(fm_pending_reply_escalation_key "$corr")
   while IFS= read -r line || [ -n "$line" ]; do
     [ "$(status_line_verb "$line")" = blocked ] || continue
     _fm_status_untimed "$line" untimed
+    head=${untimed%%:*}
+    untimed="${head// \[source=firstmate\]/}:${untimed#*:}"
     for kind in missed delivery-unknown recovery-delivery; do
       payload=$(fm_pending_reply_escalation_payload "$rec" "$kind") || continue
       case "$untimed" in
@@ -1369,7 +1371,7 @@ _fm_pending_reply_maybe_escalate_locked() {  # <state-dir> <corr_id>
   [ -n "$parent_status" ] || return 1
   mkdir -p "$(dirname "$parent_status")" 2>/dev/null || return 1
   key=$(fm_pending_reply_escalation_key "$corr")
-  line="blocked [source=firstmate] [key=$key]: $payload"
+  line="blocked [key=$key] [source=firstmate]: $payload"
   # A record that already escalated reaches here again only after a reset, so
   # a closed decision means the operator settled the earlier episode and this
   # loss is a new one. While the decision is open the identical line is a retry.

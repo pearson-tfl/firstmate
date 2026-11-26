@@ -764,7 +764,7 @@ fm_send_close_resolved_keys() { # <answer-text>
   note=$(printf '%s' "$note" | tr '\n\r\t' '   ' | LC_ALL=C tr -d '\000-\037\177')
   for k in $RESOLVE_STATUS_KEYS; do
     close_note=$(fm_send_resolve_close_note "$k" "$note")
-    fm_cap_line_var "resolved [source=firstmate] [key=$k]: $close_note" "$RESOLVE_CLOSE_MAX"
+    fm_cap_line_var "resolved [key=$k] [source=firstmate]: $close_note" "$RESOLVE_CLOSE_MAX"
     close_lines+=("$FM_LINE_CAP_LINE")
   done
   [ "${#close_lines[@]}" -gt 0 ] || return 0

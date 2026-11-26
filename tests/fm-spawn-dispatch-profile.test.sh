@@ -1713,7 +1713,7 @@ if (process.env.SCENARIO === "matched") {
   assert.equal(after, before, "an exact match must produce no report");
 } else {
   const report = after.slice(before.length);
-  assert.match(report, /^note \[at=\d+\]: warning: /);
+  assert.match(report, /^note \[source=firstmate\] \[at=\d+\]: warning: /);
   assert.ok(report.includes(process.env.EXCLUDE_FILE), "the report must identify the config file");
   assert.ok(report.includes("unmatched exclusion entries"));
   assert.ok(report.includes("unverified"), "absence must never imply validity");
