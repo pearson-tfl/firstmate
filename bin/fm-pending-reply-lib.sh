@@ -37,6 +37,9 @@
 #   parent_status=          absolute path of parent state/<task_id>.status
 #   parent_status_scan_signature=
 #   request_summary=        short sanitized summary (no secrets by design)
+#   required_skills=        comma list from the request's "Required skills:"
+#                           line, or empty (bin/fm-required-skill-lib.sh); a
+#                           done reply resolves only once each has its shaped proof
 #   created_epoch=          when the expectation was created
 #   delivered_epoch=        when the marked request was confirmed delivered
 #                           (empty until delivery; delivery never resolves)
@@ -142,6 +145,8 @@ _FM_PENDING_REPLY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/n
 # bin/fm-wake-lib.sh's single directed expansion below; a second directive
 # here would re-expand the same transitive graph.
 . "$_FM_PENDING_REPLY_LIB_DIR/fm-classify-lib.sh"
+# shellcheck source=bin/fm-required-skill-lib.sh
+. "$_FM_PENDING_REPLY_LIB_DIR/fm-required-skill-lib.sh"
 
 FM_PENDING_REPLY_SCHEMA='fm-pending-reply.v1'
 FM_PENDING_REPLY_CORR_RE='corr=[A-Fa-f0-9]{16}'
@@ -369,6 +374,7 @@ parent_home=$parent_home
 parent_status=$status_path
 parent_status_scan_signature=
 request_summary=$summary
+required_skills=$(fm_required_skills_from_text "$request_text")
 created_epoch=$now
 delivered_epoch=
 phase=awaiting_report
@@ -605,22 +611,30 @@ fm_pending_reply_discard_undelivered() {  # <state-dir> <corr_id>
 # Accepts short status replies and status lines that point at a document.
 # Unrelated verbs without the token never match. Stale/wrong corr never match.
 # The parent's own pending-reply-missed escalation line must not self-resolve:
-# it names the request with pending-reply-id= rather than corr=.
+# it names the request with pending-reply-id= rather than corr=. A
+# required-skill proof line (bin/fm-required-skill-lib.sh) is not an answer.
 fm_pending_reply_line_resolves() {  # <line> <corr_id>
   local line=$1 corr=$2
   [ -n "$line" ] && [ -n "$corr" ] || return 1
   case "$line" in
     *pending-reply-missed*) return 1 ;;
   esac
-  fm_pending_reply_text_has_corr "$line" "$corr"
+  fm_pending_reply_text_has_corr "$line" "$corr" || return 1
+  ! fm_required_skill_note_is_proof "$(status_line_note "$line")"
 }
 
 # Scan a status file for a correlated resolve. Prints the matching line or empty.
-fm_pending_reply_find_resolve_line() {  # <status-file> <corr_id>
-  local status_file=$1 corr=$2 line
+# With <required-skills>, a done line counts only once the file holds every
+# shaped proof for this correlation (the required-skill done gate).
+fm_pending_reply_find_resolve_line() {  # <status-file> <corr_id> [required-skills]
+  local status_file=$1 corr=$2 line skip_done=0
   [ -f "$status_file" ] || return 0
+  fm_required_skills_done_refusal "$status_file" "${3:-}" "$corr" >/dev/null || skip_done=1
   while IFS= read -r line || [ -n "$line" ]; do
     [ -n "$line" ] || continue
+    if [ "$skip_done" = 1 ] && [ "$(status_line_verb "$line")" = "done" ]; then
+      continue
+    fi
     if fm_pending_reply_line_resolves "$line" "$corr"; then
       printf '%s' "$line"
       return 0
@@ -720,7 +734,7 @@ _fm_pending_reply_try_resolve_locked() {  # <state-dir> <corr_id> [status-file-o
     previous=$(fm_pending_reply_get "$rec" parent_status_scan_signature)
     [ "$signature" != "$previous" ] || return 1
   fi
-  line=$(fm_pending_reply_find_resolve_line "$status_file" "$corr")
+  line=$(fm_pending_reply_find_resolve_line "$status_file" "$corr" "$(fm_pending_reply_get "$rec" required_skills)")
   if [ -z "$line" ]; then
     if [ -z "$status_override" ] && [ "$unconfirmed" = 0 ]; then
       fm_pending_reply_set "$rec" parent_status_scan_signature "$signature" || return 1
@@ -955,11 +969,14 @@ fm_pending_reply_missing_report_is_evidence() {  # <state-dir> <task_id> <since-
 
 # Build the one automatic recovery message for a pending record.
 fm_pending_reply_recovery_message() {  # <record-path>
-  local rec=$1 corr summary token msg
+  local rec=$1 corr summary token msg required
   corr=$(fm_pending_reply_get "$rec" corr_id)
   summary=$(fm_pending_reply_get "$rec" request_summary)
   token=$(fm_pending_reply_corr_token "$corr")
   msg="REPOST REQUIRED: previous marked request had no correlated parent report. Reply on the parent status channel including ${token}. Original request: ${summary}"
+  required=$(fm_pending_reply_get "$rec" required_skills)
+  [ -z "$required" ] ||
+    msg="$msg Required skills ${required}: a done reply counts only after each has its line $(fm_required_skill_proof_form shaped '<name>' helper "$corr")."
   fm_pending_reply_embed_corr "$msg" "$corr" msg
   printf '%s' "$msg"
 }
@@ -1770,9 +1787,26 @@ fm_pending_reply_mate_received_corrs() {  # <inbox-dir>
   done | awk '!seen[$0]++'
 }
 
-# 0 when <channel> already holds a line that resolves <corr_id>.
-fm_pending_reply_mate_answered() {  # <channel> <corr_id>
-  [ -n "$(fm_pending_reply_find_resolve_line "$1" "$2")" ]
+# The required-skills list the marked request <corr_id> in <inbox-dir> carries
+# (bin/fm-required-skill-lib.sh), or empty.
+fm_pending_reply_mate_required_skills() {  # <inbox-dir> <corr_id>
+  local inbox=$1 corr=$2 msg body
+  [ -n "$inbox" ] && [ -d "$inbox" ] || return 0
+  for msg in "$inbox"/*.msg "$inbox"/handled/*.msg; do
+    [ -f "$msg" ] || continue
+    body=$(fm_task_inbox_body "$msg") || continue
+    case "$body" in "$FM_FROMFIRST_MARK"*) ;; *) continue ;; esac
+    [ "$(fm_pending_reply_extract_corr "$body")" = "$corr" ] || continue
+    fm_required_skills_from_text "$body"
+    return 0
+  done
+}
+
+# 0 when <channel> already holds a line that resolves <corr_id>, holding a
+# done to the request's required-skill gate when <inbox-dir> is given.
+fm_pending_reply_mate_answered() {  # <channel> <corr_id> [inbox-dir]
+  [ -n "$(fm_pending_reply_find_resolve_line "$1" "$2" \
+    "$(fm_pending_reply_mate_required_skills "${3:-}" "$2")")" ]
 }
 
 # Choose the corr a reply carries. With <corr_id> empty, the single open request
@@ -1786,7 +1820,7 @@ fm_pending_reply_mate_reply_corr() {  # <home> <state> <channel> [corr_id]
   inbox=$(fm_pending_reply_mate_inbox_dir "$home" "$state") || inbox=
   while IFS= read -r c; do
     [ -n "$c" ] || continue
-    fm_pending_reply_mate_answered "$channel" "$c" && continue
+    fm_pending_reply_mate_answered "$channel" "$c" "$inbox" && continue
     open="$open $c"
     n=$((n + 1))
   done < <([ -z "$inbox" ] || fm_pending_reply_mate_received_corrs "$inbox")
@@ -1794,7 +1828,7 @@ fm_pending_reply_mate_reply_corr() {  # <home> <state> <channel> [corr_id]
     # A second line on an answered request is a legitimate follow-up only
     # while nothing else is waiting; with a request open it is the stale
     # token that leaves that request unanswered.
-    if [ "$n" -gt 0 ] && fm_pending_reply_mate_answered "$channel" "$corr"; then
+    if [ "$n" -gt 0 ] && fm_pending_reply_mate_answered "$channel" "$corr" "$inbox"; then
       printf 'error: corr=%s was already answered on the parent channel (stale reply); the open request is:%s - pass that corr instead\n' "$corr" "$open" >&2
       return 1
     fi

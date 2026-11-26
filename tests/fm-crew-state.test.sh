@@ -1234,6 +1234,26 @@ EOF
   pass "ci-monitoring run with checks already green surfaces done"
 }
 
+# A required skill without its shaped proof keeps even a run-step done from
+# reading as done (bin/fm-required-skill-lib.sh); the proof restores it.
+test_required_skill_gates_run_step_done() {
+  reset_fakes
+  local d; d=$(new_case required-skill-done)
+  make_repo_on_branch "$d/wt" fm/feat-skill
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-skill.meta" "window=fm:fm-feat-skill" "worktree=$d/wt" "kind=ship" \
+    "required_skills=tdd"
+  FM_FAKE_AXI_STATUS="$(run_ci_monitoring fm/feat-skill)"
+  FM_FAKE_CI_LOGS='all CI checks passed - still monitoring until merged or closed'
+  local out; out=$(run_crew_state "$d" feat-skill)
+  assert_contains "$out" "state: blocked" "an unshaped required skill did not block the done"
+  assert_contains "$out" "required skill tdd has no record of how it shaped the work" "the block did not name the skill"
+  printf 'working [at=1]: skill-shaped tdd: one red test per seam before each change\n' > "$d/state/feat-skill.status"
+  out=$(run_crew_state "$d" feat-skill)
+  assert_contains "$out" "state: done" "the shaped proof did not restore the done"
+  pass "a required skill without its shaped proof blocks a run-step done"
+}
+
 test_top_level_ci_checks_green_surfaces_done() {
   reset_fakes
   local d; d=$(new_case top-level-ci-green)
@@ -6107,6 +6127,7 @@ test_scalar_gate_parked_not_superseded
 test_gate_block_parked_not_superseded
 test_ci_ready_done_log_beats_monitoring_run
 test_ci_monitoring_checks_green_surfaces_done
+test_required_skill_gates_run_step_done
 test_top_level_ci_checks_green_surfaces_done
 test_ci_monitoring_no_checks_stays_working
 test_ci_no_checks_status_log_override_stays_working

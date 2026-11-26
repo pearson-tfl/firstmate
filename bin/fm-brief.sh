@@ -14,8 +14,8 @@
 # charters still use a single `{TASK}` charter fill. Firstmate may adjust other
 # sections when the task genuinely deviates (e.g. working an existing external
 # PR instead of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--branch-prefix <prefix>] [--base-branch <branch>] [--forge <none|gerrit|forgejo|external> [--shape squash]] [--pr <auto|manual>] [--herdr-lab]
-#        fm-brief.sh <task-id> <repo-name> --scout [--base-branch <branch>] [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> --mode <no-mistakes|direct-PR|local-only> [--branch-prefix <prefix>] [--base-branch <branch>] [--forge <none|gerrit|forgejo|external> [--shape squash]] [--pr <auto|manual>] [--required-skill <name>]... [--herdr-lab]
+#        fm-brief.sh <task-id> <repo-name> --scout [--base-branch <branch>] [--required-skill <name>]... [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
@@ -153,6 +153,12 @@
 # regular file, or text carrying its own "Delivery contract: mode=" line (which
 # a later scout promotion could not outrank), stops the scaffold before
 # anything is written. Secondmate charters never take it.
+# --required-skill <name> (repeatable, ship and scout) records a skill the
+# request named, such as /poteto-mode or /tdd, and renders the `# Required
+# skills` section with its machine line; pass the same names to fm-spawn.sh.
+# bin/fm-required-skill-lib.sh owns the section, proof forms, and gates. A
+# secondmate's required skills travel on each marked request instead
+# (bin/fm-send.sh --required-skill), so a charter refuses the flag.
 # --skill <name> selects the workflow step, default implement for ships.
 # Scout and secondmate workflow launches must pass it explicitly; charters and
 # knowledge-only scouts without a workflow step may omit it.
@@ -242,6 +248,7 @@ PROJECT_DIR=
 PROJECT_DIR_SET=0
 SKILL=
 SKILL_SET=0
+REQUIRED_SKILL_ARGS=()
 POS=()
 want_value=
 for a in "$@"; do
@@ -251,6 +258,7 @@ for a in "$@"; do
     esac
     case "$want_value" in
       skill) SKILL=$a; SKILL_SET=1 ;;
+      required-skill) REQUIRED_SKILL_ARGS+=("$a") ;;
       mode) MODE=$a; MODE_SET=1 ;;
       branch-prefix) BRANCH_PREFIX=$a; BRANCH_PREFIX_SET=1 ;;
       base-branch) BASE_BRANCH=$a; BASE_BRANCH_SET=1 ;;
@@ -267,6 +275,8 @@ for a in "$@"; do
   case "$a" in
     --skill) want_value=skill ;;
     --skill=*) SKILL=${a#--skill=}; SKILL_SET=1 ;;
+    --required-skill) want_value=required-skill ;;
+    --required-skill=*) REQUIRED_SKILL_ARGS+=("${a#--required-skill=}") ;;
     --scout) KIND=scout ;;
     --secondmate) KIND=secondmate ;;
     --herdr-lab) HERDR_LAB=1 ;;
@@ -295,6 +305,11 @@ for a in "$@"; do
   esac
 done
 [ -z "$want_value" ] || { echo "error: --$want_value requires a value" >&2; exit 1; }
+REQUIRED_SKILLS=$(fm_required_skills_join ${REQUIRED_SKILL_ARGS[@]+"${REQUIRED_SKILL_ARGS[@]}"}) || exit 1
+if [ "$KIND" = secondmate ] && [ -n "$REQUIRED_SKILLS" ]; then
+  echo "error: --required-skill applies only to ship and scout briefs; a secondmate's required skills travel on each marked request (bin/fm-send.sh --required-skill)" >&2
+  exit 1
+fi
 
 # Ship delivery mode is an explicit per-task decision (AGENTS.md section 7). A
 # missing or invalid value stops the scaffold rather than silently defaulting.
@@ -498,6 +513,9 @@ if [ -e "$CONFIG/wait-no-turns" ]; then
   INBOX_SECTION+="Do not poll or list the inbox while waiting; a waiting instruction rings."$'\n'
 fi
 INBOX_SECTION=${INBOX_SECTION%$'\n'}
+if [ -n "$REQUIRED_SKILLS" ]; then
+  INBOX_SECTION+=$'\n\n'$(fm_required_skills_section "$REQUIRED_SKILLS" task)
+fi
 
 # How a crewmate or scout waits. Every model turn resends the whole context, so
 # a wait must cost no turns: a decision wait ends the turn, and an external
