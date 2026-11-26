@@ -616,6 +616,7 @@ fm_pending_reply_discard_undelivered() {  # <state-dir> <corr_id>
 fm_pending_reply_line_resolves() {  # <line> <corr_id>
   local line=$1 corr=$2
   [ -n "$line" ] && [ -n "$corr" ] || return 1
+  case "${line%%:*}" in *"[source=firstmate]"*) return 1 ;; esac
   case "$line" in
     *pending-reply-missed*) return 1 ;;
   esac
@@ -1368,7 +1369,7 @@ _fm_pending_reply_maybe_escalate_locked() {  # <state-dir> <corr_id>
   [ -n "$parent_status" ] || return 1
   mkdir -p "$(dirname "$parent_status")" 2>/dev/null || return 1
   key=$(fm_pending_reply_escalation_key "$corr")
-  line="blocked [key=$key]: $payload"
+  line="blocked [source=firstmate] [key=$key]: $payload"
   # A record that already escalated reaches here again only after a reset, so
   # a closed decision means the operator settled the earlier episode and this
   # loss is a new one. While the decision is open the identical line is a retry.

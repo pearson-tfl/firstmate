@@ -5980,7 +5980,7 @@ kimi_wait_for_delivery() {
 }
 
 kimi_spawn_fail() { # <detail>
-  printf '%s\n' "$(status_stamp_line "failed: $1")" >>"$STATE/$ID.status"
+  printf '%s\n' "$(status_stamp_line "failed [source=firstmate]: $1")" >>"$STATE/$ID.status"
   echo "error: $1; inspect window $T" >&2
 }
 
@@ -6048,7 +6048,7 @@ rovo_wait_for_delivery() {
 }
 
 rovo_spawn_fail() { # <detail>
-  printf '%s\n' "$(status_stamp_line "failed: $1")" >>"$STATE/$ID.status"
+  printf '%s\n' "$(status_stamp_line "failed [source=firstmate]: $1")" >>"$STATE/$ID.status"
   echo "error: $1; inspect window $T" >&2
   rovo_endpoint_cleanup
 }
@@ -6165,7 +6165,7 @@ agy_wait_for_working() {
 }
 
 agy_spawn_fail() {  # <detail>
-  printf '%s\n' "$(status_stamp_line "failed: $1")" >>"$STATE/$ID.status"
+  printf '%s\n' "$(status_stamp_line "failed [source=firstmate]: $1")" >>"$STATE/$ID.status"
   echo "error: $1; inspect window $T" >&2
   rovo_endpoint_cleanup
 }
@@ -6266,7 +6266,7 @@ spawn_record_polytoken_session() {
 }
 
 polytoken_spawn_fail() {  # <detail>
-  printf '%s\n' "$(status_stamp_line "failed: $1")" >>"$STATE/$ID.status"
+  printf '%s\n' "$(status_stamp_line "failed [source=firstmate]: $1")" >>"$STATE/$ID.status"
   echo "error: $1; inspect window $T" >&2
   # A failed gate leaves nothing running or recorded: reap this launch's exact
   # session daemon (scoped to this task's sessions root), retire the per-task
@@ -7170,7 +7170,7 @@ export default function (pi: any) {
       const loaded = new Set(pi.getAllTools().map((tool: any) => tool.name));
       const unmatched = excludeTools.filter((name) => !loaded.has(name));
       if (unmatched.length) {
-        appendFileSync(statusFile, "note [at=" + Math.floor(Date.now() / 1000) + "]: warning: " + excludeFile
+        appendFileSync(statusFile, "note [source=firstmate] [at=" + Math.floor(Date.now() / 1000) + "]: warning: " + excludeFile
           + " unmatched exclusion entries (unverified: absent from the worker's loaded-tool registry; excluded tools or unavailable servers cannot be verified): "
           + unmatched.join(", ") + "\n");
       }
@@ -8402,7 +8402,7 @@ if [ "$HARNESS" = rovo ]; then
 fi
 if [ "$HARNESS" = opencode ] && [ "$OPENCODE_MAJOR" -ge 2 ]; then
   if ! opencode2_wait_for_delivery; then
-    printf '%s\n' "$(status_stamp_line "failed: opencode $OPENCODE_VERSION did not start the brief turn in window $T")" >>"$STATE/$ID.status"
+    printf '%s\n' "$(status_stamp_line "failed [source=firstmate]: opencode $OPENCODE_VERSION did not start the brief turn in window $T")" >>"$STATE/$ID.status"
     echo "error: opencode $OPENCODE_VERSION did not start the brief turn; inspect window $T" >&2
     rovo_endpoint_cleanup
     exit 1

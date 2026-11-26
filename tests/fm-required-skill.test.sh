@@ -116,6 +116,7 @@ test_secondmate_done_refused_then_accepted() {
   assert_contains "$out" "bin/fm-secondmate-report.sh working $corr \"skill-shaped poteto-mode: <how the skill shaped the work>\"" \
     "refusal did not give the exact satisfying form"
   [ ! -e "$state/sm.status" ] || fail "a refused done still wrote to the parent channel"
+  printf 'note [source=firstmate] [corr=%s]: infrastructure warning\n' "$corr" > "$state/sm.status"
 
   FM_HOME="$mate" "$REPORT" working "skill-start poteto-mode path=/s/p/SKILL.md route=hill-climb against the comparison wiki" \
     || fail "the start proof could not be written"
@@ -221,7 +222,40 @@ test_helper_metadata_is_not_proof() {
   pass "helper metadata cannot supply proof payload"
 }
 
+test_infrastructure_does_not_precede_recipient() {
+  local state rec corr
+  state=$(new_state infrastructure)
+  corr=0123456789abcdef
+  rec=$(fm_task_inbox_write "$state" sc "$(fm_required_skills_section tdd task)") || fail "could not write proof request"
+  fm_write_meta "$state/sc.meta" kind=scout required_skills=tdd
+  {
+    printf 'failed [source=firstmate] [at=1]: launch failed\n'
+    printf 'note [source=firstmate] [at=2]: unmatched exclusion\n'
+    printf 'resolved [source=firstmate] [key=question] [at=3]: answer\n'
+    printf 'blocked [source=firstmate] [key=pending-reply-x] [at=4]: pending reply\n'
+    printf 'working [at=5]: skill-start tdd path=/s/tdd/SKILL.md route=red test first\n'
+    printf 'working [at=6]: skill-shaped tdd: red test drove implementation\n'
+  } > "$state/sc.status"
+  mv "$rec" "$state/sc.inbox/handled/" || fail "could not acknowledge"
+  assert_equals quiet "$(action_verb "$state" sc)" "infrastructure prevented acknowledgement"
+  fm_dod_accept_ship_done scout '' '' '' 'done: report written' "$state" sc "$state/sc.meta" || fail "infrastructure prevented worker completion"
+  {
+    printf 'note [source=firstmate] [corr=%s]: diagnostic\n' "$corr"
+    printf 'working [corr=%s]: skill-start tdd path=/s/tdd/SKILL.md route=red first (via-helper)\n' "$corr"
+    printf 'working [corr=%s]: skill-shaped tdd: red test drove implementation (via-helper)\n' "$corr"
+    printf 'done [corr=%s]: finished\n' "$corr"
+  } > "$state/m.status"
+  fm_required_skills_done_refusal "$state/m.status" tdd "$corr" || fail "infrastructure prevented correlated completion"
+  [ -n "$(fm_pending_reply_find_resolve_line "$state/m.status" "$corr" tdd)" ] || fail "parent refused proven completion"
+  printf 'working [at=1]: ordinary recipient work\nworking [at=2]: skill-start tdd path=/s/tdd/SKILL.md route=red first\n' > "$state/sc.status"
+  assert_equals tdd "$(fm_required_skills_missing "$state/sc.status" start tdd)" "ordinary recipient work was ignored"
+  printf 'working [source=firstmate]: skill-start tdd path=/s/tdd/SKILL.md route=red first\n' > "$state/sc.status"
+  assert_equals tdd "$(fm_required_skills_missing "$state/sc.status" start tdd)" "infrastructure supplied recipient proof"
+  pass "infrastructure events neither invalidate nor supply recipient proofs"
+}
+
 fm_test_run \
+  test_infrastructure_does_not_precede_recipient \
   test_helper_metadata_is_not_proof \
   test_missing_start_proof_keeps_ringing \
   test_request_start_proof_needs_its_corr \

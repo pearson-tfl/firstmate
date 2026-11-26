@@ -87,6 +87,7 @@ fm_required_skills_from_meta() {  # <meta>
 # [corr=<corr>] before the colon when <corr> is given.
 fm_required_skill_line_proves() {  # <line> <start|shaped> <name> [corr]
   local line=$1 kind=$2 name=$3 corr=${4:-} note rest
+  case "${line%%:*}" in *"[source=firstmate]"*) return 1 ;; esac
   if [ -n "$corr" ]; then
     case "${line%%:*}" in *"[corr=$corr]"*) ;; *) return 1 ;; esac
   fi
@@ -126,6 +127,7 @@ fm_required_skills_missing() {  # <status-file> <start|shaped> <comma-list> [cor
     if [ -f "$status" ]; then
       while IFS= read -r line || [ -n "$line" ]; do
         [ -n "${line//[[:space:]]/}" ] || continue
+        case "${line%%:*}" in *"[source=firstmate]"*) continue ;; esac
         if [ -n "$corr" ]; then
           case "${line%%:*}" in *"[corr=$corr]"*) ;; *) continue ;; esac
         fi
