@@ -77,6 +77,30 @@ for args in 'bun' 'bun /app/server.js --cwd /tmp/omp' 'bun -e omp' \
 done
 pass "omp script identity: tmux accepts the package entry; generic backend classification is unchanged"
 
+# Since 23 Nov 2026 ~/.bun/bin/omp can be the Bun-compiled executable itself,
+# which still runs as comm=bun with argv `bun <abs path to omp> ...`. The
+# fixture is a regular executable file; it is never executed.
+mkdir -p "$TMP_ROOT/compiled-bin" "$TMP_ROOT/stranger-bin" "$TMP_ROOT/home/.bun/bin"
+for omp_file in "$TMP_ROOT/compiled-bin/omp" "$TMP_ROOT/stranger-bin/omp" "$TMP_ROOT/home/.bun/bin/omp"; do
+  printf 'compiled omp fixture\n' > "$omp_file"
+  chmod +x "$omp_file"
+done
+PATH="$TMP_ROOT/compiled-bin:$PATH" fm_agent_process_omp_args "bun $TMP_ROOT/compiled-bin/omp --profile sub2 --cwd /tmp/x" \
+  || fail "tmux's omp identity must accept the installed compiled omp binary"
+if PATH="$TMP_ROOT/compiled-bin:$PATH" fm_agent_process_omp_args "bun $TMP_ROOT/stranger-bin/omp --profile sub2"; then
+  fail "an executable merely named omp that is not the installed omp must remain unattributed"
+fi
+# The primary seat's PATH may lack ~/.bun/bin: fall back to the default install.
+HOME="$TMP_ROOT/home" PATH=/usr/bin:/bin fm_agent_process_omp_args "bun $TMP_ROOT/home/.bun/bin/omp --profile sub2" \
+  || fail "with omp absent from PATH, the default ~/.bun/bin/omp must still be the installed omp"
+if HOME="$TMP_ROOT/home" PATH=/usr/bin:/bin fm_agent_process_omp_args "bun $TMP_ROOT/stranger-bin/omp"; then
+  fail "the ~/.bun/bin fallback must not attribute a stranger named omp"
+fi
+if HOME="$TMP_ROOT/no-such-home" PATH=/usr/bin:/bin fm_agent_process_omp_args "bun $TMP_ROOT/compiled-bin/omp"; then
+  fail "with no omp installed anywhere, nothing is the installed omp"
+fi
+pass "omp compiled-binary identity: the installed binary is accepted, from PATH or ~/.bun/bin; a stranger named omp is not"
+
 # A process whose kernel-recorded identity is the bare name `omp`: a SYMLINK to
 # the system shell, never a copy (a copied platform binary fails macOS code
 # signing). macOS reports the symlink name through `ps -o comm=`, which is the
