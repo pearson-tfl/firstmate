@@ -1653,6 +1653,10 @@ There is no home-wide fallback file.
 
 Only a local secondmate's own omp agent reads this file.
 Ships, scouts, other runners, and remote secondmates never read it, and another secondmate's file never applies.
+For a standard omp ship or scout launch whose model is on the `antigravity-cli/` provider, Firstmate selects the `neon` profile for both catalog validation and launch.
+Sign in to `antigravity-cli` under that profile yourself; Firstmate does not provision its models or credentials.
+Other ship or scout launches receive no profile flag from Firstmate; raw launch commands run verbatim.
+[`bin/fm-spawn.sh`](../bin/fm-spawn.sh) owns the provider-specific system-prompt replacement and its rationale.
 The profile pin is independent of the [per-secondmate account pins](#per-secondmate-account-pins), which select a Claude or Pi login root rather than an omp profile.
 
 For example, `config/secondmate-accounts/speak4/omp-profile` containing `speak4` launches the local secondmate named `speak4` with `omp --profile speak4`.
