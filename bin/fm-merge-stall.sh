@@ -22,7 +22,9 @@
 #     task's branch is searched again, so a later PR from the same task counts;
 #   - its worker waits on the home: the declared wait is a `paused:` line, or
 #     the newest status event is `done:`, with current activity reconciled
-#     by bin/fm-crew-state.sh before either declaration is accepted;
+#     by bin/fm-crew-state.sh before either declaration is accepted; a worker
+#     reported gone (crew_state_is_worker_gone in bin/fm-classify-lib.sh) is
+#     skipped quietly rather than reported as unreadable activity;
 #   - bin/fm-captain-hold.sh open confirms no captain call is open on it;
 #     a held answer suppresses merge reminders; an unreadable answer wakes the home
 #     to repair the authorization read without instructing it to merge.
@@ -356,7 +358,11 @@ for meta in "$STATE"/*.meta; do
   case "$activity" in
     'state: paused '*|'state: done '*) ;;
     'state: working '*|'state: parked '*|'state: blocked '*|'state: failed '*) continue ;;
-    *) task_uncertain "current activity unreadable for $id: $activity"; continue ;;
+    *)
+      crew_state_is_worker_gone "$activity" && continue
+      task_uncertain "current activity unreadable for $id: $activity"
+      continue
+      ;;
   esac
   recorded=$url
   if [ -z "$url" ]; then

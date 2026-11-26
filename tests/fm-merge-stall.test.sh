@@ -981,6 +981,166 @@ test_retired_pr_is_not_restored_by_uncertainty() {
   pass "confirmed terminal PRs resolve both parent routes despite activity, discovery, or replacement forge uncertainty"
 }
 
+write_noop_no_mistakes() {
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$WORLD/fakebin/no-mistakes"
+  chmod +x "$WORLD/fakebin/no-mistakes"
+}
+
+real_crew_state() {  # <home> <task>
+  PATH="$WORLD/fakebin:$PATH" FM_HOME="$1" FM_STATE_OVERRIDE="$1/state" FM_CREW_STATE_NO_FORGE=1 \
+    bash "$ROOT/bin/fm-crew-state.sh" "$2"
+}
+
+test_gone_worker_is_skipped_quietly() {
+  local state out route channel key before after unknown_line idx=0
+  # 1. Parked yolo ship lane whose worktree and window are gone (real crew-state):
+  # no wake, no evidence-unavailable diagnostic, no forge read, and siblings still wake cleanly.
+  make_world gone-worktree
+  write_noop_no_mistakes
+  cat > "$WORLD/fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  list-windows) printf 'other-window\n' ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "$WORLD/fakebin/tmux"
+  write_task "$MAIN" gone-wt on "paused [at=$T0]: waiting on home"
+  printf 'worktree=%s/missing-wt\nbranch=fm/gone-wt\nwindow=fm:fm-gone-wt\nbackend=tmux\n' "$WORLD" >> "$MAIN/state/gone-wt.meta"
+  state=$(real_crew_state "$MAIN" gone-wt)
+  [ "$state" = 'state: unknown · source: none · worktree gone (torn down?)' ] || fail "unexpected worktree-gone crew-state output: $state"
+  out=$(FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" scan "$MAIN" $((T0 + 3600))) || fail "gone-worktree scan failed"
+  [ -z "$out" ] || fail "a gone worktree produced a wake or diagnostic: $out"
+  [ ! -s "$MAIN/state/.merge-stall" ] || fail "a gone worktree wrote a stall row: $(cat "$MAIN/state/.merge-stall")"
+  [ ! -s "$WORLD/forge.log" ] || fail "a gone worktree read the forge"
+  # A readable due sibling alongside the gone worktree wakes without an evidence-unavailable suffix.
+  mkdir -p "$MAIN/live-wt"
+  git -C "$MAIN/live-wt" init -q
+  write_task "$MAIN" live on "paused [at=$T0]: waiting on home"
+  printf 'worktree=%s/live-wt\nbranch=fm/live\nwindow=fm:fm-live\nbackend=tmux\nharness=claude\n' "$MAIN" >> "$MAIN/state/live.meta"
+  cat > "$WORLD/fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  list-windows) printf 'fm-live\n' ;;
+  display-message) printf '%%1\n' ;;
+  capture-pane) printf 'all quiet\n> \n' ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "$WORLD/fakebin/tmux"
+  printf 'g1\n' > "$MAIN/state/live.busy-gen"
+  printf 'v1 gen=g1 seq=1 state=idle source=claude-hook event=Stop ts=%s\n' "$T0" > "$MAIN/state/live.busy-state"
+  state=$(real_crew_state "$MAIN" live)
+  [ "$state" = 'state: paused · source: status-log · waiting on home' ] || fail "unexpected live-sibling crew-state output: $state"
+  out=$(FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" scan "$MAIN" $((T0 + 600))) || fail "gone-with-sibling scan failed"
+  case "$out" in
+    *"evidence unavailable:"*) fail "a gone sibling attached a diagnostic to a readable wake: $out" ;;
+    "live PR $URL unmerged 600s"*'merge it now'*) ;;
+    *) fail "readable sibling did not wake alongside a gone lane: $out" ;;
+  esac
+
+  # 2. Existing escalated stall whose worktree later disappears resolves cleanly on both parent routes.
+  for route in local remote; do
+    make_world "gone-resolves-$route"; bind_mate "$route"
+    if [ "$route" = local ]; then channel="$MAIN/state/mate.status"; else channel="$MATE/state/parent-replies.status"; fi
+    write_task "$MATE" child on "paused [at=$T0]: waiting on home"
+    scan "$MATE" $((T0 + 1800)) >/dev/null || fail "prior episode fixture failed"
+    key=$(parent_open "$channel" | cut -f1)
+    [ -n "$key" ] || fail "prior episode did not escalate on $route route"
+    printf 'worktree=%s/missing-wt\nbranch=fm/child\nwindow=fm:fm-child\nbackend=tmux\n' "$WORLD" >> "$MATE/state/child.meta"
+    out=$(FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" scan "$MATE" $((T0 + 3600))) || fail "gone-worker resolution scan failed"
+    [ -z "$out" ] || fail "gone worker resolution raised output on $route route: $out"
+    [ ! -s "$MATE/state/.merge-stall" ] || fail "gone worker retained its stall row on $route route"
+    [ -z "$(parent_open "$channel")" ] || fail "gone worker left its parent blocker open on $route route"
+    channel_lines "$channel" | grep -Fq "resolved [key=$key]:" || fail "gone worker resolved the wrong parent key on $route route"
+  done
+
+  # 3. Worktree still on disk, no active run, backend target gone (missing tmux window and dead herdr agent):
+  # both report 'backend target gone: ...' from real crew-state and skip quietly.
+  make_world gone-backend-target
+  mkdir -p "$MAIN/wt"
+  git -C "$MAIN/wt" init -q
+  write_noop_no_mistakes
+  cat > "$WORLD/fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  list-windows) printf 'other-window\n' ;;
+  *) exit 1 ;;
+esac
+SH
+  cat > "$WORLD/fakebin/herdr" <<'SH'
+#!/usr/bin/env bash
+case "${1:-} ${2:-}" in
+  'status --json') printf '{"client":{"version":"0.7.1","protocol":14},"server":{"running":true}}\n' ;;
+  'pane read') exit 1 ;;
+  'pane get') printf '{"result":{"pane":{"pane_id":"%s"}}}\n' "${3:-}" ;;
+  'agent get') printf '{"error":{"code":"agent_not_found","message":"no agent in pane"}}\n' ;;
+  *) exit 0 ;;
+esac
+SH
+  chmod +x "$WORLD/fakebin/tmux" "$WORLD/fakebin/herdr"
+  write_task "$MAIN" gone-win on "paused [at=$T0]: waiting on home"
+  printf 'worktree=%s/wt\nbranch=fm/gone-win\nwindow=fm:fm-gone-win\nbackend=tmux\n' "$MAIN" >> "$MAIN/state/gone-win.meta"
+  state=$(real_crew_state "$MAIN" gone-win)
+  [ "$state" = 'state: unknown · source: none · backend target gone: fm:fm-gone-win' ] || fail "unexpected missing-window crew-state output: $state"
+  write_task "$MAIN" gone-husk on "done [at=$T0]: PR $URL checks green"
+  printf 'worktree=%s/wt\nbranch=fm/gone-husk\nwindow=default:w1:p2\nbackend=herdr\nharness=claude\n' "$MAIN" >> "$MAIN/state/gone-husk.meta"
+  state=$(real_crew_state "$MAIN" gone-husk)
+  [ "$state" = 'state: unknown · source: none · backend target gone: default:w1:p2 (agent gone, pane shell remains)' ] || fail "unexpected husk-pane crew-state output: $state"
+  out=$(FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" scan "$MAIN" $((T0 + 3600))) || fail "gone-backend-target scan failed"
+  [ -z "$out" ] || fail "gone backend targets produced a wake or diagnostic: $out"
+  [ ! -s "$MAIN/state/.merge-stall" ] || fail "gone backend targets wrote stall rows"
+  [ ! -s "$WORLD/forge.log" ] || fail "gone backend targets read the forge"
+
+  # 4. Genuinely unreadable or other unknown activity MUST still raise the diagnostic and preserve prior episodes:
+  # (a) real crew-state with unreachable tmux and missing backend target.
+  cat > "$WORLD/fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+printf 'no current client\n' >&2
+exit 1
+SH
+  chmod +x "$WORLD/fakebin/tmux"
+  rm -f "$MAIN/state/gone-husk.meta" "$MAIN/state/gone-husk.status" "$MAIN/state/gone-husk.pr-poll"
+  state=$(real_crew_state "$MAIN" gone-win)
+  case "$state" in 'state: unknown · source: none · backend unreachable ('*) ;; *) fail "unexpected unreachable-backend crew-state output: $state" ;; esac
+  out=$(FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" scan "$MAIN" $((T0 + 3600))) || fail "unreachable-backend scan failed"
+  case "$out" in *'evidence unavailable: current activity unreadable for gone-win: state: unknown · source: none · backend unreachable ('*) ;; *) fail "unreachable backend stopped raising diagnostic: $out" ;; esac
+  case "$out" in *'merge it now'*) fail "unreachable backend authorized a merge: $out" ;; esac
+
+  make_world no-backend-target
+  mkdir -p "$MAIN/wt"
+  git -C "$MAIN/wt" init -q
+  write_noop_no_mistakes
+  write_task "$MAIN" no-target on "paused [at=$T0]: waiting on home"
+  printf 'worktree=%s/wt\nbranch=fm/no-target\nbackend=tmux\n' "$MAIN" >> "$MAIN/state/no-target.meta"
+  state=$(real_crew_state "$MAIN" no-target)
+  [ "$state" = 'state: unknown · source: none · no backend target recorded' ] || fail "unexpected no-target crew-state output: $state"
+  out=$(FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" scan "$MAIN" $((T0 + 3600))) || fail "no-target scan failed"
+  case "$out" in *'evidence unavailable: current activity unreadable for no-target: state: unknown · source: none · no backend target recorded'*) ;; *) fail "missing backend target stopped raising diagnostic: $out" ;; esac
+
+  # (b) other non-gone unknown crew-state outputs keep raising the diagnostic and preserving episodes.
+  for unknown_line in \
+    'state: unknown · source: run-step · run inventory unavailable; run id: 01RUN' \
+    'state: unknown · source: pane · harness state unavailable (unknown no-record)' \
+    'state: unknown · source: none · no current-state source available' \
+    'state: unknown · source: none · worktree gone (torn downX)' \
+    'state: unknown · source: none · backend target gone: ' \
+    $'state: unknown · source: none · worktree gone (torn down?)\nunexpected stderr' \
+    $'state: unknown · source: none · backend target gone: fm:fm-t\nunexpected stderr'; do
+    idx=$((idx + 1))
+    make_world "unknown-other-$idx"
+    write_task "$MAIN" t on "paused [at=$T0]: waiting on home"
+    scan "$MAIN" $((T0 + 600)) >/dev/null || fail "prior unknown-other episode failed"
+    before=$(cat "$MAIN/state/.merge-stall")
+    out=$(FM_TEST_BAD_TASK=t FM_TEST_ACTIVITY="$unknown_line" scan "$MAIN" $((T0 + 3600))) || fail "unknown-other scan failed"
+    case "$out" in *'evidence unavailable: current activity unreadable for t:'*) ;; *) fail "non-gone unknown stopped raising diagnostic ($unknown_line): $out" ;; esac
+    case "$out" in *'merge it now'*) fail "non-gone unknown authorized a merge ($unknown_line): $out" ;; esac
+    after=$(cat "$MAIN/state/.merge-stall")
+    [ -n "$before" ] && [ "$before" = "$after" ] || fail "non-gone unknown dropped prior episode ($unknown_line)"
+  done
+  pass "gone workers are skipped quietly while unreadable or other unknown activity still raises a diagnostic"
+}
+
 test_retired_pr_is_not_restored_by_uncertainty
 test_replay_paused_worker_red_pr
 test_merged_or_released_ends_stall
@@ -1006,3 +1166,4 @@ test_sweep_budget_reaches_every_registered_task
 test_terminal_state_retires_held_stalls
 test_later_pr_after_terminal_recorded_pr
 test_discovered_pr_identity_is_bound
+test_gone_worker_is_skipped_quietly

@@ -214,7 +214,7 @@ case "$NM_TIMEOUT" in ''|*[!0-9]*) NM_TIMEOUT=10 ;; esac
 # entire history every call.
 FM_CREW_STATE_RUNS_LIMIT=${FM_CREW_STATE_RUNS_LIMIT:-200}
 case "$FM_CREW_STATE_RUNS_LIMIT" in ''|*[!0-9]*) FM_CREW_STATE_RUNS_LIMIT=200 ;; esac
-SEP=' · '
+SEP=$FM_CREW_STATE_SEP
 
 # Emit the one canonical line and exit 0. Detail is optional.
 emit() {  # <state> <source> [detail]
@@ -242,7 +242,7 @@ REMOTE_HOST=$(meta_value remote_host)
 # remote secondmate's recorded worktree is a path on ITS host, so the local
 # probe proves nothing for it - the remote arm below reads the true source.
 if [ -z "$REMOTE_HOST" ] && { [ -z "$WT" ] || [ ! -d "$WT" ]; }; then
-  emit unknown none "worktree gone (torn down?)"
+  emit unknown none "$FM_CREW_STATE_WORKTREE_GONE"
 fi
 
 # --- status log ------------------------------------------------------------
@@ -1404,16 +1404,16 @@ if ! pane_readable "$BACKEND_TARGET"; then
     tmux:alive|herdr:alive|rex:alive|t3code:alive|orca:alive)
       ;;
     tmux:missing|herdr:missing|rex:missing|t3code:missing|orca:missing)
-      emit unknown none "backend target gone: $BACKEND_TARGET"
+      emit unknown none "${FM_CREW_STATE_BACKEND_TARGET_GONE_PREFIX}$BACKEND_TARGET"
       ;;
     tmux:dead|herdr:dead|rex:dead|t3code:dead)
-      emit unknown none "backend target gone: $BACKEND_TARGET (agent gone, pane shell remains)"
+      emit unknown none "${FM_CREW_STATE_BACKEND_TARGET_GONE_PREFIX}$BACKEND_TARGET (agent gone, pane shell remains)"
       ;;
     tmux:*|herdr:*|rex:*|t3code:*|orca:*)
       emit unknown none "backend unreachable ($TASK_BACKEND endpoint state: $AGENT_STATE)"
       ;;
     *)
-      emit unknown none "backend target gone: $BACKEND_TARGET"
+      emit unknown none "${FM_CREW_STATE_BACKEND_TARGET_GONE_PREFIX}$BACKEND_TARGET"
       ;;
   esac
 fi
