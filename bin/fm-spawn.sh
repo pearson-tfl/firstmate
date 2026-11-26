@@ -2219,6 +2219,9 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   fi
   rc=0
   shared_args=()
+  for required_skill in ${REQUIRED_SKILL_ARGS[@]+"${REQUIRED_SKILL_ARGS[@]}"}; do
+    shared_args+=(--required-skill "$required_skill")
+  done
   [ -z "$HARNESS_ARG" ] || shared_args+=(--harness "$HARNESS_ARG")
   [ -z "$MODEL" ] || shared_args+=(--model "$MODEL")
   [ -z "$EFFORT" ] || shared_args+=(--effort "$EFFORT")
