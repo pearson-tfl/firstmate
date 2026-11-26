@@ -1,0 +1,26 @@
+{
+  "host": "dell-v100",
+  "omp_version": "omp/19.2.1",
+  "launches": [
+    {
+      "kind": "ship",
+      "harness": "omp",
+      "model": "antigravity-cli/gemini-4-neon",
+      "effort": "xhigh",
+      "omp_profile": "neon",
+      "window": "primary:fm-neon-live-ship"
+    },
+    {
+      "kind": "scout",
+      "harness": "omp",
+      "model": "antigravity-cli/gemini-4-neon",
+      "effort": "xhigh",
+      "omp_profile": "neon",
+      "window": "primary:fm-neon-live-scout"
+    }
+  ],
+  "process_launch_prefixes": [
+    "3920095 ~/.local/share/mise/installs/github-can1357-oh-my-pi/latest/omp --profile neon --config {run-worktree}/.omp/fm-worker-overlay.yml --system-prompt {run-worktree}/.omp/fm-antigravity-system-prompt.md --auto-approve --cwd ~/.treehouse/demo-1361f6/1/demo --model antigravity-cli/gemini-4-neon --thinking xhigh -e {run-worktree}/.l/state/neon-live-ship.omp-ext.ts \u2063",
+    "3929366 ~/.local/share/mise/installs/github-can1357-oh-my-pi/latest/omp --profile neon --config {run-worktree}/.omp/fm-worker-overlay.yml --system-prompt {run-worktree}/.omp/fm-antigravity-system-prompt.md --auto-approve --cwd ~/.treehouse/demo-1361f6/2/demo --model antigravity-cli/gemini-4-neon --thinking xhigh -e {run-worktree}/.l/state/neon-live-scout.omp-ext.ts \u2063"
+  ]
+}

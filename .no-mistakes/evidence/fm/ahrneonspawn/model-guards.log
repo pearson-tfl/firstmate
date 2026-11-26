@@ -1,0 +1,14 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.l
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+error: omp model 'antigravity-cli/nonexistent-probe-model' is not listed by 'omp models --json' although provider 'antigravity-cli' is; choose a listed <provider>/<id> or omit --model
+provider=antigravity-cli exit=1
+fm-gate-refuse: gate agent lifecycle permitted only against lab home {run-worktree}/.l
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+notice: omp provider 'openai-codex' is not in 'omp models --json' (extension-registered providers are never listed); launching 'openai-codex/nonexistent-probe-model' unvalidated
+error: task guard-openai-codex has no brief at inaccessible data path {run-worktree}/.l/data/guard-openai-codex/brief.md
+provider=openai-codex exit=1
+01M8BXN42RTE3QWKJB1M0GCQF0
+driver
+fm-neon-live-ship
+fm-neon-live-scout
+guards

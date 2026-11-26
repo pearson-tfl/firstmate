@@ -1,0 +1,1 @@
+{"models":[{"provider":"llama.cpp","kind":"chat","id":"Qwen3.8-27B-UD-Q4_K_M","selector":"llama.cpp/Qwen3.8-27B-UD-Q4_K_M","name":"Qwen3.8-27B-UD-Q4_K_M","contextWindow":131072,"maxTokens":32768,"reasoning":true,"thinking":["low","medium","xhigh"],"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"pricingStatus":"unknown"}]}

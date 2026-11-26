@@ -1,0 +1,6 @@
+ok - omp script identity: tmux accepts the package entry; generic backend classification is unchanged
+ok - fm-harness: omp detects by its anchored name; the marker is a precedence override that needs real omp ancestry
+ok - session lock and tmux liveness: omp is anchored, decoys stay out
+ok - fm-spawn: the omp launch line clears markers, pins posture, and wires the state-resident extension
+ok - fm-spawn: omp model validation is scoped to providers the listing can prove
+not ok - omp secondmate spawn should succeed: error: secondmate home cannot be inside the firstmate repo: {run-worktree}/.test-tmp/fm-omp-harness.jH9Xjk/secondmate/sm: expected exit 0, got 1
