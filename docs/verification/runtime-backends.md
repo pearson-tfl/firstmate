@@ -3748,13 +3748,16 @@ Verified on 2026-11-26 with omp 19.1.1 on macOS arm64: a Bun-compiled executable
 file -b ~/.bun/bin/omp
 ps -o comm= -p <omp pid>
 ps -o args= -p <omp pid> | awk '{print $1, $2}' | sed "s|$HOME|~|"
-FM_BACKEND_LIB_DIR=bin bash -c '. bin/backends/tmux.sh && fm_backend_tmux_agent_state <session>:<window>'
+FM_BACKEND_LIB_DIR=bin bash -c 'PATH=$(printf %s "$PATH" | tr : "\n" | grep -v "/\.bun/bin$" | paste -sd: -)
+  command -v omp || echo "omp not on PATH"
+  . bin/backends/tmux.sh && fm_backend_tmux_agent_state <session>:<window>'
 ```
 
 ```text
 Mach-O 64-bit executable arm64
 bun
 bun ~/.bun/bin/omp
+omp not on PATH
 alive
 ```
 
