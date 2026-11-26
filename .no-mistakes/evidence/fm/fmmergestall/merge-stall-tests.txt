@@ -1,0 +1,27 @@
+ok - a 6s healthy forge read completes cleanly under the default read timeout
+ok - held tasks with gone workers stay silent without reading worker activity and still retire when merged
+ok - confirmed terminal PRs resolve both parent routes despite activity, discovery, or replacement forge uncertainty
+ok - the replayed stall wakes the home to merge at 10 minutes, repeats, and reaches the captain at 30
+ok - a merged PR, a retired merge poll, or a working worker is not a stall
+ok - held tasks stay silent and unreadable holds surface without merge authorization
+ok - local and remote secondmate homes merge-wake themselves and escalate once through the parent channel
+ok - unregistered paused and done PRs are discovered once per scan in every home route
+ok - terminal PRs cannot consume notifications and due stalls progress before reminders
+ok - paused and done episode replacements reset age, reminders and escalation on both parent routes
+ok - captain-hold read diagnostics reach the home without a merge instruction
+ok - the real watcher poll queues the merge-stall wake
+ok - merge-stall wake is queued before a chatty check exits the sweep
+ok - ledger and parent-channel failures produce actionable bounded watcher wakes
+ok - unknown discovery preserves both parent routes and wakes the home; confirmed absence resolves
+ok - recorded and discovered drafts stay silent in every route while ready PRs wake
+ok - real crew-state excludes pending CI for paused and done declarations and accepts a green monitor
+ok - parent escalation stays singular across failed ledger writes and changing age or blockers
+ok - missing and mismatched polls remain eligible until positive merge evidence in every home route
+ok - first and existing episodes close after failed publication even with an uncommitted escalation flag
+ok - seven-digit cksum records produce parent keys that open and resolve on both routes
+ok - unreadable tasks retain their episodes while earlier and later readable siblings still escalate
+ok - task reads and the whole scan have deadlines and watcher cancellation stops read descendants
+ok - every registered task is reached after six earlier read timeouts in every home route
+ok - closed and merged PRs retire held escalations across both routes and all poll states
+ok - a later PR from the same task wakes the home once its recorded PR merged or closed
+ok - a discovered PR wakes the home only when bound to the task's own fork and branch

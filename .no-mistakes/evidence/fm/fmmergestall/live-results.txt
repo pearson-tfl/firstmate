@@ -1,0 +1,6 @@
+{run-worktree}/.merge-stall-validation-lab
+HELD_GONE: three scans silent using real captain-hold and crew-state interfaces
+RELEASED_GONE: real missing worker now produces diagnostic: evidence unavailable: current activity unreadable for held-worker: state: unknown · source: none · worktree gone (torn down?)
+SLOW_FORGE: six-second real gh read completed under default timeout; held episode preserved
+TERMINAL_HELD: merged PR retired existing ledger despite missing worker
+SIGNALS: target INT=130 TERM=143, no deleted-file reads or leftover temp files; both regress on base

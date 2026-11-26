@@ -1,0 +1,187 @@
+[
+  {
+    "command": [
+      "bin/fm-tasks-axi.sh",
+      "add",
+      "held-worker",
+      "Await decision"
+    ],
+    "exit": 0,
+    "stdout": "ok: added held-worker -> Queued\ntask:\n  id: held-worker\n  title: Await decision\n  state: queued\n  blocked: no\n  blocked_by: none\n  held: no\n  hold_reason: \"-\"\n  hold_kind: \"-\"\n  hold_until: \"-\"\n  kind: task\n  repo: \"-\"\n  priority: \"-\"\n  created: 2026-11-26\n  closed: \"-\"\n  deps: none\n  links: none\n  body: \"\"\nhelp[2]:\n  - Run `tasks-axi start held-worker` to move it to in flight\n  - Run `tasks-axi block held-worker --by <other>` to record a dependency\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "bin/fm-captain-hold.sh",
+      "hold",
+      "held-worker",
+      "--reason",
+      "Captain reviews result"
+    ],
+    "exit": 0,
+    "stdout": "held-worker\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "bin/fm-merge-stall.sh",
+      "scan",
+      "--now",
+      "1795642426"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "bin/fm-merge-stall.sh",
+      "scan",
+      "--now",
+      "1795643026"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "bin/fm-merge-stall.sh",
+      "scan",
+      "--now",
+      "1795645426"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "{run-worktree}/.merge-stall-validation-lab/base-bin/fm-merge-stall.sh",
+      "scan",
+      "--now",
+      "1795645426"
+    ],
+    "exit": 0,
+    "stdout": "evidence unavailable: current activity unreadable for held-worker: state: unknown \u00b7 source: none \u00b7 worktree gone (torn down?)\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "bin/fm-tasks-axi.sh",
+      "unhold",
+      "held-worker"
+    ],
+    "exit": 0,
+    "stdout": "ok: unhold held-worker -> cleared\ntask:\n  id: held-worker\n  title: Await decision\n  state: queued\n  blocked: no\n  blocked_by: none\n  held: no\n  hold_reason: \"-\"\n  hold_kind: \"-\"\n  hold_until: \"-\"\n  kind: task\n  repo: \"-\"\n  priority: \"-\"\n  created: 2026-11-26\n  closed: \"-\"\n  deps: none\n  links: none\n  body: \"Captain hold set: 2026-11-26T15:44:53Z\"\nhelp[1]:\n  - Run `tasks-axi ready` to see dispatchable work\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "bin/fm-merge-stall.sh",
+      "scan",
+      "--now",
+      "1795646026"
+    ],
+    "exit": 0,
+    "stdout": "evidence unavailable: current activity unreadable for held-worker: state: unknown \u00b7 source: none \u00b7 worktree gone (torn down?)\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "openssl",
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-keyout",
+      "{run-worktree}/.merge-stall-validation-lab/key.pem",
+      "-out",
+      "{run-worktree}/.merge-stall-validation-lab/cert.pem",
+      "-days",
+      "1",
+      "-config",
+      "{run-worktree}/.merge-stall-validation-lab/cert.cnf"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": ".....+++++++++++++++++++++++++++++++++++++++*.+..+...+....+..+....+......+.....+...+.+++++++++++++++++++++++++++++++++++++++*..+......+...+...+.......+.....+.+............+..+...+.........+.+...+......+......+..+...+.........+.+..+......+....+.................+....+......+.....+....+......+...+........+...+....+...++++++\n.................+......+....+...........+.+.....+....+......+.....+...+...............+++++++++++++++++++++++++++++++++++++++*...+......+.......+..+.....................+++++++++++++++++++++++++++++++++++++++*.....+.......+..+....+............+...+.........+..+.+..+.............+........+.+...+.................+.+........................+...+...........+.........+.+.........+..+.+........+.+...............+.....+.+.....+.........+.+...+...........+.+..+.+..+............+.......+...+...........+......+.+..+.......+........+......+......+......+.......+..+.+...+..+.......+...+.....+............+.+..+...+.+...............+...+...........+.+...........+.........+...+..........+...+...+..+...+......+...+...............+................+..+....+........+......+.........+..........+...+..+.......+..............+....+.................+......+...+....+......+...........++++++\n-----\n"
+  },
+  {
+    "command": [
+      "bin/fm-pr-state.sh",
+      "https://github.com/o/r/pull/7"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "bin/fm-captain-hold.sh",
+      "hold",
+      "held-worker",
+      "--reason",
+      "Captain reviews result"
+    ],
+    "exit": 0,
+    "stdout": "held-worker\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "bin/fm-merge-stall.sh",
+      "scan",
+      "--now",
+      "1795645426"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "scenario": "six-second checks through real gh under default scan timeout",
+    "elapsed_seconds": 6.922621163073927,
+    "ledger": "held-worker\thttps://github.com/o/r/pull/7\t1795641826\t1795642426\t0\t320942529\n"
+  },
+  {
+    "command": [
+      "bin/fm-merge-stall.sh",
+      "scan",
+      "--now",
+      "1795646026"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "scenario": "base SIGTERM during real gh checks",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "grep: {run-worktree}/.merge-stall-validation-lab/fm-pr-state.AHldeJ: No such file or directory\ngrep: {run-worktree}/.merge-stall-validation-lab/fm-pr-state.AHldeJ: No such file or directory\ncat: {run-worktree}/.merge-stall-validation-lab/fm-pr-state.AHldeJ: No such file or directory\n",
+    "temp_files_remaining": []
+  },
+  {
+    "scenario": "base SIGINT during real gh checks",
+    "exit": 1,
+    "stdout": "",
+    "stderr": "grep: {run-worktree}/.merge-stall-validation-lab/fm-pr-state.A1nIYv: No such file or directory\ngrep: {run-worktree}/.merge-stall-validation-lab/fm-pr-state.A1nIYv: No such file or directory\ncat: {run-worktree}/.merge-stall-validation-lab/fm-pr-state.A1nIYv: No such file or directory\n",
+    "temp_files_remaining": []
+  },
+  {
+    "scenario": "target SIGTERM during real gh checks",
+    "exit": 143,
+    "stdout": "",
+    "stderr": "",
+    "temp_files_remaining": []
+  },
+  {
+    "scenario": "target SIGINT during real gh checks",
+    "exit": 130,
+    "stdout": "",
+    "stderr": "",
+    "temp_files_remaining": []
+  }
+]
