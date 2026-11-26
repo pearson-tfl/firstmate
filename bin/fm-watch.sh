@@ -734,6 +734,9 @@ inbox_steer_check() {  # <window> <task>
       triage_log "steer-inbox retry ring: $task ${rec##*/} result=$ring_rc"
       ;;
     escalate)
+      if [ -z "$reason" ] && fm_task_inbox_awaits_proof "$rec"; then
+        reason="stale: $w (required-skill start proof missing: $rec was rung $count times and the status record still lacks a skill-start line for a required skill; inspect the worker)"
+      fi
       reason=${reason:-"stale: $w (unread firstmate instruction: $rec still unhandled after $count doorbell delivery attempts with an idle pane; inspect the worker)"}
       if [ ! -d "${rec%/*}" ] || [ ! -f "$rec" ]; then
         fm_task_inbox_due_action "$STATE" "$task" >/dev/null || true

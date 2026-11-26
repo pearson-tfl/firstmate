@@ -1150,7 +1150,7 @@ test_polytoken_readiness_failure_fails_loudly_and_cleans_up() {
   assert_contains "$out" "license dialog" \
     "the failure must name the one known first-start blocker"
   status=$(sed -E 's/ \[at=[0-9]+\]//' "$HOME_DIR/state/$id.status" 2>/dev/null || true)
-  assert_contains "$status" "failed: polytoken did not start processing its brief" \
+  assert_contains "$status" "failed [source=firstmate]: polytoken did not start processing its brief" \
     "the failed readiness gate must record the failure in the task status"
   tmux_calls=$(cat "$CASE_DIR/tmux-calls.log")
   assert_contains "$tmux_calls" "kill-window" \

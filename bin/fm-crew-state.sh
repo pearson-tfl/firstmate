@@ -12,6 +12,8 @@
 # the pane busy-signature) and reconciles the possibly-stale log against it.
 # A ship `done:` is current-state done only when bin/fm-dod-lib.sh accepts the
 # named head as reachable outside the worker's disposable copy; otherwise blocked.
+# Any ship or scout done is also blocked while a required skill lacks its
+# shaped proof (bin/fm-required-skill-lib.sh).
 #
 # The determinism lives entirely here - run-step / pane / log reads, fixed
 # mapping logic, and terminal passed-run PR detail from bounded evidence only,
@@ -218,7 +220,14 @@ SEP=$FM_CREW_STATE_SEP
 
 # Emit the one canonical line and exit 0. Detail is optional.
 emit() {  # <state> <source> [detail]
-  local line="state: $1${SEP}source: $2"
+  local line reason
+  # A ship or scout is never current-state done while its required-skill done
+  # gate refuses (bin/fm-required-skill-lib.sh), whichever source said done.
+  if [ "$1" = "done" ] && [ "${KIND:-ship}" != secondmate ] \
+    && ! reason=$(fm_required_skills_task_done_refusal "$STATE" "$ID" "$META"); then
+    set -- blocked "$2" "$reason"
+  fi
+  line="state: $1${SEP}source: $2"
   [ -n "${3:-}" ] && line="$line${SEP}$3"
   printf '%s\n' "$line"
   exit 0

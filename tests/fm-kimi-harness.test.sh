@@ -756,7 +756,7 @@ test_kimi_unconfirmed_delivery_fails_loudly() {
   [ "$rc" -ne 0 ] || fail "an unconfirmed kimi delivery should fail"
   assert_contains "$out" "kimi brief pointer delivery was not confirmed" \
     "unconfirmed kimi delivery lacked a loud diagnostic"
-  assert_grep 'failed: kimi brief pointer delivery was not confirmed' <(sed -E 's/ \[at=[0-9]+\]//' "$HOME_DIR/state/$id.status") \
+  assert_grep 'failed: kimi brief pointer delivery was not confirmed' <(sed -E 's/ \[at=[0-9]+\]//; s/ \[source=firstmate\]//g' "$HOME_DIR/state/$id.status") \
     "unconfirmed kimi delivery did not leave a supervisor-visible failure"
   pass "fm-spawn: kimi treats a silent pointer drop as a failed spawn"
 }
@@ -986,7 +986,7 @@ test_kimi_stuck_trust_dialog_fails_before_delivery() {
   [ "$(wc -l < "$CASE_DIR/trust-enter.log" | tr -d ' ')" -gt 1 ] \
     || fail "stuck Kimi trust dialog was not re-answered while it stayed on screen"
   [ ! -s "$CASE_DIR/pointer.log" ] || fail "Kimi pointer was sent through a stuck trust dialog"
-  assert_grep 'failed: kimi trust dialog did not clear' <(sed -E 's/ \[at=[0-9]+\]//' "$HOME_DIR/state/$id.status") \
+  assert_grep 'failed: kimi trust dialog did not clear' <(sed -E 's/ \[at=[0-9]+\]//; s/ \[source=firstmate\]//g' "$HOME_DIR/state/$id.status") \
     "stuck Kimi trust dialog did not leave a supervisor-visible failure"
   pass "fm-spawn: a Kimi trust dialog must visibly clear before brief delivery"
 }
@@ -1205,7 +1205,7 @@ test_kimi_230_prompt_announcing_a_root_mcp_json_server_receives_no_key() {
   assert_contains "$out" "announces project MCP servers" "the refusal did not name the announcement"
   assert_contains "$out" "Config line names the file" "the refusal did not tell the operator where the declaration is"
   assert_grep "failed: kimi's folder prompt announces project MCP servers" \
-    <(sed -E 's/ \[at=[0-9]+\]//' "$HOME_DIR/state/$id.status") \
+    <(sed -E 's/ \[at=[0-9]+\]//; s/ \[source=firstmate\]//g' "$HOME_DIR/state/$id.status") \
     "the announcing prompt did not leave a supervisor-visible failure"
   assert_project_server_stayed_idle
   pass "fm-spawn: a recorded Kimi 2.3.0 prompt announcing a root .mcp.json server receives no key and reports why"

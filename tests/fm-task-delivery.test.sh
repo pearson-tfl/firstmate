@@ -2046,5 +2046,31 @@ test_spawn_requires_the_brief_to_carry_the_registered_pr_text
 test_promotion_steer_omits_unverified_skill_form
 test_promotion_carries_the_pr_text_binding
 test_spawn_and_promote_require_filled_task_subsections
+# The brief's required-skill machine line and the spawn's --required-skill flags
+# must agree, so the worker's proof instructions and the task's gate match.
+test_spawn_requires_the_brief_required_skills() {
+  local rec home proj fakebin out status
+  rec=$(make_home required-skills)
+  IFS='|' read -r home proj fakebin <<EOF
+$rec
+EOF
+  write_brief "$home" rskill-a1 direct-PR
+  printf 'Required skills: tdd\n' >> "$home/data/rskill-a1/brief.md"
+  out=$(run_spawn "$home" "$fakebin" rskill-a1 "$proj" claude --mode direct-PR --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "a spawn without the brief's required skill should exit non-zero"
+  assert_contains "$out" "required-skill mismatch for rskill-a1" "mismatch refusal did not name the task"
+  assert_absent "$home/state/rskill-a1.meta" "mismatched spawn wrote task metadata"
+  out=$(run_spawn "$home" "$fakebin" rskill-a1 "$proj" claude --mode direct-PR --yolo off --required-skill tdd)
+  assert_not_contains "$out" "required-skill mismatch" "an agreeing required skill was reported as a mismatch"
+  write_brief "$home" rskill-a2 direct-PR
+  out=$(run_spawn "$home" "$fakebin" rskill-a2 "$proj" claude --mode direct-PR --yolo off --required-skill tdd)
+  assert_contains "$out" "required-skill mismatch for rskill-a2" "a flag the brief does not carry was accepted"
+  out=$(run_spawn "$home" "$fakebin" rskill-sm "$home" --secondmate --required-skill tdd)
+  assert_contains "$out" "applies only to ship and scout spawns" "a secondmate spawn accepted --required-skill"
+  pass "fm-spawn: --required-skill must match the brief's required skills"
+}
+
 test_project_mode_resolves_branch_prefix
+test_spawn_requires_the_brief_required_skills
 echo "# all fm-task-delivery tests passed"

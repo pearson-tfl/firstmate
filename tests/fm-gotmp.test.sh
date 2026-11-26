@@ -93,6 +93,7 @@ SH
   # Receiver-wake retirement sources the pending-reply library, which in turn
   # requires the marker helper even for this ordinary-task teardown fixture.
   ln -s "$ROOT/bin/fm-pending-reply-lib.sh" "$fake/bin/fm-pending-reply-lib.sh"
+  ln -s "$ROOT/bin/fm-required-skill-lib.sh" "$fake/bin/fm-required-skill-lib.sh"
   ln -s "$ROOT/bin/fm-marker-lib.sh" "$fake/bin/fm-marker-lib.sh"
   ln -s "$ROOT/bin/fm-operational-input.sh" "$fake/bin/fm-operational-input.sh"
   ln -s "$ROOT/bin/fm-skill-opener.sh" "$fake/bin/fm-skill-opener.sh"
@@ -197,6 +198,7 @@ SH
   ln -s "$ROOT/bin/fm-secondmate-registry-lib.sh" "$fake/bin/fm-secondmate-registry-lib.sh"
   ln -s "$ROOT/bin/fm-secondmate-parent-lib.sh" "$fake/bin/fm-secondmate-parent-lib.sh"
   ln -s "$ROOT/bin/fm-pending-reply-lib.sh" "$fake/bin/fm-pending-reply-lib.sh"
+  ln -s "$ROOT/bin/fm-required-skill-lib.sh" "$fake/bin/fm-required-skill-lib.sh"
   ln -s "$ROOT/bin/fm-marker-lib.sh" "$fake/bin/fm-marker-lib.sh"
   ln -s "$ROOT/bin/fm-operational-input.sh" "$fake/bin/fm-operational-input.sh"
   ln -s "$ROOT/bin/fm-skill-opener.sh" "$fake/bin/fm-skill-opener.sh"

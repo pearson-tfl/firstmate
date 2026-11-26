@@ -33,6 +33,8 @@
 #                              so later polls suppress another escalation
 #   <task>.inbox/.retry-ring   name of a fire-and-forget record still owed its
 #                              one retry ring (fm_task_inbox_mark_retry)
+#   <task>.inbox/.proof-pending names of records whose acknowledgement waits on
+#                              required-skill start proof (fm_task_inbox_reopen_unproven)
 #
 # Record format (fm_task_inbox_write / fm_task_inbox_body):
 #   schema=fm-task-inbox.v1
@@ -102,6 +104,8 @@ _FM_TASK_INBOX_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$_FM_TASK_INBOX_LIB_DIR/fm-wake-lib.sh"
 # shellcheck source=/dev/null
 . "$_FM_TASK_INBOX_LIB_DIR/fm-backend.sh"
+# shellcheck source=bin/fm-required-skill-lib.sh
+. "$_FM_TASK_INBOX_LIB_DIR/fm-required-skill-lib.sh"
 
 FM_TASK_INBOX_SCHEMA='fm-task-inbox.v1'
 FM_TASK_INBOX_GRACE_DEFAULT=90
@@ -207,6 +211,11 @@ _fm_task_inbox_write_record_locked() {  # <inbox-dir> <text> [delivery-mode]
   local dir=$1 text=$2 delivery_mode=${3:-} seq tmp rec status=0
   seq=$(fm_task_inbox_next_seq "$dir")
   rec="$dir/$seq.msg"
+  # Index a start-proof record before it exists (see the header's proof gate),
+  # so a failed index leaves no record the gate does not know about.
+  if [ -n "$(fm_required_skills_from_text "$text")" ]; then
+    { printf '%s\n' "$seq.msg" >> "$dir/.proof-pending"; } 2>/dev/null || return 1
+  fi
   tmp=$(mktemp "$dir/.staging.XXXXXX") || return 1
   {
     printf 'schema=%s\n' "$FM_TASK_INBOX_SCHEMA"
@@ -542,6 +551,7 @@ fm_task_inbox_clear_retry() {  # <state-dir> <task-id> <record-path>
 fm_task_inbox_due_action() {  # <state-dir> <task-id>
   local dir oldest base now grace max ladder rec_base count last
   dir=$(fm_task_inbox_dir "$1" "$2")
+  fm_task_inbox_reopen_unproven "$1" "$2" || true
   if ! oldest=$(fm_task_inbox_oldest_unhandled "$1" "$2"); then
     rm -f "$dir/.ring-state" "$dir/.escalated" "$dir/.busy-state" 2>/dev/null || true
     # The one retry ring exists only while config/wait-no-turns is present.
@@ -591,6 +601,53 @@ EOF
     return 0
   fi
   printf 'ring %s' "$oldest"
+}
+
+# The start-proof gate (bin/fm-required-skill-lib.sh owns the proof forms).
+# A record whose body carries the required-skills machine line is indexed in
+# .proof-pending when written. Its acknowledgement counts only once the task's
+# status file holds a start proof for every listed skill - carrying the
+# request's corr= token when the record is a marked secondmate request - so an
+# acknowledged but unproven record is moved back out of handled/ and the
+# ordinary ladder above keeps ringing it and then escalates. Proven or vanished
+# entries leave the index. Runs under .seq.lock so it never races an enqueue.
+fm_task_inbox_reopen_unproven() {  # <state-dir> <task-id>
+  local state=$1 task=$2 dir idx lock name body list corr keep='' status=0
+  dir=$(fm_task_inbox_dir "$state" "$task")
+  idx="$dir/.proof-pending"
+  [ -s "$idx" ] || return 0
+  # Lazy and undirected: only a task with a start-proof record pays for it.
+  # shellcheck source=/dev/null
+  declare -F fm_pending_reply_extract_corr >/dev/null ||
+    . "$_FM_TASK_INBOX_LIB_DIR/fm-pending-reply-lib.sh"
+  lock="$dir/.seq.lock"
+  fm_task_inbox_lock_acquire "$lock" || return 1
+  while IFS= read -r name; do
+    fm_task_inbox_seq_of "$name" >/dev/null || continue
+    if [ -f "$dir/$name" ]; then
+      keep="$keep$name"$'\n'
+      continue
+    fi
+    [ -f "$dir/handled/$name" ] || continue
+    body=$(fm_task_inbox_body "$dir/handled/$name") || { keep="$keep$name"$'\n'; continue; }
+    list=$(fm_required_skills_from_text "$body")
+    corr=$(fm_pending_reply_extract_corr "$body")
+    [ -n "$(fm_required_skills_missing "$state/$task.status" start "$list" "$corr")" ] || continue
+    mv "$dir/handled/$name" "$dir/$name" || status=1
+    keep="$keep$name"$'\n'
+  done < "$idx"
+  if [ -n "$keep" ]; then
+    { printf '%s' "$keep" > "$idx.tmp" && mv "$idx.tmp" "$idx"; } 2>/dev/null || status=1
+  else
+    rm -f "$idx" 2>/dev/null || status=1
+  fi
+  fm_lock_release "$lock"
+  return "$status"
+}
+
+# 0 when <record-path> is still waiting on its start proof (see above).
+fm_task_inbox_awaits_proof() {  # <record-path>
+  grep -qxF -- "${1##*/}" "${1%/*}/.proof-pending" 2>/dev/null
 }
 
 # Advance the ladder after a delivery attempt. A failed ring or a composer-

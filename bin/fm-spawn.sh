@@ -3,8 +3,13 @@
 # secondmate in its isolated firstmate home.
 # Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--loadout <role>] [--workflows <on|off>] [--herdr-resume-lock-wait]
 #        fm-spawn.sh <task-id> --relaunch [--harness <name>] [--model <name>] [--effort <level>] [--resume-session <prompt-file>]
-#        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--loadout <role>] [--workflows <on|off>] [--herdr-resume-lock-wait]
+#        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--required-skill <name>]... [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--loadout <role>] [--workflows <on|off>] [--herdr-resume-lock-wait]
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
+#   --required-skill <name> (repeatable, ship and scout spawns, also on the ship
+#   usage line) must name exactly the skills the brief's "Required skills:" line
+#   records, or the spawn refuses; it writes required_skills= to the task's
+#   meta, which a relaunch keeps, and leaves the start-proof record in the
+#   task's steering inbox (bin/fm-required-skill-lib.sh owns the gates).
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
 #   spawn and refused on --scout and --secondmate spawns. Firstmate resolves both
 #   per task at intake (AGENTS.md section 7); data/projects.md holds the captain's
@@ -1062,6 +1067,8 @@ fm_backlog_directory_present "$STATE" "state directory" || {
 . "$SCRIPT_DIR/fm-pr-lib.sh"
 # shellcheck source=bin/fm-dod-lib.sh
 . "$SCRIPT_DIR/fm-dod-lib.sh"
+# shellcheck source=bin/fm-task-inbox-lib.sh
+. "$SCRIPT_DIR/fm-task-inbox-lib.sh"
 # shellcheck source=bin/fm-role-lib.sh
 . "$SCRIPT_DIR/fm-role-lib.sh"
 # shellcheck source=bin/fm-trace-context-lib.sh
@@ -1104,6 +1111,7 @@ BASE_BRANCH=
 BASE_BRANCH_SET=0
 UPSTREAM_CONSENT=
 UPSTREAM_CONSENT_SET=0
+REQUIRED_SKILL_ARGS=()
 LOADOUT_ROLE=
 LOADOUT_SET=0
 WORKFLOWS=
@@ -1164,6 +1172,7 @@ for a in "$@"; do
       UPSTREAM_CONSENT=$a
       UPSTREAM_CONSENT_SET=1
       ;;
+    required-skill) REQUIRED_SKILL_ARGS+=("$a") ;;
     loadout)
       LOADOUT_ROLE=$a
       LOADOUT_SET=1
@@ -1241,6 +1250,8 @@ for a in "$@"; do
     BASE_BRANCH_SET=1
     ;;
   --upstream-consent) want_value="upstream-consent" ;;
+  --required-skill) want_value="required-skill" ;;
+  --required-skill=*) REQUIRED_SKILL_ARGS+=("${a#--required-skill=}") ;;
   --upstream-consent=*)
     UPSTREAM_CONSENT=${a#--upstream-consent=}
     UPSTREAM_CONSENT_SET=1
@@ -1295,6 +1306,17 @@ done
   echo "error: --upstream-consent requires a non-empty <host>/<owner>/<repo> value" >&2
   exit 1
 }
+REQUIRED_SKILLS=$(fm_required_skills_join ${REQUIRED_SKILL_ARGS[@]+"${REQUIRED_SKILL_ARGS[@]}"}) || exit 1
+if [ -n "$REQUIRED_SKILLS" ]; then
+  [ "$RELAUNCH" -eq 0 ] || {
+    echo "error: --relaunch keeps the task's recorded required skills; --required-skill cannot change them" >&2
+    exit 1
+  }
+  [ "$KIND" != secondmate ] || {
+    echo "error: --required-skill applies only to ship and scout spawns; a secondmate's required skills travel on each marked request (bin/fm-send.sh --required-skill)" >&2
+    exit 1
+  }
+fi
 [ "$TRACEPARENT_SET" -eq 0 ] || [ -n "$TRACEPARENT_ARG" ] || {
   echo "error: --traceparent requires a non-empty value" >&2
   exit 1
@@ -2197,6 +2219,9 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   fi
   rc=0
   shared_args=()
+  for required_skill in ${REQUIRED_SKILL_ARGS[@]+"${REQUIRED_SKILL_ARGS[@]}"}; do
+    shared_args+=(--required-skill "$required_skill")
+  done
   [ -z "$HARNESS_ARG" ] || shared_args+=(--harness "$HARNESS_ARG")
   [ -z "$MODEL" ] || shared_args+=(--model "$MODEL")
   [ -z "$EFFORT" ] || shared_args+=(--effort "$EFFORT")
@@ -4557,6 +4582,17 @@ delivery_rigor_rank() { # <mode> -> 3 (most rigor) .. 1 (least); 0 = not a task 
 }
 
 # Brief/spawn delivery agreement, checked before any endpoint exists.
+# A brief's "Required skills:" machine line and the --required-skill flags must
+# name the same skills (bin/fm-required-skill-lib.sh), so the worker's proof
+# instructions and the task record's gate cannot drift apart. A relaunch keeps
+# the recorded list.
+if [ "$RELAUNCH" -eq 0 ] && { [ "$KIND" = ship ] || [ "$KIND" = scout ]; }; then
+  BRIEF_REQUIRED_SKILLS=$(fm_required_skills_from_text "$(cat "${SOURCE_BRIEF:-$BRIEF}")")
+  if [ "$BRIEF_REQUIRED_SKILLS" != "$REQUIRED_SKILLS" ]; then
+    echo "error: required-skill mismatch for $ID: ${SOURCE_BRIEF:-$BRIEF} records ${BRIEF_REQUIRED_SKILLS:-none} but this spawn passed ${REQUIRED_SKILLS:-none}; pass one --required-skill per skill the brief names, in its order, or re-scaffold the brief with the same --required-skill flags" >&2
+    exit 1
+  fi
+fi
 # fm-brief.sh records a ship brief's mode as a fixed "Delivery contract: mode=<mode>"
 # line, with " forge=<forge>" appended on a bound forge. A spawn that disagrees
 # would launch a worker whose instructions and whose recorded task delivery
@@ -5947,7 +5983,7 @@ kimi_wait_for_delivery() {
 }
 
 kimi_spawn_fail() { # <detail>
-  printf '%s\n' "$(status_stamp_line "failed: $1")" >>"$STATE/$ID.status"
+  printf '%s\n' "$(status_stamp_line "failed [source=firstmate]: $1")" >>"$STATE/$ID.status"
   echo "error: $1; inspect window $T" >&2
 }
 
@@ -6015,7 +6051,7 @@ rovo_wait_for_delivery() {
 }
 
 rovo_spawn_fail() { # <detail>
-  printf '%s\n' "$(status_stamp_line "failed: $1")" >>"$STATE/$ID.status"
+  printf '%s\n' "$(status_stamp_line "failed [source=firstmate]: $1")" >>"$STATE/$ID.status"
   echo "error: $1; inspect window $T" >&2
   rovo_endpoint_cleanup
 }
@@ -6132,7 +6168,7 @@ agy_wait_for_working() {
 }
 
 agy_spawn_fail() {  # <detail>
-  printf '%s\n' "$(status_stamp_line "failed: $1")" >>"$STATE/$ID.status"
+  printf '%s\n' "$(status_stamp_line "failed [source=firstmate]: $1")" >>"$STATE/$ID.status"
   echo "error: $1; inspect window $T" >&2
   rovo_endpoint_cleanup
 }
@@ -6233,7 +6269,7 @@ spawn_record_polytoken_session() {
 }
 
 polytoken_spawn_fail() {  # <detail>
-  printf '%s\n' "$(status_stamp_line "failed: $1")" >>"$STATE/$ID.status"
+  printf '%s\n' "$(status_stamp_line "failed [source=firstmate]: $1")" >>"$STATE/$ID.status"
   echo "error: $1; inspect window $T" >&2
   # A failed gate leaves nothing running or recorded: reap this launch's exact
   # session daemon (scoped to this task's sessions root), retire the per-task
@@ -7137,7 +7173,7 @@ export default function (pi: any) {
       const loaded = new Set(pi.getAllTools().map((tool: any) => tool.name));
       const unmatched = excludeTools.filter((name) => !loaded.has(name));
       if (unmatched.length) {
-        appendFileSync(statusFile, "note [at=" + Math.floor(Date.now() / 1000) + "]: warning: " + excludeFile
+        appendFileSync(statusFile, "note [source=firstmate] [at=" + Math.floor(Date.now() / 1000) + "]: warning: " + excludeFile
           + " unmatched exclusion entries (unverified: absent from the worker's loaded-tool registry; excluded tools or unavailable servers cannot be verified): "
           + unmatched.join(", ") + "\n");
       }
@@ -7509,6 +7545,8 @@ preserve_relaunch_meta() {
   echo "tasktmp=$TASK_TMP"
   [ -z "$BASE_BRANCH" ] || echo "base_branch=$BASE_BRANCH"
   [ -z "$UPSTREAM_CONSENT" ] || echo "upstream_consent=$UPSTREAM_CONSENT"
+  # Read by bin/fm-required-skill-lib.sh's done gate; preserved on relaunch.
+  [ -z "$REQUIRED_SKILLS" ] || echo "required_skills=$REQUIRED_SKILLS"
   # Read by bin/fm-dod-lib.sh's ready-report gate; absent on every other forge.
   [ "$EXTERNAL_REVIEW" = 0 ] || echo "forge=external"
   [ -z "$EXTERNAL_BACKUP_REMOTE" ] || echo "backup_remote=$EXTERNAL_BACKUP_REMOTE"
@@ -8367,7 +8405,7 @@ if [ "$HARNESS" = rovo ]; then
 fi
 if [ "$HARNESS" = opencode ] && [ "$OPENCODE_MAJOR" -ge 2 ]; then
   if ! opencode2_wait_for_delivery; then
-    printf '%s\n' "$(status_stamp_line "failed: opencode $OPENCODE_VERSION did not start the brief turn in window $T")" >>"$STATE/$ID.status"
+    printf '%s\n' "$(status_stamp_line "failed [source=firstmate]: opencode $OPENCODE_VERSION did not start the brief turn in window $T")" >>"$STATE/$ID.status"
     echo "error: opencode $OPENCODE_VERSION did not start the brief turn; inspect window $T" >&2
     rovo_endpoint_cleanup
     exit 1
@@ -8500,4 +8538,12 @@ cswap:*)
   fm_account_rules_report "$DATA" "$ID" "${WORKER_ACCOUNT_FROM:-none}" "$WORKER_ACCOUNT_DECLARED"
   ;;
 esac
+# The start-proof record: the watcher's inbox ladder rings it, and keeps
+# ringing after an acknowledgement, until every required skill's start proof
+# is in the status file (bin/fm-task-inbox-lib.sh's proof gate).
+if [ -n "$REQUIRED_SKILLS" ] && ! fm_task_inbox_write "$STATE" "$ID" "$(fm_required_skills_section "$REQUIRED_SKILLS" task "$HARNESS")
+This is the start-proof record: append each start proof above to your status file, then acknowledge this record." >/dev/null; then
+  echo "error: $ID launched, but its required-skill start-proof record could not be written to $STATE/$ID.inbox, so nothing will ring for the start proof; the done gate still holds - write the record with bin/fm-send.sh $ID or inspect the inbox directory" >&2
+  exit 1
+fi
 echo "spawned $ID harness=$HARNESS kind=$KIND$SPAWN_DELIVERY window=$META_WINDOW worktree=$WT$SPAWN_ACCOUNT"

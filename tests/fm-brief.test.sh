@@ -1776,4 +1776,28 @@ test_workflow_skill_openers() {
   if FM_HOME="$home" bash "$ROOT/bin/fm-brief.sh" empty repo --scout --skill '' >/dev/null 2>&1; then fail "empty workflow skill accepted"; fi
   pass "workflow: literal harness skill precedes each carrier, provenance survives, unsupported forms refuse"
 }
+# A skill the request named renders its machine line and both proof forms into
+# ship and scout briefs; a charter refuses it, and no flag adds nothing.
+test_required_skill_section() {
+  local home="$TMP_ROOT/required-skill-home" brief out rc
+  mkdir -p "$home/data"
+  FM_HOME="$home" bash "$ROOT/bin/fm-brief.sh" rs-ship repo --mode direct-PR \
+    --required-skill /poteto-mode --required-skill tdd --required-skill tdd >/dev/null || fail "ship brief with required skills failed"
+  brief="$home/data/rs-ship/brief.md"
+  assert_grep 'Required skills: poteto-mode,tdd' "$brief" "ship brief lacks the deduplicated machine line"
+  assert_grep 'working [at=<epoch>]: skill-start <name> path=' "$brief" "ship brief lacks the start-proof form"
+  assert_grep 'working [at=<epoch>]: skill-shaped <name>: ' "$brief" "ship brief lacks the shaped-proof form"
+  FM_HOME="$home" bash "$ROOT/bin/fm-brief.sh" rs-scout repo --scout --required-skill tdd >/dev/null || fail "scout brief with a required skill failed"
+  assert_grep 'Required skills: tdd' "$home/data/rs-scout/brief.md" "scout brief lacks the machine line"
+  out=$(FM_HOME="$home" bash "$ROOT/bin/fm-brief.sh" rs-sm --secondmate --no-projects --required-skill tdd 2>&1); rc=$?
+  [ "$rc" -ne 0 ] || fail "a secondmate charter accepted --required-skill"
+  assert_contains "$out" "travel on each marked request" "charter refusal did not point at the request path"
+  out=$(FM_HOME="$home" bash "$ROOT/bin/fm-brief.sh" rs-bad repo --scout --required-skill 'not a name' 2>&1); rc=$?
+  [ "$rc" -ne 0 ] || fail "a malformed required skill was accepted"
+  FM_HOME="$home" bash "$ROOT/bin/fm-brief.sh" rs-none repo --mode direct-PR >/dev/null || fail "plain ship brief failed"
+  if grep -q 'Required skills' "$home/data/rs-none/brief.md"; then fail "a brief with no required skill grew the section"; fi
+  pass "required skills: ship and scout briefs render the machine line and proof forms; charters refuse"
+}
+
 test_workflow_skill_openers
+test_required_skill_section

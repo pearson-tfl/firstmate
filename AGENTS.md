@@ -208,6 +208,7 @@ Treat file or subsystem overlap as a risk signal rather than an automatic reason
 A project's declared machine capacity (`config/project-capacity`) still bounds that dispatch: a spawn beyond it exits 75 without launching, and its item stays queued rather than blocked.
 Serialize only for a true semantic dependency, shared mutable external state, incompatible concurrent migration, or another concrete condition that makes independent progress or reconciliation unsafe; same-file editing alone is insufficient, and genuine blockers remain durable.
 Write the task-specific brief under section 11 before spawning.
+Record every skill a request names, such as `/poteto-mode` or `/tdd`, as a required skill on its brief and spawn or its marked secondmate request, and carry the list unchanged through any relay; `bin/fm-required-skill-lib.sh` owns how and the proof gates.
 Fill the task subsections according to section 11.
 
 ### Dispatch and supervision handoff

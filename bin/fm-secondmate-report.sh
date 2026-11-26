@@ -10,7 +10,11 @@
 # correlate - no open request, several open requests (pass the one you are
 # answering), or an explicit corr already answered on the parent channel (a
 # stale reply). Correlation is by token, never by task or time. A hand-written
-# status line still resolves the parent record when it carries the token.
+# status line can also resolve the parent record under the same reply gates.
+# A done answering a request that named required skills is subject to the
+# proof gate owned by bin/fm-required-skill-lib.sh; the refusal names the exact
+# helper call. Proof lines go through this
+# helper as `working` notes and never answer the request.
 #
 # The write destination is mechanical: this helper never takes a status path.
 # It resolves the parent channel through fm_parent_channel_destination
@@ -103,6 +107,16 @@ if [ ! -d "$(dirname "$DESTINATION")" ]; then
 fi
 
 CORR=$(fm_pending_reply_mate_reply_corr "$HOME_DIR" "$STATE_DIR" "$DESTINATION" "$CORR") || exit 1
+# A request that named required skills takes no done until the channel says
+# how each shaped the work (bin/fm-required-skill-lib.sh owns the gate).
+if [ "$VERB" = "done" ]; then
+  INBOX=$(fm_pending_reply_mate_inbox_dir "$HOME_DIR" "$STATE_DIR") || INBOX=
+  if ! REASON=$(fm_required_skills_done_refusal "$DESTINATION" \
+    "$(fm_pending_reply_mate_required_skills "$INBOX" "$CORR")" "$CORR"); then
+    echo "error: $REASON" >&2
+    exit 1
+  fi
+fi
 token=$(fm_pending_reply_corr_token "$CORR")
 if [ "$DOC_MODE" = 1 ]; then
   DOC_PATH=$1

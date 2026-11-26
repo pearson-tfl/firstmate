@@ -9,8 +9,8 @@
 # first failure".
 set -u
 
-# shellcheck source=tests/lib.sh
-. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=tests/fixtures.sh
+. "$(dirname "${BASH_SOURCE[0]}")/fixtures.sh"
 
 SPAWN="$ROOT/bin/fm-spawn.sh"
 TMP_ROOT=$(fm_test_tmproot fm-spawn-batch)
@@ -145,8 +145,39 @@ test_scout_batch_refuses_delivery_flags() {
   pass "scout batch refuses ship delivery flags instead of ignoring them"
 }
 
+test_batch_forwards_required_skills() {
+  local kind dir home project pane fakebin id out status
+  local flags
+  for kind in ship scout; do
+    dir="$TMP_ROOT/required-$kind"
+    home="$dir/home"
+    project="$dir/project"
+    pane="$dir/pane"
+    fm_test_spawn_home "$home" codex
+    fm_git_worktree "$project" "$pane" "required-$kind"
+    fakebin=$(fm_test_make_spawn_fakebin "$dir" codex)
+    for id in skill-a skill-b; do
+      fm_test_spawn_brief "$home" "$id"
+      printf '\nRequired skills: tdd\n' >> "$home/data/$id/brief.md"
+    done
+    flags=(--scout)
+    [ "$kind" != ship ] || flags=(--mode no-mistakes --yolo off)
+    out=$(fm_test_run_spawn "$home" "$pane" "$fakebin" \
+      "skill-a=$project" "skill-b=$project" "${flags[@]}" --required-skill tdd)
+    status=$?
+    expect_code 0 "$status" "$kind batch rejected required-skill briefs: $out"
+    for id in skill-a skill-b; do
+      assert_contains "$out" "spawned $id harness=codex" "$kind batch did not launch $id"
+      assert_equals tdd "$(sed -n 's/^required_skills=//p' "$home/state/$id.meta")" "$kind batch lost $id's required skill"
+    done
+  done
+  pass "ship and scout batches forward required skills to both children"
+}
+
 test_batch_dispatches_every_pair
 test_batch_mode_boundaries
 test_batch_requires_the_shared_delivery_contract
 test_scout_batch_refuses_delivery_flags
 test_projects_path_scoping
+
+test_batch_forwards_required_skills
