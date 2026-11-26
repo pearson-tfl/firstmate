@@ -15,7 +15,8 @@
 #
 # A task is a merge-stall candidate when all of these hold:
 #   - its meta records kind=ship, yolo=on (the home merges its green PRs
-#     without asking), and a pr= URL or an open PR on its recorded branch;
+#     without asking), mode other than local-only, and a pr= URL or an open
+#     PR on its recorded branch;
 #   - no matching merge-notification marker or forge result confirms it ended;
 #     once the recorded PR is merged or closed, its identity is retired and the
 #     task's branch is searched again, so a later PR from the same task counts;
@@ -28,6 +29,8 @@
 # A candidate's stall starts at its waiting line's [at=] time, or when first
 # seen, and is kept across scans and watcher restarts in state/.merge-stall
 # (<task> TAB <url> TAB <since> TAB <last-wake> TAB <escalated> TAB <episode>).
+# Age, reminder history, and escalation belong to that exact waiting line;
+# replacing it starts a new episode and resolves the old episode's parent key.
 #
 # Once a stall is FM_MERGE_STALL_SECS old (default 600), scan prints one line
 # for the watcher to wake the home with, directing it to merge through
@@ -35,7 +38,8 @@
 # green; that line repeats every FM_MERGE_STALL_SECS until the PR merges or
 # the worker stops waiting. On GitHub the line carries bin/fm-pr-state.sh's
 # blockers, so a red or conflicting PR says why it cannot land; a PR that
-# reads merged or closed there ends the stall instead.
+# reads merged or closed there ends the stall instead, and a draft suppresses
+# reminders. Terminal-state checks precede captain-hold suppression.
 # Once a stall is FM_MERGE_STALL_ESCALATE_SECS old (default 1800, never below
 # FM_MERGE_STALL_SECS) it is escalated to the captain once per stall: a main
 # home's line tells it to tell the captain, and a secondmate home also appends
@@ -43,7 +47,8 @@
 # to its parent channel (bin/fm-parent-channel-lib.sh), which is resolved by a
 # matching `resolved` line when the stall ends. After escalation the line
 # repeats every FM_MERGE_STALL_ESCALATE_SECS instead.
-# Unregistered-PR discovery is GitHub-only; non-GitHub PRs are skipped there.
+# Unregistered-PR discovery requires a github.com push remote; unsupported or
+# unbound remotes produce uncertain-evidence diagnostics.
 # A discovered PR is accepted only when its head is the task's branch on the
 # owner/repository of the branch's push remote; any other or ambiguous match is
 # reported as uncertain evidence and never receives a merge instruction.
@@ -51,10 +56,14 @@
 # among ties; terminal PRs never consume that slot.
 #
 # Nothing here merges, comments, or changes a PR. Unreadable task evidence
-# retains that task's previous episodes and adds a diagnostic to the wake.
-# External reads have FM_MERGE_STALL_READ_TIMEOUT seconds (default 5).
+# retains that task's previous episodes except the PR identity already retired
+# in this scan, and adds a diagnostic without stopping readable sibling tasks.
+# Activity, PR discovery, forge-state, and captain-hold reads each have
+# FM_MERGE_STALL_READ_TIMEOUT seconds (default 5). The watcher's
+# merge_stall_scan in bin/fm-watch.sh owns the task-count-scaled scan deadline.
 # Exit 0 on a completed scan, 2 on usage or settings errors, 1 on a ledger or
 # parent-channel failure. The ledger is checkpointed before parent publication.
+# Regression coverage: tests/fm-merge-stall.test.sh.
 set -u
 export LC_ALL=C
 CANCELLED=0

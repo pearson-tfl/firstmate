@@ -3205,8 +3205,9 @@ fm_capture_output_cleanup() {
 # watcher_waited: <command...> into WATCHER_CAPTURE with its exit status. The
 # command runs as a waited background process group rather than inside $(...),
 # so a stop is not held for a blocked read (watcher_stop_signals): pane reads
-# (watcher_capture) and the event wait that spans a whole POLL
-# (event_wait_or_sleep) both run here. The group is recorded like a check's, so
+# (watcher_capture), the event wait that spans a whole POLL
+# (event_wait_or_sleep), and merge-stall scans all run here.
+# The group is recorded like a check's, so
 # watcher_cleanup stops one still in flight. Its own setup failures return 2,
 # which the event wait reads as an unusable event path (sleep the budget).
 watcher_waited() {  # <command...>
