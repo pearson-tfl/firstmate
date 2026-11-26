@@ -179,9 +179,8 @@ test_section_uses_the_harness_invocation() {
   assert_contains "$out" '`$poteto-mode`, `$tdd`' "codex section did not use the codex invocation form"
   out=$(fm_required_skills_section tdd task) || fail "portable section failed"
   assert_contains "$out" '`/tdd`' "harness-free section did not use the portable form"
-  if fm_required_skills_section tdd request no-such-harness >/dev/null 2>&1; then
-    fail "an unverified harness invocation was guessed"
-  fi
+  out=$(fm_required_skills_section tdd request omp) || fail "OMP section failed"
+  assert_contains "$out" "read and follow the complete SKILL.md for /tdd" "OMP section omitted the portable load instruction"
   pass "required-skill instructions use the harness's verified invocation form"
 }
 
@@ -254,7 +253,37 @@ test_infrastructure_does_not_precede_recipient() {
   pass "infrastructure events neither invalidate nor supply recipient proofs"
 }
 
+test_remote_start_proof_gates_answers() {
+  local state corr body req inbox rec
+  state=$(new_state remote-start)
+  inbox="$state/parent-route/steering.inbox"
+  corr=$(fm_pending_reply_create "${state%/state}" "$state" sm "$(fm_required_skills_section tdd,poteto-mode request)") || fail "could not create request"
+  fm_pending_reply_mark_delivered "$state" "$corr" || fail "could not mark delivery"
+  body=$(fm_required_skills_section tdd,poteto-mode request)
+  fm_pending_reply_embed_corr "$body" "$corr" req
+  rec=$(fm_task_inbox_write "$state/parent-route" steering "$req") || fail "could not write remote inbox"
+  mkdir -p "$inbox/handled"
+  mv "$rec" "$inbox/handled/" || fail "could not acknowledge remote request"
+  printf 'working [corr=%s]: ordinary work\n' "$corr" > "$state/sm.status"
+  ! fm_pending_reply_try_resolve "$state" "$corr" || fail "ordinary work resolved parent request"
+  ! fm_pending_reply_mate_answered "$state/sm.status" "$corr" "$inbox" || fail "ordinary work counted as answered"
+  {
+    printf 'working [corr=%s]: skill-start tdd path=/s/tdd/SKILL.md route=red first\n' "$corr"
+    printf 'working [corr=%s]: ordinary work\n' "$corr"
+  } > "$state/sm.status"
+  ! fm_pending_reply_mate_answered "$state/sm.status" "$corr" "$inbox" || fail "one skill satisfied both requirements"
+  {
+    printf 'working [corr=%s]: skill-start tdd path=/s/tdd/SKILL.md route=red first\n' "$corr"
+    printf 'working [corr=%s]: skill-start poteto-mode path=/s/p/SKILL.md route=render first\n' "$corr"
+    printf 'working [corr=%s]: ordinary work\n' "$corr"
+  } > "$state/sm.status"
+  fm_pending_reply_mate_answered "$state/sm.status" "$corr" "$inbox" || fail "proven work did not count as answered"
+  fm_pending_reply_try_resolve "$state" "$corr" "$state/sm.status" || fail "proven work did not resolve parent request"
+  pass "remote answers require every initial start proof"
+}
+
 fm_test_run \
+  test_remote_start_proof_gates_answers \
   test_infrastructure_does_not_precede_recipient \
   test_helper_metadata_is_not_proof \
   test_missing_start_proof_keeps_ringing \

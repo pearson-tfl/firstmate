@@ -630,6 +630,7 @@ fm_pending_reply_line_resolves() {  # <line> <corr_id>
 fm_pending_reply_find_resolve_line() {  # <status-file> <corr_id> [required-skills]
   local status_file=$1 corr=$2 line skip_done=0
   [ -f "$status_file" ] || return 0
+  [ -z "$(fm_required_skills_missing "$status_file" start "${3:-}" "$corr")" ] || return 0
   fm_required_skills_done_refusal "$status_file" "${3:-}" "$corr" >/dev/null || skip_done=1
   while IFS= read -r line || [ -n "$line" ]; do
     [ -n "$line" ] || continue

@@ -8538,8 +8538,7 @@ esac
 # The start-proof record: the watcher's inbox ladder rings it, and keeps
 # ringing after an acknowledgement, until every required skill's start proof
 # is in the status file (bin/fm-task-inbox-lib.sh's proof gate).
-if [ -n "$REQUIRED_SKILLS" ] && ! fm_task_inbox_write "$STATE" "$ID" "$(fm_required_skills_section "$REQUIRED_SKILLS" task "$HARNESS" 2>/dev/null ||
-  fm_required_skills_section "$REQUIRED_SKILLS" task)
+if [ -n "$REQUIRED_SKILLS" ] && ! fm_task_inbox_write "$STATE" "$ID" "$(fm_required_skills_section "$REQUIRED_SKILLS" task "$HARNESS")
 This is the start-proof record: append each start proof above to your status file, then acknowledge this record." >/dev/null; then
   echo "error: $ID launched, but its required-skill start-proof record could not be written to $STATE/$ID.inbox, so nothing will ring for the start proof; the done gate still holds - write the record with bin/fm-send.sh $ID or inspect the inbox directory" >&2
   exit 1

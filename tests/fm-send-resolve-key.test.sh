@@ -455,6 +455,21 @@ test_multiple_keys_close_after_fold_is_self_announced() {
   pass "fm-send --resolve-key: one answer's closes after a drain fold never wake this home"
 }
 
+test_omp_required_skill_request() {
+  local dir fb log home got rc
+  dir="$TMP_ROOT/omp-skill"; mkdir -p "$dir"
+  fb=$(make_stubs "$dir"); log="$dir/send.log"
+  home=$(setup_home omp-skill)
+  fm_write_secondmate_meta "$home/state/domain.meta" "$home" "sess:fm-domain" alpha omp
+  run_send "$fb" "$home" "$log" fm-domain --required-skill poteto-mode "Hill-climb the wiki"; rc=$?
+  expect_code 0 "$rc" "OMP required-skill request should succeed"
+  got=$(bash -c '. "$1"; fm_task_inbox_body "$2"' _ "$ROOT/bin/fm-task-inbox-lib.sh" "$home/state/domain.inbox/001.msg")
+  assert_contains "$got" "Required skills: poteto-mode" "request lost its requirement"
+  assert_contains "$got" "read and follow the complete SKILL.md for /poteto-mode" "request lost portable loading instruction"
+  assert_contains "$got" "corr=" "request lost correlation"
+  pass "OMP accepts marked required-skill requests with portable loading instructions"
+}
+
 test_local_secondmate_answer_marked_and_closed() {
   local dir fb log home rc got out closing
   dir="$TMP_ROOT/sm"; mkdir -p "$dir"
@@ -916,6 +931,7 @@ test_failed_ring_still_closes_at_enqueue
 test_failed_enqueue_does_not_close
 test_multiple_keys_close_together
 test_multiple_keys_close_after_fold_is_self_announced
+test_omp_required_skill_request
 test_local_secondmate_answer_marked_and_closed
 test_remote_secondmate_answer_closes_locally
 test_remote_reply_corr_tag_does_not_block_resolve_key

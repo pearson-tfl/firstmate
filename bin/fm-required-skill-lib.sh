@@ -209,18 +209,14 @@ fm_required_skills_task_done_refusal() {  # <state> <id> <meta>
 # Worker-facing section carrying the machine line and both proof forms, for a
 # brief, the start-proof inbox record, or a marked request. <mode> is "task"
 # (plain status lines) or "request" (secondmate helper lines; the helper fills
-# in the request's correlation). With <harness>, each skill's literal
-# invocation in that harness's form (fm_skill_invocation) is listed, and an
-# unverified form fails rather than guessing (bin/fm-spawn.sh then falls back
-# to the portable form); without one the brief keeps the portable /name form,
-# as fm-brief.sh does for its opener.
+# in the request's correlation).
 fm_required_skills_section() {  # <comma-list> <task|request> [harness]
   local list=$1 mode=$2 harness=${3:-} via='' ring start shaped name inv invocations=''
   [ -n "$list" ] || return 0
   local IFS=,
   for name in $list; do
     if [ -n "$harness" ]; then
-      inv=$(fm_skill_invocation "$harness" "$name") || return 1
+      inv=$(fm_skill_invocation "$harness" "$name" 2>/dev/null) || inv="read and follow the complete SKILL.md for /$name"
     else
       inv="/$name"
     fi
