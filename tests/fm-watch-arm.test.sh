@@ -1572,8 +1572,10 @@ WATCH_PID=
 start_owned_watcher() {  # <home> <state> <fakebin> <arm-out>
   local home=$1 state=$2 fakebin=$3 armout=$4 i
   PATH="$fakebin:$PATH" FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
-    FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
-    FM_ARM_CONFIRM_TIMEOUT=2 "$WATCH_ARM" > "$armout" 2>&1 &
+    FM_POLL=1 FM_SIGNAL_GRACE=0 \
+    FM_CHECK_INTERVAL="${FM_TEST_CHECK_INTERVAL:-999999}" \
+    FM_SECONDMATE_LIVENESS_SECS="${FM_TEST_SECONDMATE_LIVENESS_SECS:-60}" \
+    FM_HEARTBEAT=999999 FM_ARM_CONFIRM_TIMEOUT=2 "$WATCH_ARM" > "$armout" 2>&1 &
   ARM_PID=$!
   i=0
   while [ "$i" -lt 100 ]; do
@@ -1591,6 +1593,15 @@ wait_for_pid_gone() {  # <pid> <polls>
   local pid=$1 limit=$2 i=0
   while [ "$i" -lt "$limit" ]; do
     is_live_non_zombie "$pid" || return 0
+    sleep 0.1
+    i=$((i + 1))
+  done
+  return 1
+}
+wait_for_path() {  # <path> <polls>
+  local path=$1 limit=$2 i=0
+  while [ "$i" -lt "$limit" ]; do
+    [ -e "$path" ] && return 0
     sleep 0.1
     i=$((i + 1))
   done
@@ -1625,6 +1636,112 @@ test_watcher_exits_when_its_state_directory_is_removed() {
     || fail "a state-gone exit was reported as an actionable wake: $(cat "$armout")"
   rm -rf "$dir/removed-state"
   pass "watch-arm: a watcher exits when its state directory is removed"
+}
+# A state directory removed mid-cycle right as the check sweep allocates its
+# capture file must still exit with the logged state-gone reason and never
+# turn the failed mktemp into a silent exit 1 or a bogus merge-stall wake -
+# even when a detached helper immediately recreates an empty directory at the
+# same path.
+test_watcher_exits_when_state_is_removed_during_check_sweep() {  # <absent|recreated>
+  local mode=$1 dir home state fakebin armout trigger real_mktemp expected_reason
+  dir=$(make_case "state-removed-mid-sweep-$mode")
+  home="$dir/home"
+  state="$dir/state"
+  fakebin="$dir/fakebin"
+  armout="$dir/arm.out"
+  trigger="$dir/trigger"
+  real_mktemp=$(command -v mktemp)
+  mkdir -p "$home/data"
+  # Keep the detached home-summary refresh quiet so the next mktemp in $state
+  # belongs to the check sweep's own capture setup.
+  : > "$state/home-summary.json"
+  cat > "$fakebin/mktemp" <<EOF
+#!/usr/bin/env bash
+if [ -e "$trigger" ]; then
+  case "\${1:-}" in
+    "$state"/*)
+      rm -f "$trigger"
+      mv "$state" "$dir/removed-state" || exit 1
+      "$real_mktemp" "\$@"
+      rc=\$?
+      if [ "$mode" = recreated ]; then
+        mkdir -p "$state"
+      fi
+      exit "\$rc"
+      ;;
+  esac
+fi
+exec "$real_mktemp" "\$@"
+EOF
+  chmod +x "$fakebin/mktemp"
+  FM_TEST_CHECK_INTERVAL=1 start_owned_watcher "$home" "$state" "$fakebin" "$armout"
+  wait_for_path "$state/.last-check" 100 \
+    || { kill -TERM "$WATCH_PID" 2>/dev/null; fail "initial check sweep did not finish: $(cat "$armout")"; }
+  : > "$trigger"
+  wait_for_pid_gone "$WATCH_PID" 400 \
+    || { kill -TERM "$WATCH_PID" 2>/dev/null; fail "watcher pid $WATCH_PID outlived its mid-sweep removed state directory ($mode)"; }
+  wait_for_exit "$ARM_PID" 100 >/dev/null 2>&1 || true
+  [ -d "$dir/removed-state" ] \
+    || fail "mid-sweep state removal trigger never fired ($mode): $(cat "$armout")"
+  if [ "$mode" = recreated ]; then
+    expected_reason='watcher: exiting - state directory was torn down'
+    [ ! -e "$state/.wake-queue" ] \
+      || fail "recreated state directory received a bogus wake row: $(cat "$state/.wake-queue")"
+  else
+    expected_reason='watcher: exiting - state directory no longer exists'
+  fi
+  grep -qF "$expected_reason" "$armout" \
+    || fail "watcher did not log the state-gone exit reason ($mode): $(cat "$armout")"
+  ! grep -q '^signal:\|^check:\|^stale:\|^heartbeat' "$armout" \
+    || fail "a mid-sweep state-gone exit was reported as an actionable wake ($mode): $(cat "$armout")"
+  rm -rf "$dir/removed-state"
+  pass "watch-arm: a watcher logs state-gone and emits no wake when state disappears mid-sweep ($mode)"
+}
+
+# A state directory removed mid-cycle right as a per-poll tick writes its
+# cadence marker must also log the state-gone exit reason rather than exiting
+# with a misleading tick failure.
+test_watcher_exits_when_state_is_removed_during_liveness_tick() {
+  local dir home state fakebin armout trigger real_touch
+  dir=$(make_case state-removed-mid-liveness-tick)
+  home="$dir/home"
+  state="$dir/state"
+  fakebin="$dir/fakebin"
+  armout="$dir/arm.out"
+  trigger="$dir/trigger"
+  real_touch=$(command -v touch)
+  mkdir -p "$home/data"
+  : > "$state/home-summary.json"
+  cat > "$fakebin/touch" <<EOF
+#!/usr/bin/env bash
+if [ -e "$trigger" ]; then
+  case "\${1:-}" in
+    "$state/.secondmate-liveness-tick")
+      rm -f "$trigger"
+      mv "$state" "$dir/removed-state" || exit 1
+      ;;
+  esac
+fi
+exec "$real_touch" "\$@"
+EOF
+  chmod +x "$fakebin/touch"
+  FM_TEST_SECONDMATE_LIVENESS_SECS=1 start_owned_watcher "$home" "$state" "$fakebin" "$armout"
+  wait_for_path "$state/.secondmate-liveness-tick" 100 \
+    || { kill -TERM "$WATCH_PID" 2>/dev/null; fail "initial liveness tick did not finish: $(cat "$armout")"; }
+  : > "$trigger"
+  wait_for_pid_gone "$WATCH_PID" 400 \
+    || { kill -TERM "$WATCH_PID" 2>/dev/null; fail "watcher pid $WATCH_PID outlived its mid-tick removed state directory"; }
+  wait_for_exit "$ARM_PID" 100 >/dev/null 2>&1 || true
+  [ -d "$dir/removed-state" ] \
+    || fail "mid-tick state removal trigger never fired: $(cat "$armout")"
+  grep -qF 'watcher: exiting - state directory no longer exists' "$armout" \
+    || fail "watcher did not log the state-gone exit reason on liveness tick: $(cat "$armout")"
+  ! grep -qF 'secondmate liveness check failed' "$armout" \
+    || fail "mid-tick state removal was misreported as a liveness check failure: $(cat "$armout")"
+  ! grep -q '^signal:\|^check:\|^stale:\|^heartbeat' "$armout" \
+    || fail "a mid-tick state-gone exit was reported as an actionable wake: $(cat "$armout")"
+  rm -rf "$dir/removed-state"
+  pass "watch-arm: a watcher logs state-gone when state disappears during a mid-cycle liveness tick"
 }
 
 # The same for a deleted home whose state directory still exists elsewhere: the
@@ -1970,6 +2087,9 @@ test_attached_arm_reports_the_delivered_wake_after_drain
 test_arm_refuses_an_unusable_launch_confirm_window
 test_arm_refuses_a_disposable_validation_checkout
 test_watcher_exits_when_its_state_directory_is_removed
+test_watcher_exits_when_state_is_removed_during_check_sweep absent
+test_watcher_exits_when_state_is_removed_during_check_sweep recreated
+test_watcher_exits_when_state_is_removed_during_liveness_tick
 test_watcher_exits_when_its_home_is_removed
 test_attached_arm_exits_when_its_root_is_removed
 test_reaper_stops_a_tracked_watcher
