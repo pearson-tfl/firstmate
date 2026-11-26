@@ -11,9 +11,9 @@
 # answering), or an explicit corr already answered on the parent channel (a
 # stale reply). Correlation is by token, never by task or time. A hand-written
 # status line still resolves the parent record when it carries the token.
-# A done answering a request that named required skills is refused until the
-# parent channel holds each skill's shaped proof; the refusal names the exact
-# helper call (bin/fm-required-skill-lib.sh). Proof lines go through this
+# A done answering a request that named required skills is subject to the
+# proof gate owned by bin/fm-required-skill-lib.sh; the refusal names the exact
+# helper call. Proof lines go through this
 # helper as `working` notes and never answer the request.
 #
 # The write destination is mechanical: this helper never takes a status path.

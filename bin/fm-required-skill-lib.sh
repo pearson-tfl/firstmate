@@ -22,6 +22,13 @@
 # A marked secondmate request's proof must carry that request's [corr=<id>]
 # token before the colon, which bin/fm-secondmate-report.sh writes itself; a
 # proof line never answers the request (fm_pending_reply_line_resolves).
+# Start proofs must form the initial block of recipient status lines, one
+# per required skill, before any other recipient report; for a marked request,
+# ordering is scoped to its correlation. Infrastructure events tagged
+# [source=firstmate] before the colon neither prove a skill nor break that
+# initial block. Helper metadata is stripped before checking that the routing
+# decision and shaped explanation contain non-whitespace text.
+# tests/fm-required-skill.test.sh covers these proof and ordering boundaries.
 #
 # Enforcement:
 #   start  bin/fm-task-inbox-lib.sh reopens an acknowledged inbox record that
