@@ -45,8 +45,8 @@
 # pr_head= in no-mistakes mode, or a recorded merge
 # (state/<id>.pr-poll-merge-notified). When a PR-based task's recorded worktree
 # path does not exist on this host (for example a lane whose worktree lives on
-# another host), the gate instead verifies that the forge holds a valid head
-# commit for the canonical PR/MR URL; missing remote heads, empty or non-absent
+# another host), the gate instead verifies that GitHub (including configured GHE hosts) holds
+# a valid head commit for the canonical PR URL; missing remote heads, empty or non-absent
 # local paths, local-only, forge=external, Gerrit, no-forge, and meta-locked
 # callers still refuse. A push to Gerrit's refs/for/ leaves no
 # ref a fetch can see, so a done naming a Gerrit change skips the remote-tracking
@@ -908,7 +908,7 @@ fm_dod_recorded_pr_on_forge() {  # <state> <id> <meta> <mode> <url>
         "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER"; } )
 }
 
-# Print the PR/MR head commit read live from the forge for a canonical URL, or
+# Print the GitHub PR head commit (including configured GHE hosts), or
 # return non-zero when the forge cannot confirm one. Bounded so a hung CLI
 # never wedges the caller, and executed in a subshell so caller FM_PR_* globals
 # and GH_HOST stay untouched while non-exported FM_HOME / FM_CONFIG_OVERRIDE
@@ -919,35 +919,14 @@ fm_dod_pr_forge_head() {  # <url>
   lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fm-pr-lib.sh"
   head=$(
     fm_pr_url_parse "$url" || exit 1
-    case "$FM_PR_PROVIDER" in
-      github|gitlab|forgejo) ;;
-      *) exit 1 ;;
-    esac
+    [ "$FM_PR_PROVIDER" = github ] || exit 1
     # shellcheck disable=SC2016  # The inner script expands after bash -c receives positional args.
     fm_run_timed 10 bash -c '
       . "$1"
-      case "$2" in
-        github)
-          command -v gh >/dev/null 2>&1 || exit 1
-          fm_pr_github_host_export "$4"
-          gh pr view "$3" --json headRefOid -q .headRefOid 2>/dev/null
-          ;;
-        gitlab)
-          command -v glab >/dev/null 2>&1 || exit 1
-          command -v jq >/dev/null 2>&1 || exit 1
-          json=$(GITLAB_HOST="$4" glab mr view "$6" -R "https://$4/$5" -F json 2>/dev/null) || exit 1
-          [ -n "$json" ] || exit 1
-          printf "%s" "$json" | jq -er '\''if type == "object" and (.sha | type) == "string" then .sha else error("missing sha") end'\'' 2>/dev/null
-          ;;
-        forgejo)
-          fm_pr_forgejo_read_record "$4" "$5" "$6" || exit 1
-          printf "%s\n" "$FM_PR_RECORD_HEAD"
-          ;;
-        *)
-          exit 1
-          ;;
-      esac
-    ' _ "$lib" "$FM_PR_PROVIDER" "$FM_PR_URL" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER" 2>/dev/null
+      command -v gh >/dev/null 2>&1 || exit 1
+      fm_pr_github_host_export "$3"
+      gh pr view "$2" --json headRefOid -q .headRefOid 2>/dev/null
+    ' _ "$lib" "$FM_PR_URL" "$FM_PR_HOST" 2>/dev/null
   ) || return 1
   fm_pr_head_valid "$head" || return 1
   printf '%s\n' "$head"
@@ -1031,8 +1010,8 @@ fm_dod_named_head_reachable_outside_worktree() {  # <worktree> <project> <mode> 
 # 0 when <line> is not a ship done: to gate, when the task's meta records
 # forge=external and fm_dod_accept_external_review_done accepts it, when it
 # names the task's recorded PR whose head the forge holds, when the recorded
-# worktree path is absent on this host and the forge confirms a valid PR/MR
-# head commit for the named URL, when it names a Gerrit change whose current
+# worktree path is absent on this host and GitHub (including configured GHE
+# hosts) confirms a valid PR head commit for the named URL, when it names a Gerrit change whose current
 # patch set carries the worker copy's HEAD tree, or otherwise when its named
 # head - the worker copy's HEAD - is reachable outside that disposable copy. A
 # published-for-review report that names no Gerrit change is refused.

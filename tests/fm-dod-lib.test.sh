@@ -623,30 +623,12 @@ case " $* " in
   *) exit 1 ;;
 esac
 SH
-  cat > "$fakebin/glab" <<'SH'
-#!/usr/bin/env bash
-if [ "${FM_TEST_GLAB_FAIL:-0}" != 0 ]; then exit 1; fi
-printf '%s\n' "${FM_TEST_GLAB_JSON:?}"
-SH
-  cat > "$fakebin/tea" <<'SH'
-#!/usr/bin/env bash
-case "${1:-} ${2:-}" in
-  "login list")
-    printf '[{"name":"forgejo-test","url":"https://git.example"}]\n'
-    ;;
-  "api "*)
-    if [ "${FM_TEST_TEA_FAIL:-0}" != 0 ]; then exit 1; fi
-    printf '%s\n' "${FM_TEST_TEA_JSON:?}"
-    ;;
-  *) exit 1 ;;
-esac
-SH
   cat > "$fakebin/gerrit-axi" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${FM_TEST_GERRIT_LOG:?}"
 exit 0
 SH
-  chmod +x "$fakebin/gh" "$fakebin/glab" "$fakebin/tea" "$fakebin/gerrit-axi"
+  chmod +x "$fakebin/gh" "$fakebin/gerrit-axi"
 
   meta="$state/anw-851-land.meta"
   fm_write_meta "$meta" kind=ship mode=no-mistakes "worktree=$missing_wt" "project=$dir/project"
@@ -687,32 +669,6 @@ SH
   assert_contains "$reason" "named head cannot be verified: worktree missing" \
     "unregistered host refusal lost the worktree-missing reason"
   [ ! -s "$gh_log" ] || fail "unregistered host still invoked gh"
-
-  # GitLab and Forgejo verify their remote head commits the same way.
-  PATH="$fakebin:$PATH" FM_TEST_GLAB_JSON="{\"state\":\"opened\",\"sha\":\"$head\"}" \
-    accept_done ship direct-PR "$missing_wt" "$dir/project" \
-      "done: PR https://gitlab.example/group/sub/repo/-/merge_requests/12" "$state" anw-851-land "$meta" \
-    || fail "GitLab done with absent local worktree and valid remote sha was refused"
-  rc=0
-  PATH="$fakebin:$PATH" FM_TEST_GLAB_FAIL=1 FM_TEST_GLAB_JSON="{\"state\":\"opened\",\"sha\":\"$head\"}" \
-    accept_done ship direct-PR "$missing_wt" "$dir/project" \
-      "done: PR https://gitlab.example/group/sub/repo/-/merge_requests/12" "$state" anw-851-land "$meta" >/dev/null || rc=$?
-  [ "$rc" -eq 1 ] || fail "GitLab done was accepted when glab failed"
-  rc=0
-  PATH="$fakebin:$PATH" FM_TEST_GLAB_JSON='{"state":"opened","sha":null}' \
-    accept_done ship direct-PR "$missing_wt" "$dir/project" \
-      "done: PR https://gitlab.example/group/sub/repo/-/merge_requests/12" "$state" anw-851-land "$meta" >/dev/null || rc=$?
-  [ "$rc" -eq 1 ] || fail "GitLab done was accepted with null sha"
-
-  PATH="$fakebin:$PATH" FM_TEST_TEA_JSON="{\"state\":\"open\",\"merged\":false,\"head\":{\"sha\":\"$head\"}}" \
-    accept_done ship direct-PR "$missing_wt" "$dir/project" \
-      "done: PR https://git.example/o/r/pulls/8" "$state" anw-851-land "$meta" \
-    || fail "Forgejo done with absent local worktree and valid remote head was refused"
-  rc=0
-  PATH="$fakebin:$PATH" FM_TEST_TEA_JSON='{"message":"not found"}' \
-    accept_done ship direct-PR "$missing_wt" "$dir/project" \
-      "done: PR https://git.example/o/r/pulls/8" "$state" anw-851-land "$meta" >/dev/null || rc=$?
-  [ "$rc" -eq 1 ] || fail "Forgejo done was accepted on an HTTP error body"
 
   # Missing or invalid remote head on GitHub must stay refused.
   rc=0
