@@ -299,7 +299,7 @@ test_helper_preserves_parenthesized_payload() {
   assert_equals '' "$(fm_required_skills_missing "$state/sm.status" start tdd "$corr")" "parenthesized route was rejected"
   FM_HOME="$mate" "$REPORT" working "skill-shaped tdd: (red test drove implementation)" || fail "could not report shaped proof"
   assert_equals '' "$(fm_required_skills_missing "$state/sm.status" shaped tdd "$corr")" "parenthesized explanation was rejected"
-  FM_HOME="$mate" "$REPORT" done "implementation complete" || fail "parenthesized proofs did not satisfy completion"
+  FM_HOME="$mate" "$REPORT" "done" "implementation complete" || fail "parenthesized proofs did not satisfy completion"
   fm_pending_reply_try_resolve "$state" "$corr" || fail "parent rejected parenthesized proofs"
   pass "helper proofs preserve parenthesized routes and explanations"
 }
