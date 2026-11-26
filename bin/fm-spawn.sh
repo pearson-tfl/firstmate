@@ -7532,8 +7532,8 @@ preserve_relaunch_meta() {
     echo "account_root=${WORKER_ACCOUNT_ROOT:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
     [ -z "$CLAUDE_DRAFT_DIR" ] || echo "claude_draft_dir=$CLAUDE_DRAFT_DIR"
   fi
-  # The per-secondmate omp profile pin, only when one applies, so every other
-  # task record stays byte-identical.
+  # The selected omp profile, whether pinned for a secondmate or selected
+  # for a worker by fm_omp_profile_select; omit it when no profile applies.
   [ -z "$OMP_PROFILE_PIN" ] || echo "omp_profile=$OMP_PROFILE_PIN"
   # The exact agent session id, only on an adapter that can be pinned to one,
   # so every other task record stays byte-identical.
