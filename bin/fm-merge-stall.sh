@@ -23,8 +23,8 @@
 #   - its worker waits on the home: the declared wait is a `paused:` line, or
 #     the newest status event is `done:`, with current activity reconciled
 #     by bin/fm-crew-state.sh before either declaration is accepted; a worker
-#     whose worktree or backend target is gone is skipped quietly rather than
-#     reported as unreadable activity;
+#     reported gone (crew_state_is_worker_gone in bin/fm-classify-lib.sh) is
+#     skipped quietly rather than reported as unreadable activity;
 #   - bin/fm-captain-hold.sh open confirms no captain call is open on it;
 #     a held answer suppresses merge reminders; an unreadable answer wakes the home
 #     to repair the authorization read without instructing it to merge.
@@ -359,10 +359,7 @@ for meta in "$STATE"/*.meta; do
     'state: paused '*|'state: done '*) ;;
     'state: working '*|'state: parked '*|'state: blocked '*|'state: failed '*) continue ;;
     *)
-      case "$activity" in
-        *$'\n'*) ;;
-        'state: unknown · source: none · worktree gone (torn down?)'|'state: unknown · source: none · backend target gone: '[![:space:]]*) continue ;;
-      esac
+      crew_state_is_worker_gone "$activity" && continue
       task_uncertain "current activity unreadable for $id: $activity"
       continue
       ;;

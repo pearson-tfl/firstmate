@@ -2616,6 +2616,29 @@ crew_is_paused() {  # <id>
   [ "$(crew_absorb_class "$1")" = paused ]
 }
 
+# The one spelling of bin/fm-crew-state.sh's canonical separator and positive
+# worker-gone detail strings, paired with the shared classifier predicate below.
+# bin/fm-crew-state.sh mints these values; consumers (currently
+# bin/fm-merge-stall.sh) call crew_state_is_worker_gone rather than duplicating
+# the prose or delimiter.
+FM_CREW_STATE_SEP=' · '
+FM_CREW_STATE_WORKTREE_GONE='worktree gone (torn down?)'
+FM_CREW_STATE_BACKEND_TARGET_GONE_PREFIX='backend target gone: '
+
+# 0 if <line> is a single-line bin/fm-crew-state.sh verdict proving the worker
+# itself is gone (missing/torn-down worktree or positively gone backend target).
+# Multi-line output, unreachable backends, missing target metadata, empty
+# targets, and every other unknown verdict return 1 so callers keep treating
+# them as unreadable activity.
+crew_state_is_worker_gone() {  # <crew-state-line>
+  case "${1:-}" in
+    *$'\n'*) return 1 ;;
+    "state: unknown${FM_CREW_STATE_SEP}source: none${FM_CREW_STATE_SEP}${FM_CREW_STATE_WORKTREE_GONE}") return 0 ;;
+    "state: unknown${FM_CREW_STATE_SEP}source: none${FM_CREW_STATE_SEP}${FM_CREW_STATE_BACKEND_TARGET_GONE_PREFIX}"[![:space:]]*) return 0 ;;
+  esac
+  return 1
+}
+
 # The one spelling of the verdict component that says a parked gate's answer is
 # owed by a HUMAN. bin/fm-crew-state.sh mints it (nm_gate_awaits_human_decision
 # owns the derivation: the findings table's `action` column, read by position);

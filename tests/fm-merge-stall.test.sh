@@ -981,15 +981,22 @@ test_retired_pr_is_not_restored_by_uncertainty() {
   pass "confirmed terminal PRs resolve both parent routes despite activity, discovery, or replacement forge uncertainty"
 }
 
+write_noop_no_mistakes() {
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$WORLD/fakebin/no-mistakes"
+  chmod +x "$WORLD/fakebin/no-mistakes"
+}
+
+real_crew_state() {  # <home> <task>
+  PATH="$WORLD/fakebin:$PATH" FM_HOME="$1" FM_STATE_OVERRIDE="$1/state" FM_CREW_STATE_NO_FORGE=1 \
+    bash "$ROOT/bin/fm-crew-state.sh" "$2"
+}
+
 test_gone_worker_is_skipped_quietly() {
   local state out route channel key before after unknown_line idx=0
   # 1. Parked yolo ship lane whose worktree and window are gone (real crew-state):
   # no wake, no evidence-unavailable diagnostic, no forge read, and siblings still wake cleanly.
   make_world gone-worktree
-  cat > "$WORLD/fakebin/no-mistakes" <<'SH'
-#!/usr/bin/env bash
-exit 0
-SH
+  write_noop_no_mistakes
   cat > "$WORLD/fakebin/tmux" <<'SH'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -997,10 +1004,10 @@ case "${1:-}" in
   *) exit 1 ;;
 esac
 SH
-  chmod +x "$WORLD/fakebin/no-mistakes" "$WORLD/fakebin/tmux"
+  chmod +x "$WORLD/fakebin/tmux"
   write_task "$MAIN" gone-wt on "paused [at=$T0]: waiting on home"
   printf 'worktree=%s/missing-wt\nbranch=fm/gone-wt\nwindow=fm:fm-gone-wt\nbackend=tmux\n' "$WORLD" >> "$MAIN/state/gone-wt.meta"
-  state=$(PATH="$WORLD/fakebin:$PATH" FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" FM_CREW_STATE_NO_FORGE=1 bash "$ROOT/bin/fm-crew-state.sh" gone-wt)
+  state=$(real_crew_state "$MAIN" gone-wt)
   [ "$state" = 'state: unknown · source: none · worktree gone (torn down?)' ] || fail "unexpected worktree-gone crew-state output: $state"
   out=$(FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" scan "$MAIN" $((T0 + 3600))) || fail "gone-worktree scan failed"
   [ -z "$out" ] || fail "a gone worktree produced a wake or diagnostic: $out"
@@ -1023,7 +1030,7 @@ SH
   chmod +x "$WORLD/fakebin/tmux"
   printf 'g1\n' > "$MAIN/state/live.busy-gen"
   printf 'v1 gen=g1 seq=1 state=idle source=claude-hook event=Stop ts=%s\n' "$T0" > "$MAIN/state/live.busy-state"
-  state=$(PATH="$WORLD/fakebin:$PATH" FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" FM_CREW_STATE_NO_FORGE=1 bash "$ROOT/bin/fm-crew-state.sh" live)
+  state=$(real_crew_state "$MAIN" live)
   [ "$state" = 'state: paused · source: status-log · waiting on home' ] || fail "unexpected live-sibling crew-state output: $state"
   out=$(FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" scan "$MAIN" $((T0 + 600))) || fail "gone-with-sibling scan failed"
   case "$out" in
@@ -1053,10 +1060,7 @@ SH
   make_world gone-backend-target
   mkdir -p "$MAIN/wt"
   git -C "$MAIN/wt" init -q
-  cat > "$WORLD/fakebin/no-mistakes" <<'SH'
-#!/usr/bin/env bash
-exit 0
-SH
+  write_noop_no_mistakes
   cat > "$WORLD/fakebin/tmux" <<'SH'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -1074,14 +1078,14 @@ case "${1:-} ${2:-}" in
   *) exit 0 ;;
 esac
 SH
-  chmod +x "$WORLD/fakebin/no-mistakes" "$WORLD/fakebin/tmux" "$WORLD/fakebin/herdr"
+  chmod +x "$WORLD/fakebin/tmux" "$WORLD/fakebin/herdr"
   write_task "$MAIN" gone-win on "paused [at=$T0]: waiting on home"
   printf 'worktree=%s/wt\nbranch=fm/gone-win\nwindow=fm:fm-gone-win\nbackend=tmux\n' "$MAIN" >> "$MAIN/state/gone-win.meta"
-  state=$(PATH="$WORLD/fakebin:$PATH" FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" FM_CREW_STATE_NO_FORGE=1 bash "$ROOT/bin/fm-crew-state.sh" gone-win)
+  state=$(real_crew_state "$MAIN" gone-win)
   [ "$state" = 'state: unknown · source: none · backend target gone: fm:fm-gone-win' ] || fail "unexpected missing-window crew-state output: $state"
   write_task "$MAIN" gone-husk on "done [at=$T0]: PR $URL checks green"
   printf 'worktree=%s/wt\nbranch=fm/gone-husk\nwindow=default:w1:p2\nbackend=herdr\nharness=claude\n' "$MAIN" >> "$MAIN/state/gone-husk.meta"
-  state=$(PATH="$WORLD/fakebin:$PATH" FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" FM_CREW_STATE_NO_FORGE=1 bash "$ROOT/bin/fm-crew-state.sh" gone-husk)
+  state=$(real_crew_state "$MAIN" gone-husk)
   [ "$state" = 'state: unknown · source: none · backend target gone: default:w1:p2 (agent gone, pane shell remains)' ] || fail "unexpected husk-pane crew-state output: $state"
   out=$(FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" scan "$MAIN" $((T0 + 3600))) || fail "gone-backend-target scan failed"
   [ -z "$out" ] || fail "gone backend targets produced a wake or diagnostic: $out"
@@ -1097,7 +1101,7 @@ exit 1
 SH
   chmod +x "$WORLD/fakebin/tmux"
   rm -f "$MAIN/state/gone-husk.meta" "$MAIN/state/gone-husk.status" "$MAIN/state/gone-husk.pr-poll"
-  state=$(PATH="$WORLD/fakebin:$PATH" FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" FM_CREW_STATE_NO_FORGE=1 bash "$ROOT/bin/fm-crew-state.sh" gone-win)
+  state=$(real_crew_state "$MAIN" gone-win)
   case "$state" in 'state: unknown · source: none · backend unreachable ('*) ;; *) fail "unexpected unreachable-backend crew-state output: $state" ;; esac
   out=$(FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" scan "$MAIN" $((T0 + 3600))) || fail "unreachable-backend scan failed"
   case "$out" in *'evidence unavailable: current activity unreadable for gone-win: state: unknown · source: none · backend unreachable ('*) ;; *) fail "unreachable backend stopped raising diagnostic: $out" ;; esac
@@ -1106,14 +1110,10 @@ SH
   make_world no-backend-target
   mkdir -p "$MAIN/wt"
   git -C "$MAIN/wt" init -q
-  cat > "$WORLD/fakebin/no-mistakes" <<'SH'
-#!/usr/bin/env bash
-exit 0
-SH
-  chmod +x "$WORLD/fakebin/no-mistakes"
+  write_noop_no_mistakes
   write_task "$MAIN" no-target on "paused [at=$T0]: waiting on home"
   printf 'worktree=%s/wt\nbranch=fm/no-target\nbackend=tmux\n' "$MAIN" >> "$MAIN/state/no-target.meta"
-  state=$(PATH="$WORLD/fakebin:$PATH" FM_HOME="$MAIN" FM_STATE_OVERRIDE="$MAIN/state" FM_CREW_STATE_NO_FORGE=1 bash "$ROOT/bin/fm-crew-state.sh" no-target)
+  state=$(real_crew_state "$MAIN" no-target)
   [ "$state" = 'state: unknown · source: none · no backend target recorded' ] || fail "unexpected no-target crew-state output: $state"
   out=$(FM_TEST_CREW_STATE_BIN="$ROOT/bin/fm-crew-state.sh" scan "$MAIN" $((T0 + 3600))) || fail "no-target scan failed"
   case "$out" in *'evidence unavailable: current activity unreadable for no-target: state: unknown · source: none · no backend target recorded'*) ;; *) fail "missing backend target stopped raising diagnostic: $out" ;; esac
@@ -1123,6 +1123,7 @@ SH
     'state: unknown · source: run-step · run inventory unavailable; run id: 01RUN' \
     'state: unknown · source: pane · harness state unavailable (unknown no-record)' \
     'state: unknown · source: none · no current-state source available' \
+    'state: unknown · source: none · worktree gone (torn downX)' \
     'state: unknown · source: none · backend target gone: ' \
     $'state: unknown · source: none · worktree gone (torn down?)\nunexpected stderr' \
     $'state: unknown · source: none · backend target gone: fm:fm-t\nunexpected stderr'; do
