@@ -1,0 +1,12 @@
+SCENARIO: missing local copy and worker
+state: unknown · source: none · worktree gone (torn down?)
+BASELINE: evidence unavailable: current activity unreadable for lane: state: unknown · source: none · worktree gone (torn down?)
+TARGET sweep 1: output=''; ledger-bytes=0
+TARGET sweep 2: output=''; ledger-bytes=0
+SCENARIO: existing local copy but missing target on real private tmux server
+state: unknown · source: none · backend target gone: fm-lab-stall:removed-worker
+TARGET: output=''; ledger-bytes=0
+SCENARIO: incomplete target metadata still warns and preserves prior stall
+state: unknown · source: none · no backend target recorded
+TARGET: evidence unavailable: current activity unreadable for lane: state: unknown · source: none · no backend target recorded
+Prior stall preserved; all live assertions passed. Private tmux server and disposable home removed on exit.
