@@ -1248,7 +1248,7 @@ test_required_skill_gates_run_step_done() {
   local out; out=$(run_crew_state "$d" feat-skill)
   assert_contains "$out" "state: blocked" "an unshaped required skill did not block the done"
   assert_contains "$out" "required skill tdd has no record of how it shaped the work" "the block did not name the skill"
-  printf 'working [at=1]: skill-shaped tdd: one red test per seam before each change\n' > "$d/state/feat-skill.status"
+  printf 'working [at=1]: skill-start tdd path=/s/tdd/SKILL.md route=red test first\nworking [at=2]: skill-shaped tdd: one red test per seam before each change\n' > "$d/state/feat-skill.status"
   out=$(run_crew_state "$d" feat-skill)
   assert_contains "$out" "state: done" "the shaped proof did not restore the done"
   pass "a required skill without its shaped proof blocks a run-step done"

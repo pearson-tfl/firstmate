@@ -30,8 +30,9 @@
 #   done   bin/fm-dod-lib.sh's fm_dod_accept_ship_done and bin/fm-crew-state.sh
 #          refuse a ship or scout done, bin/fm-pr-check.sh refuses to register
 #          its PR, bin/fm-secondmate-report.sh refuses a done reply, and the
-#          parent pending-reply record stays open, while any shaped proof is
-#          missing. A task or request with no required skill is unchanged.
+#          parent pending-reply record stays open, while any start or shaped
+#          proof is missing. A task or request with no required skill is
+#          unchanged.
 #
 # Sourced by bin/fm-dod-lib.sh, bin/fm-task-inbox-lib.sh,
 # bin/fm-pending-reply-lib.sh, bin/fm-brief.sh, bin/fm-spawn.sh,
@@ -43,22 +44,20 @@ if ! declare -F status_line_note >/dev/null; then
   # shellcheck source=bin/fm-classify-lib.sh
   . "$_FM_REQUIRED_SKILL_LIB_DIR/fm-classify-lib.sh"
 fi
+# Skill names and harness invocations come from the skill-opener owner.
+# shellcheck source=bin/fm-skill-opener.sh
+. "$_FM_REQUIRED_SKILL_LIB_DIR/fm-skill-opener.sh"
 
 FM_REQUIRED_SKILLS_LINE='Required skills: '
 
-# 0 when <name> is a bare skill name (the fm-skill-opener.sh alphabet).
-fm_required_skill_name_ok() {  # <name>
-  case "$1" in ''|*[!a-zA-Z0-9_-]*) return 1 ;; esac
-}
-
 # Normalize repeated --required-skill values into one comma list, refusing a
-# malformed name and dropping duplicates. Prints the list (empty for none).
+# malformed name and dropping duplicates. A value may be bare or carry any
+# invocation form fm_skill_name reads. Prints the list (empty for none).
 fm_required_skills_join() {  # <name>...
-  local out='' n
-  for n in "$@"; do
-    n=${n#/}
-    fm_required_skill_name_ok "$n" || {
-      printf 'error: --required-skill needs a bare skill name such as poteto-mode or /tdd (got %s)\n' "'$1'" >&2
+  local out='' v n
+  for v in "$@"; do
+    n=$(fm_skill_name "$v") || n=$(fm_skill_name "/$v") || {
+      printf 'error: --required-skill needs a skill name such as poteto-mode or /tdd (got %s)\n' "'$v'" >&2
       return 1
     }
     case ",$out," in *",$n,"*) continue ;; esac
@@ -149,21 +148,27 @@ fm_required_skill_proof_form() {  # <start|shaped> <name> [helper [corr]]
   fi
 }
 
-# The done gate. Prints a one-line refusal naming every missing skill and the
-# exact form that satisfies it, and returns 1; returns 0 when <list> is empty
-# or every skill has a shaped proof.
+# The done gate. Prints a one-line refusal naming every skill missing its
+# start or shaped proof and the exact form that satisfies each, and returns 1;
+# returns 0 when <list> is empty or every skill has both proofs.
 fm_required_skills_done_refusal() {  # <status-file> <comma-list> [corr]
-  local status=$1 list=$2 corr=${3:-} missing name forms=''
+  local status=$1 list=$2 corr=${3:-} kind missing name what='' forms=''
   [ -n "$list" ] || return 0
-  missing=$(fm_required_skills_missing "$status" shaped "$list" "$corr")
-  [ -n "$missing" ] || return 0
-  while IFS= read -r name; do
-    forms="${forms}${forms:+; }\`$(fm_required_skill_proof_form shaped "$name" ${corr:+helper "$corr"})\`"
-  done <<EOF
+  for kind in start shaped; do
+    missing=$(fm_required_skills_missing "$status" "$kind" "$list" "$corr")
+    [ -n "$missing" ] || continue
+    case "$kind" in
+      start) what="${what}${what:+; }required skill $(printf '%s' "$missing" | paste -sd, -) has no start proof" ;;
+      shaped) what="${what}${what:+; }required skill $(printf '%s' "$missing" | paste -sd, -) has no record of how it shaped the work" ;;
+    esac
+    while IFS= read -r name; do
+      forms="${forms}${forms:+; }\`$(fm_required_skill_proof_form "$kind" "$name" ${corr:+helper "$corr"})\`"
+    done <<EOF
 $missing
 EOF
-  printf 'done refused: required skill %s has no record of how it shaped the work; append %s, then report done again\n' \
-    "$(printf '%s' "$missing" | paste -sd, -)" "$forms"
+  done
+  [ -n "$what" ] || return 0
+  printf 'done refused: %s; append %s, then report done again\n' "$what" "$forms"
   return 1
 }
 
@@ -175,12 +180,26 @@ fm_required_skills_task_done_refusal() {  # <state> <id> <meta>
 }
 
 # Worker-facing section carrying the machine line and both proof forms, for a
-# brief, the start-proof inbox record, or a marked request. <corr-mode> is
-# "task" (plain status lines) or "request" (secondmate helper lines; the
-# helper fills in the request's correlation).
-fm_required_skills_section() {  # <comma-list> <task|request>
-  local list=$1 mode=$2 via='' ring start shaped
+# brief, the start-proof inbox record, or a marked request. <mode> is "task"
+# (plain status lines) or "request" (secondmate helper lines; the helper fills
+# in the request's correlation). With <harness>, each skill's literal
+# invocation in that harness's form (fm_skill_invocation) is listed, and an
+# unverified form fails rather than guessing (bin/fm-spawn.sh then falls back
+# to the portable form); without one the brief keeps the portable /name form,
+# as fm-brief.sh does for its opener.
+fm_required_skills_section() {  # <comma-list> <task|request> [harness]
+  local list=$1 mode=$2 harness=${3:-} via='' ring start shaped name inv invocations=''
   [ -n "$list" ] || return 0
+  local IFS=,
+  for name in $list; do
+    if [ -n "$harness" ]; then
+      inv=$(fm_skill_invocation "$harness" "$name") || return 1
+    else
+      inv="/$name"
+    fi
+    invocations="${invocations}${invocations:+, }\`$inv\`"
+  done
+  unset IFS
   ring='Firstmate leaves a start-proof record in your steering inbox and keeps ringing it until every start proof is present, even after you acknowledge it.'
   if [ "$mode" = request ]; then
     via=helper
@@ -192,7 +211,7 @@ fm_required_skills_section() {  # <comma-list> <task|request>
 # Required skills
 $FM_REQUIRED_SKILLS_LINE$list
 The request named these skills, so each one must shape this work, and firstmate checks the record mechanically.
-1. Before any other status line, load each skill through the skill tool or read its complete SKILL.md, then report one start proof per skill: \`$start\`
+1. Before any other status line, load each skill ($invocations) through the skill tool or read its complete SKILL.md, then report one start proof per skill: \`$start\`
    $ring
 2. Before reporting done, report one line per skill saying how it shaped the work: \`$shaped\`
    A done without one is refused, naming the missing skill.

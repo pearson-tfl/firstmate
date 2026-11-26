@@ -101,7 +101,7 @@ test_secondmate_done_refused_then_accepted() {
   fm_pending_reply_embed_corr "$body" "$corr" req
   fm_task_inbox_write "$state" sm "$req" >/dev/null || fail "could not deliver the request"
 
-  out=$(FM_HOME="$mate" "$REPORT" done "wiki rebuilt" 2>&1); rc=$?
+  out=$(FM_HOME="$mate" "$REPORT" "done" "wiki rebuilt" 2>&1); rc=$?
   [ "$rc" -ne 0 ] || fail "a done without a shaped proof was accepted"
   assert_contains "$out" "required skill poteto-mode has no record of how it shaped the work" "refusal did not name the skill"
   assert_contains "$out" "bin/fm-secondmate-report.sh working $corr \"skill-shaped poteto-mode: <how the skill shaped the work>\"" \
@@ -117,7 +117,7 @@ test_secondmate_done_refused_then_accepted() {
     || fail "the shaped proof could not be written"
   # The proof also validates the earlier hand-written done, so the request now
   # reads as answered and a follow-up names its corr explicitly.
-  FM_HOME="$mate" "$REPORT" done "$corr" "wiki rebuilt" || fail "a done after the shaped proof was refused"
+  FM_HOME="$mate" "$REPORT" "done" "$corr" "wiki rebuilt" || fail "a done after the shaped proof was refused"
   fm_pending_reply_try_resolve "$state" "$corr" || fail "the proven done did not resolve the parent record"
   pass "a secondmate done is refused until the shaped proof exists, then accepted"
 }
@@ -128,18 +128,42 @@ test_worker_done_refused_then_accepted() {
   state=$(new_state worker-done)
   meta="$state/sc.meta"
   fm_write_meta "$meta" kind=scout required_skills=tdd,poteto-mode
-  printf 'working [at=1]: skill-shaped tdd: one red test per seam before code\n' > "$state/sc.status"
+  {
+    printf 'working [at=1]: skill-start tdd path=/s/tdd/SKILL.md route=red test first\n'
+    printf 'working [at=1]: skill-shaped tdd: one red test per seam before code\n'
+  } > "$state/sc.status"
   if out=$(fm_dod_accept_ship_done scout '' '' '' 'done: report written' "$state" sc "$meta"); then
-    fail "a scout done missing a shaped proof was accepted"
+    fail "a scout done missing proofs was accepted"
   fi
-  assert_contains "$out" "required skill poteto-mode has no record" "refusal did not name the missing skill"
+  assert_contains "$out" "required skill poteto-mode has no start proof" "refusal did not name the missing start proof"
+  assert_contains "$out" "required skill poteto-mode has no record of how it shaped the work" "refusal did not name the missing shaped proof"
   assert_not_contains "$out" "skill tdd" "refusal named a proven skill"
   assert_contains "$out" "working [at=<epoch>]: skill-shaped poteto-mode: <how the skill shaped the work>" \
     "refusal did not give the exact satisfying form"
   printf 'working [at=2]: skill-shaped poteto-mode: rendered each page before keeping it\n' >> "$state/sc.status"
+  if out=$(fm_dod_accept_ship_done scout '' '' '' 'done: report written' "$state" sc "$meta"); then
+    fail "a scout done with no start proof was accepted"
+  fi
+  assert_contains "$out" "working [at=<epoch>]: skill-start poteto-mode path=" "start refusal did not give the exact form"
+  printf 'working [at=3]: skill-start poteto-mode path=/s/p/SKILL.md route=hill-climb\n' >> "$state/sc.status"
   fm_dod_accept_ship_done scout '' '' '' 'done: report written' "$state" sc "$meta" \
     || fail "a scout done with every shaped proof was refused"
   pass "a worker done is refused until every required skill is shaped, then accepted"
+}
+
+# The request names each skill in the recipient harness's own invocation form
+# (fm-skill-opener.sh), and an unverified harness form is refused.
+# shellcheck disable=SC2016 # The expected invocations are literal text.
+test_section_uses_the_harness_invocation() {
+  local out
+  out=$(fm_required_skills_section poteto-mode,tdd request codex) || fail "codex section failed"
+  assert_contains "$out" '`$poteto-mode`, `$tdd`' "codex section did not use the codex invocation form"
+  out=$(fm_required_skills_section tdd task) || fail "portable section failed"
+  assert_contains "$out" '`/tdd`' "harness-free section did not use the portable form"
+  if fm_required_skills_section tdd request no-such-harness >/dev/null 2>&1; then
+    fail "an unverified harness invocation was guessed"
+  fi
+  pass "required-skill instructions use the harness's verified invocation form"
 }
 
 # No required skill: records, acknowledgements, and dones behave as before.
@@ -164,7 +188,7 @@ test_no_required_skill_unchanged() {
   fm_pending_reply_mark_delivered "$parent/state" "$corr" || fail "could not mark delivery"
   fm_pending_reply_embed_corr "audit it" "$corr" req
   fm_task_inbox_write "$parent/state" sm "$req" >/dev/null || fail "could not deliver the request"
-  FM_HOME="$mate" "$REPORT" done "audit clean" || fail "a plain done reply was refused"
+  FM_HOME="$mate" "$REPORT" "done" "audit clean" || fail "a plain done reply was refused"
   fm_pending_reply_try_resolve "$parent/state" "$corr" || fail "a plain done reply did not resolve"
   pass "tasks and requests with no required skill behave exactly as before"
 }
@@ -174,4 +198,5 @@ fm_test_run \
   test_request_start_proof_needs_its_corr \
   test_secondmate_done_refused_then_accepted \
   test_worker_done_refused_then_accepted \
+  test_section_uses_the_harness_invocation \
   test_no_required_skill_unchanged

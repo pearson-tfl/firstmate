@@ -868,7 +868,8 @@ else
     MESSAGE=${MESSAGE%x}
   fi
   if [ -n "$REQUIRED_SKILLS" ] && [ -n "${MESSAGE//[[:space:]]/}" ]; then
-    MESSAGE="$MESSAGE"$'\n\n'"$(fm_required_skills_section "$REQUIRED_SKILLS" request)"
+    REQUIRED_SECTION=$(fm_required_skills_section "$REQUIRED_SKILLS" request "$TARGET_HARNESS") || exit 1
+    MESSAGE="$MESSAGE"$'\n\n'"$REQUIRED_SECTION"
   fi
   if [ -z "${MESSAGE//[[:space:]]/}" ]; then
     echo "error: a text steer requires a nonempty message; nothing was sent (an empty marked request would deliver only marker and correlation bytes and leave the parent waiting on a reply to nothing)" >&2
