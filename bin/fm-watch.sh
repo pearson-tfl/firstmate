@@ -3305,7 +3305,7 @@ watcher_waited() {  # <command...>
 }
 
 merge_stall_scan() {
-  local meta task_count=0 read_timeout=${FM_MERGE_STALL_READ_TIMEOUT:-5} value task_budget scan_budget
+  local meta task_count=0 read_timeout=${FM_MERGE_STALL_READ_TIMEOUT:-20} value task_budget scan_budget
   for value in "$CHECK_TIMEOUT" "$read_timeout"; do
     case "$value" in
       ''|0*|*[!0-9]*) printf 'fm-merge-stall: timeouts must be positive whole seconds\n'; return 2 ;;

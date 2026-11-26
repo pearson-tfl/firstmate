@@ -114,7 +114,9 @@ esac
 
 GH_STDERR=$(mktemp "${TMPDIR:-/tmp}/fm-pr-state.XXXXXX") \
   || die "could not create temporary file"
-trap 'rm -f "$GH_STDERR"' EXIT INT TERM
+trap 'rm -f -- "$GH_STDERR"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 unsettled_checks() {
   local label=$1

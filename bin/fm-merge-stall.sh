@@ -25,9 +25,10 @@
 #     by bin/fm-crew-state.sh before either declaration is accepted; a worker
 #     reported gone (crew_state_is_worker_gone in bin/fm-classify-lib.sh) is
 #     skipped quietly rather than reported as unreadable activity;
-#   - bin/fm-captain-hold.sh open confirms no captain call is open on it;
-#     a held answer suppresses merge reminders; an unreadable answer wakes the home
-#     to repair the authorization read without instructing it to merge.
+#   - bin/fm-captain-hold.sh open confirms no captain call is open on it before
+#     worker activity is read; a held answer skips worker activity and suppresses
+#     merge reminders; an unreadable answer wakes the home to repair the
+#     authorization read without instructing it to merge.
 # A candidate's stall starts at its waiting line's [at=] time, or when first
 # seen, and is kept across scans and watcher restarts in state/.merge-stall
 # (<task> TAB <url> TAB <since> TAB <last-wake> TAB <escalated> TAB <episode>).
@@ -41,7 +42,8 @@
 # the worker stops waiting. On GitHub the line carries bin/fm-pr-state.sh's
 # blockers, so a red or conflicting PR says why it cannot land; a PR that
 # reads merged or closed there ends the stall instead, and a draft suppresses
-# reminders. Terminal-state checks precede captain-hold suppression.
+# reminders. Even when a task is held, an episode already in the ledger still
+# checks terminal PR state so a merged or closed PR retires it.
 # Once a stall is FM_MERGE_STALL_ESCALATE_SECS old (default 1800, never below
 # FM_MERGE_STALL_SECS) it is escalated to the captain once per stall: a main
 # home's line tells it to tell the captain, and a secondmate home also appends
@@ -61,7 +63,7 @@
 # retains that task's previous episodes except the PR identity already retired
 # in this scan, and adds a diagnostic without stopping readable sibling tasks.
 # Activity, PR discovery, forge-state, and captain-hold reads each have
-# FM_MERGE_STALL_READ_TIMEOUT seconds (default 5). The watcher's
+# FM_MERGE_STALL_READ_TIMEOUT seconds (default 20). The watcher's
 # merge_stall_scan in bin/fm-watch.sh owns the task-count-scaled scan deadline.
 # Exit 0 on a completed scan, 2 on usage or settings errors, 1 on a ledger or
 # parent-channel failure. The ledger is checkpointed before parent publication.
@@ -106,7 +108,7 @@ esac
 [ -n "$NOW" ] || NOW=$(date +%s)
 STALL=${FM_MERGE_STALL_SECS:-600}
 ESCALATE=${FM_MERGE_STALL_ESCALATE_SECS:-1800}
-READ_TIMEOUT=${FM_MERGE_STALL_READ_TIMEOUT:-5}
+READ_TIMEOUT=${FM_MERGE_STALL_READ_TIMEOUT:-20}
 for value in "$NOW" "$STALL" "$ESCALATE" "$READ_TIMEOUT"; do
   case "$value" in ''|0*|*[!0-9]*) die "times must be positive whole seconds" ;; esac
   [ "${#value}" -le 12 ] || die "times must be positive whole seconds"
@@ -295,16 +297,7 @@ EOF
       return 0
       ;;
   esac
-  hold_rc=0
-  hold_error=$(fm_exec_timed "$READ_TIMEOUT" 1 env FM_HOME="$FM_HOME" "$CAPTAIN_HOLD_BIN" open "$id" 2>&1) || hold_rc=$?
-  scan_active
   [ "$hold_rc" -ne 0 ] || return 0
-  if [ "$hold_rc" -eq 1 ]; then
-    hold_error=
-  else
-    hold_error=$(fm_parent_channel_clean_note "$hold_error")
-    hold_error="captain-hold read failed (rc=$hold_rc)${hold_error:+: $hold_error}"
-  fi
   if [ -z "$due_last" ] || [ "$last" -lt "$due_last" ] \
     || { [ "$last" -eq "$due_last" ] && [ "$since" -lt "$due_since" ]; }; then
     due_row=$row due_since=$since due_last=$last due_line=$line
@@ -347,6 +340,31 @@ for meta in "$STATE"/*.meta; do
       [ -n "$(meta_get "$meta" branch)" ] || continue
       url=
     fi
+  fi
+  hold_rc=0
+  hold_error=$(fm_exec_timed "$READ_TIMEOUT" 1 env FM_HOME="$FM_HOME" "$CAPTAIN_HOLD_BIN" open "$id" 2>&1) || hold_rc=$?
+  scan_active
+  if [ "$hold_rc" -eq 0 ]; then
+    held_episode=$(printf '%s' "$line" | cksum | awk '{print $1}')
+    held_url=
+    while IFS=$'\t' read -r o_task o_url o_since o_last o_esc o_episode; do
+      [ "$o_task" = "$id" ] && [ -n "$o_url" ] && [ "$o_episode" = "$held_episode" ] && [ "$o_url" != "$retired_url" ] || continue
+      case "$o_since:$o_last:$o_esc" in *[!0-9:]*|:*|*::*|*:) continue ;; esac
+      held_url=$o_url
+      break
+    done <<EOF
+$old
+EOF
+    [ -n "$held_url" ] || continue
+    url=$held_url
+    consider_pr || :
+    continue
+  fi
+  if [ "$hold_rc" -eq 1 ]; then
+    hold_error=
+  else
+    hold_error=$(fm_parent_channel_clean_note "$hold_error")
+    hold_error="captain-hold read failed (rc=$hold_rc)${hold_error:+: $hold_error}"
   fi
   activity_rc=0
   activity=$(fm_exec_timed "$READ_TIMEOUT" 1 env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_CREW_STATE_NO_FORGE=1 "$CREW_STATE_BIN" "$id" 2>&1) || activity_rc=$?
