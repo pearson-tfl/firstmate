@@ -312,14 +312,14 @@
 #   auto-discovering the home's tracked .omp/extensions/ for the rest
 #   (verified, omp 18.1.11: a file named both ways loads twice, and discovery is
 #   cwd-only with no trust dialog).
-#   An omp secondmate whose model is on the antigravity-cli/ provider also gets
+#   An omp launch whose model is on the antigravity-cli/ provider also gets
 #   --system-prompt naming the tracked .omp/fm-antigravity-system-prompt.md:
 #   with omp's default system prompt, Google answers every request on that
 #   route with RESOURCE_EXHAUSTED (429), and a replacement avoids it (omp
 #   19.1.1). The flag replaces only omp's static coding-assistant block; omp
 #   still renders the skills list and the <project-context> block carrying the
-#   home's AGENTS.md. Every other omp provider and every ship or scout keeps
-#   omp's own prompt.
+#   home's AGENTS.md (a secondmate's) or the project's (a ship's or scout's).
+#   Every other omp provider keeps omp's own prompt.
 #   config/secondmate-harness may also carry an optional model and effort as extra
 #   whitespace-separated tokens ("<harness> [<model>] [<effort>]"). For a
 #   --secondmate spawn, those tokens apply only when this spawn also resolves its
@@ -604,7 +604,8 @@
 #     __PIWATCH__   absolute path to .pi/extensions/fm-primary-pi-watch.ts in a pi secondmate home
 #     __OMPBIN__   quoted concrete omp executable path resolved from PATH
 #     __OMPPROFILE__ optional ` --profile '<name>'` from the per-secondmate omp
-#                  profile pin (supplies its own leading space, empty otherwise)
+#                  profile pin, or `neon` for an antigravity-cli/ ship or scout
+#                  (supplies its own leading space, empty otherwise)
 #     __OMPEXT__   absolute path to state/<task-id>.omp-ext.ts (omp busy-state extension,
 #                  written by this script; outside the worktree so omp's cwd-only
 #                  auto-discovery cannot load it a second time; a secondmate names
@@ -612,7 +613,7 @@
 #     __OMPWORKERCFG__ absolute path to the tracked .omp/fm-worker-overlay.yml posture overlay
 #     __OMPSYSPROMPT__ optional ` --system-prompt '<path>'` naming the tracked
 #                  .omp/fm-antigravity-system-prompt.md on an antigravity-cli/
-#                  secondmate launch (header above; empty otherwise)
+#                  launch (header above; empty otherwise)
 #     __OPINPUT__   absolute path to the canonical operational-input encoder
 #     __BRIEFDOORBELL__ quoted printable doorbell naming the launch-brief record this
 #                  script published into the receiving home's operational inbox
@@ -3573,12 +3574,13 @@ if [ "$EFFORT" = ultra ]; then
 fi
 # Per-secondmate omp profile pin (header above): resolved before any endpoint,
 # worktree, or record exists, and before the catalog check that must read the
-# same profile. A ship or scout passes no mate, so it never reads a pin.
+# same profile. A ship or scout passes no mate, so it never reads a pin; its
+# profile comes from its model alone.
 OMP_PROFILE_MATE=
 [ "$KIND" != secondmate ] || OMP_PROFILE_MATE=$ID
 OMP_PROFILE_RAW=
 [ "$RAW_LAUNCH" = 0 ] || OMP_PROFILE_RAW=$ARG3
-OMP_PROFILE_PIN=$(fm_omp_profile_select "$HARNESS" "$CONFIG" "$OMP_PROFILE_MATE" "$OMP_PROFILE_RAW") || exit 1
+OMP_PROFILE_PIN=$(fm_omp_profile_select "$HARNESS" "$CONFIG" "$OMP_PROFILE_MATE" "$OMP_PROFILE_RAW" "$MODEL") || exit 1
 if [ "$HARNESS" = omp ]; then
   omp_model_validate "$OMP_BIN" "$MODEL" "$OMP_PROFILE_PIN" || exit 1
 fi
@@ -7777,7 +7779,7 @@ omp)
   [ -z "$OMP_PROFILE_PIN" ] || OMPPROFILE=" --profile $(shell_quote "$OMP_PROFILE_PIN")"
   LAUNCH=${LAUNCH//__OMPPROFILE__/$OMPPROFILE}
   OMPSYSPROMPT=
-  if [ "$KIND" = secondmate ] && [ "${MODEL#antigravity-cli/}" != "$MODEL" ]; then
+  if [ "${MODEL#antigravity-cli/}" != "$MODEL" ]; then
     OMPSYSPROMPT=" --system-prompt $(shell_quote "$FM_ROOT/.omp/fm-antigravity-system-prompt.md")"
   fi
   LAUNCH=${LAUNCH//__OMPSYSPROMPT__/$OMPSYSPROMPT}

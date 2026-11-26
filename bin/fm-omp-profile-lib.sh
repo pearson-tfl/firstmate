@@ -9,7 +9,10 @@
 # The pin is config/secondmate-accounts/<id>/omp-profile in the launching
 # (primary) home. Only a local secondmate's own omp agent reads it: ships,
 # scouts, other harnesses, and remote secondmates never do, and there is no
-# home-wide fallback file. It names an omp profile (`omp --profile <name>`,
+# home-wide fallback file. A ship or scout instead gets the fixed profile
+# `neon` when its model is on the antigravity-cli/ provider, the only omp
+# profile signed in to that provider (omp's default profile lists none of its
+# models); every other ship or scout keeps the ambient profile. It names an omp profile (`omp --profile <name>`,
 # omp's own isolated auth, sessions, settings, and caches); it is independent
 # of the worker account pin in bin/fm-worker-account-lib.sh, which pins a
 # runner's credential root rather than an omp profile.
@@ -47,16 +50,21 @@ fm_omp_profile_read() {
   ' -- "$1"
 }
 
-# fm_omp_profile_select <harness> <config-dir> <secondmate-id> [<raw-command>]
-# The whole launch-time decision. Prints nothing when no pin applies: a harness
-# other than omp, an empty secondmate id (a ship or scout), or an absent file.
-# Prints the profile name for a pinned local secondmate. On refusal prints one
-# error naming the file and returns 1. bin/fm-spawn.sh runs it before any
-# endpoint exists, and bin/fm-control.sh before a relaunch stops the live
-# agent.
+# fm_omp_profile_select <harness> <config-dir> <secondmate-id> [<raw-command>] [<model>]
+# The whole launch-time decision. Prints nothing when no profile applies: a
+# harness other than omp, a ship or scout (empty secondmate id) off the
+# antigravity-cli/ provider or on a raw command, or an absent pin file. Prints
+# `neon` for a ship or scout on antigravity-cli/, and the pinned name for a
+# pinned local secondmate. On refusal prints one error naming the file and
+# returns 1. bin/fm-spawn.sh runs it before any endpoint exists, and
+# bin/fm-control.sh before a relaunch stops the live agent.
 fm_omp_profile_select() {
-  local harness=$1 config=$2 mate=${3:-} raw=${4:-} cfg name rc
-  [ "$harness" = omp ] && [ -n "$mate" ] || return 0
+  local harness=$1 config=$2 mate=${3:-} raw=${4:-} model=${5:-} cfg name rc
+  [ "$harness" = omp ] || return 0
+  if [ -z "$mate" ]; then
+    [ -z "$raw" ] && [ "${model#antigravity-cli/}" != "$model" ] && printf 'neon\n'
+    return 0
+  fi
   cfg="$config/secondmate-accounts/$mate/omp-profile"
   name=$(fm_omp_profile_read "$cfg")
   rc=$?

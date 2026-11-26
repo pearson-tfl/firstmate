@@ -424,6 +424,48 @@ test_secondmate_antigravity_route_replaces_system_prompt() {
   pass "fm-spawn: only an antigravity-cli omp secondmate launch replaces omp's system prompt"
 }
 
+test_crew_antigravity_route_gets_neon_profile_and_system_prompt() {
+  # A ship or scout has no per-secondmate pin, so an antigravity-cli omp worker
+  # must still start in the neon profile (the only one signed in to that
+  # provider) with the replacement system prompt, or it never replies.
+  local kind rec id out status launch
+  for kind in ship scout; do
+    id=omp-neon-$kind
+    rec=$(make_spawn_case "neon-$kind" omp "$id")
+    read_case_record "$rec"
+    if [ "$kind" = scout ]; then
+      out=$(run_scout_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --harness omp --model antigravity-cli/gemini-4-neon --effort xhigh)
+    else
+      out=$(FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" fm_test_run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR" --mode no-mistakes --yolo off --harness omp --model antigravity-cli/gemini-4-neon --effort xhigh)
+    fi
+    status=$?
+    expect_code 0 "$status" "an antigravity-cli omp $kind spawn should succeed: $out"
+    launch=$(cat "$LAUNCH_LOG")
+    assert_contains "$launch" "'$FAKEBIN_DIR/omp' --profile 'neon' --config '$ROOT/.omp/fm-worker-overlay.yml' --system-prompt '$ROOT/.omp/fm-antigravity-system-prompt.md' --auto-approve" \
+      "an antigravity-cli omp $kind launch must carry the neon profile and the replacement system prompt: $launch"
+    assert_contains "$launch" "--model 'antigravity-cli/gemini-4-neon' --thinking 'xhigh'" "the $kind route lost its model or effort: $launch"
+    assert_grep "omp_profile=neon" "$HOME_DIR/state/$id.meta" "the $kind record must name the profile it launched under"
+  done
+
+  for kind in ship scout; do
+    id=omp-other-$kind
+    rec=$(make_spawn_case "other-$kind" omp "$id")
+    read_case_record "$rec"
+    if [ "$kind" = scout ]; then
+      out=$(run_scout_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --harness omp --model openai-codex/gpt-6-astra)
+    else
+      out=$(FM_FAKE_LAUNCH_LOG="$LAUNCH_LOG" fm_test_run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR" --mode no-mistakes --yolo off --harness omp --model openai-codex/gpt-6-astra)
+    fi
+    status=$?
+    expect_code 0 "$status" "another provider's omp $kind spawn should succeed: $out"
+    launch=$(cat "$LAUNCH_LOG")
+    [ -n "$launch" ] || fail "the other-provider $kind case recorded no launch, so its absence assertions would be vacuous"
+    assert_not_contains "$launch" "--profile" "another omp provider's $kind launch must keep the ambient profile: $launch"
+    assert_not_contains "$launch" "--system-prompt" "another omp provider's $kind launch must keep omp's own system prompt: $launch"
+  done
+  pass "fm-spawn: an antigravity-cli omp ship or scout launches in the neon profile with the replacement system prompt; other providers get neither"
+}
+
 test_secondmate_omp_profile_malformed_refuses() {
   # A malformed pin, including a name omp rejects as a Windows reserved device
   # name, refuses before any record or launch, naming the file.
@@ -1073,6 +1115,7 @@ test_secondmate_config_pinned_model_is_validated
 test_secondmate_omp_profile_pin
 test_secondmate_omp_profile_absent_or_foreign_adds_nothing
 test_secondmate_antigravity_route_replaces_system_prompt
+test_crew_antigravity_route_gets_neon_profile_and_system_prompt
 test_secondmate_omp_profile_malformed_refuses
 test_busy_extension_lifecycle
 test_control_composer_and_model_tables
