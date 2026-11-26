@@ -158,8 +158,15 @@ fi
 # authoritative.
 WT=$(grep '^worktree=' "$META" | tail -1 | cut -d= -f2- || true)
 PR_HEAD=
-if [ "$PROVIDER" = github ] && [ -n "$WT" ] && [ -d "$WT" ] && command -v gh >/dev/null 2>&1; then
-  if REMOTE_HEAD=$(cd "$WT" && gh pr view "$URL" --json headRefOid -q .headRefOid 2>/dev/null) \
+# Read headRefOid directly from the canonical PR URL (GH_HOST is already
+# exported above for GHE hosts). A recorded worktree on another host is absent
+# locally ([ ! -e "$WT" ] && [ ! -L "$WT" ]) and still resolves against the
+# forge, while an empty, non-directory, or broken-symlink local path falls
+# through to bin/fm-dod-lib.sh for refusal.
+if [ "$PROVIDER" = github ] && [ -n "$WT" ] \
+  && { [ -d "$WT" ] || { [ ! -e "$WT" ] && [ ! -L "$WT" ]; }; } \
+  && command -v gh >/dev/null 2>&1; then
+  if REMOTE_HEAD=$(gh pr view "$URL" --json headRefOid -q .headRefOid 2>/dev/null) \
     && fm_pr_head_valid "$REMOTE_HEAD"; then
     PR_HEAD=$REMOTE_HEAD
   fi
