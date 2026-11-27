@@ -330,46 +330,76 @@ fm_task_inbox_write_idempotent() {  # <state-dir> <task-id> <text> [delivery-mod
   printf '%s' "$rec"
 }
 
+# The record framing, one owner for fm_task_inbox_body and
+# fm_task_inbox_body_lines: feed fm_task_inbox_frame each line from the top
+# until it returns 1 at the header's "--" line; fm_task_inbox_count(<total
+# bytes>) is then the body's byte count, or -1 for a record that frames none.
+# The body starts at byte fm_tib_offset.
+_FM_TASK_INBOX_FRAME_AWK='
+function fm_task_inbox_frame(line) {
+  fm_tib_offset += length(line) + 1
+  if (line == "body-terminator=1") fm_tib_synthetic = 1
+  return line == "--"
+}
+function fm_task_inbox_count(total, c) {
+  c = total - fm_tib_offset
+  if (fm_tib_synthetic) { if (c <= 0) return -1; c-- }
+  return c < 0 ? -1 : c
+}'
+
 # The exact enqueued text back out of a record.
 fm_task_inbox_body() {  # <record-path>
-  local meta body_offset synthetic total count
+  local meta body_offset count total
   [ -f "$1" ] || return 1
-  meta=$(LC_ALL=C awk '
-    $0 == "body-terminator=1" { synthetic=1 }
-    { bytes += length($0) + 1 }
-    $0 == "--" { printf "%d\t%d\n", bytes, synthetic; exit }
+  total=$(wc -c < "$1") || return 1
+  meta=$(LC_ALL=C awk -v total="$total" "$_FM_TASK_INBOX_FRAME_AWK"'
+    fm_task_inbox_frame($0) { printf "%d\t%d\n", fm_tib_offset, fm_task_inbox_count(total); exit }
   ' "$1") || return 1
-  IFS=$(printf '\t') read -r body_offset synthetic <<EOF
+  IFS=$(printf '\t') read -r body_offset count <<EOF
 $meta
 EOF
   case "$body_offset" in ''|*[!0-9]*) return 1 ;; esac
-  total=$(wc -c < "$1") || return 1
-  count=$((total - body_offset))
-  if [ "$synthetic" = 1 ]; then
-    [ "$count" -gt 0 ] || return 1
-    count=$((count - 1))
-  fi
-  [ "$count" -ge 0 ] || return 1
+  case "$count" in ''|*[!0-9]*) return 1 ;; esac
   tail -c +"$((body_offset + 1))" "$1" | head -c "$count"
 }
 
 # Bulk line view of many records for scans that need no exact bytes. Reads
 # record paths on stdin, one per line, and for each record fm_task_inbox_body
-# can frame prints "<path><TAB><n>" then its n body lines. One process for the
-# whole set; a body's final newline is not represented.
+# can frame prints "<path><TAB><seq><TAB><n>" then the n lines of that body
+# (its final newline not represented), seq as fm_task_inbox_seq_of gives it or
+# 0. A fixed number of processes for the whole set.
 fm_task_inbox_body_lines() {
-  LC_ALL=C awk '{
-    file = $0; framed = 0; synthetic = 0; n = 0
-    while ((getline line < file) > 0) {
-      if (framed) { body[++n] = line; continue }
-      if (line == "body-terminator=1") synthetic = 1
-      if (line == "--") framed = 1
+  local paths
+  paths=$(cat) || return 1
+  [ -n "$paths" ] || return 0
+  {
+    printf '%s\n' "$paths" | tr '\n' '\0' | xargs -0 wc -c 2>/dev/null
+    printf '\n%s\n' "$paths"
+  } | LC_ALL=C awk "$_FM_TASK_INBOX_FRAME_AWK"'
+    !listing {
+      if ($0 == "") listing = 1
+      else if (match($0, /^ *[0-9]+ /)) size[substr($0, RLENGTH + 1)] = substr($0, 1, RLENGTH) + 0
+      next
     }
-    close(file)
-    if (!framed || (synthetic && n == 0)) next
-    printf "%s\t%d\n", file, n
-    for (i = 1; i <= n; i++) print body[i]
-  }'
+    {
+      file = $0
+      if (!(file in size)) next
+      fm_tib_offset = 0; fm_tib_synthetic = 0; framed = 0; text = ""
+      while ((getline line < file) > 0) {
+        if (framed) text = text line "\n"
+        else framed = fm_task_inbox_frame(line)
+      }
+      close(file)
+      if (!framed || (count = fm_task_inbox_count(size[file])) < 0) next
+      text = substr(text, 1, count)
+      n = 0
+      if (text != "") { n = split(text, body, "\n"); if (substr(text, length(text)) == "\n") n-- }
+      seq = file; sub(/.*\//, "", seq)
+      if (sub(/\.msg$/, "", seq) && seq ~ /^[0-9]+$/) { sub(/^0+/, "", seq); if (seq == "") seq = 0 }
+      else seq = 0
+      printf "%s\t%s\t%d\n", file, seq, n
+      for (i = 1; i <= n; i++) print body[i]
+    }'
 }
 
 # The constant self-describing doorbell line for the inbox containing a record.

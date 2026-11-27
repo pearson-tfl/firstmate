@@ -88,6 +88,17 @@ $1
 EOF
 }
 
+# The awk form of fm_required_skills_from_text, for bulk scans: reset
+# fm_rs_seen = 0, call fm_required_skills_scan on each line of one text, then
+# fm_rs_list holds what fm_required_skills_from_text prints. Run awk with
+# FM_REQUIRED_SKILLS_LINE in its environment.
+# shellcheck disable=SC2034 # Public source-library variable used by callers.
+FM_REQUIRED_SKILLS_AWK='
+function fm_required_skills_scan(line, p) {
+  p = ENVIRON["FM_REQUIRED_SKILLS_LINE"]
+  if (!fm_rs_seen && index(line, p) == 1) { fm_rs_seen = 1; fm_rs_list = substr(line, length(p) + 1) }
+}'
+
 # The recorded comma list in a task's meta, or empty.
 fm_required_skills_from_meta() {  # <meta>
   grep '^required_skills=' "$1" 2>/dev/null | tail -1 | cut -d= -f2- || true
@@ -128,10 +139,13 @@ fm_required_skill_note_is_proof() {  # <note>
 }
 
 # 0 when status <line>'s note opens with a proof keyword. The note is a
-# contiguous part of the line, so a line holding neither keyword is settled
-# without parsing its note.
+# contiguous part of the line with its stamp removed (bin/fm-classify-lib.sh),
+# so a line whose unstamped text holds neither keyword is settled without
+# parsing its note.
 fm_required_skill_line_is_proof() {  # <line>
-  case "$1" in *skill-start\ *|*skill-shaped\ *) ;; *) return 1 ;; esac
+  local unstamped
+  _fm_status_unstamped "$1" unstamped
+  case "$unstamped" in *skill-start\ *|*skill-shaped\ *) ;; *) return 1 ;; esac
   fm_required_skill_note_is_proof "$(status_line_note "$1")"
 }
 

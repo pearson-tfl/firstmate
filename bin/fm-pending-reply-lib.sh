@@ -1779,34 +1779,28 @@ fm_pending_reply_mate_inbox_dir() {  # <home> <state>
 # order. A record without the marker is not a reply-bearing request, whatever
 # its text quotes. The fields are what fm_task_inbox_seq_of,
 # fm_pending_reply_extract_corr, and fm_required_skills_from_text give for the
-# record's fm_task_inbox_body, read in one pass so cost stays linear.
+# record's body, read in one pass (fm_task_inbox_body_lines) so cost stays
+# linear.
 fm_pending_reply_mate_requests() {  # <inbox-dir>
   local inbox=$1 msg
   [ -n "$inbox" ] && [ -d "$inbox" ] || return 0
   for msg in "$inbox"/*.msg "$inbox"/handled/*.msg; do
     [ -f "$msg" ] && printf '%s\n' "$msg"
-  done | fm_task_inbox_body_lines | FM_PR_MARK=$FM_FROMFIRST_MARK \
-    FM_PR_SKILLS=$FM_REQUIRED_SKILLS_LINE LC_ALL=C awk '
-    BEGIN {
-      mark = ENVIRON["FM_PR_MARK"]; skills = ENVIRON["FM_PR_SKILLS"]
-      re = "corr="
-      for (i = 0; i < 16; i++) re = re "[A-Fa-f0-9]"
-    }
+  done | fm_task_inbox_body_lines | FM_PR_MARK=$FM_FROMFIRST_MARK FM_PR_CORR_RE=$FM_PENDING_REPLY_CORR_RE \
+    FM_REQUIRED_SKILLS_LINE=$FM_REQUIRED_SKILLS_LINE LC_ALL=C awk "$FM_REQUIRED_SKILLS_AWK"'
+    BEGIN { mark = ENVIRON["FM_PR_MARK"]; re = ENVIRON["FM_PR_CORR_RE"] }
     {
-      path = $0; sub(/\t[0-9]+$/, "", path)
-      n = substr($0, length(path) + 2) + 0
-      corr = ""; list = ""; haslist = 0; marked = 0
-      for (i = 1; i <= n; i++) {
+      n = $0; sub(/.*\t/, "", n)
+      seq = $0; sub(/\t[^\t]*$/, "", seq); path = seq
+      sub(/.*\t/, "", seq); sub(/\t[^\t]*$/, "", path)
+      corr = ""; marked = 0; fm_rs_seen = 0; fm_rs_list = ""
+      for (i = 1; i <= n + 0; i++) {
         if ((getline line) <= 0) exit
         if (i == 1) marked = (index(line, mark) == 1)
-        if (corr == "" && match(line, re)) corr = tolower(substr(line, RSTART + 5, 16))
-        if (!haslist && index(line, skills) == 1) { haslist = 1; list = substr(line, length(skills) + 1) }
+        if (corr == "" && match(line, re)) { corr = substr(line, RSTART, RLENGTH); sub(/^[^=]*=/, "", corr); corr = tolower(corr) }
+        fm_required_skills_scan(line)
       }
-      if (!marked || corr == "") next
-      seq = path; sub(/.*\//, "", seq)
-      if (sub(/\.msg$/, "", seq) && seq ~ /^[0-9]+$/) { sub(/^0+/, "", seq); if (seq == "") seq = 0 }
-      else seq = 0
-      printf "%s\t%s\t%s\t%s\n", seq, path, corr, list
+      if (marked && corr != "") printf "%s\t%s\t%s\t%s\n", seq, path, corr, fm_rs_list
     }'
 }
 
@@ -1827,11 +1821,17 @@ fm_pending_reply_skill_union() {  # <comma-list>
   printf '%s' "$out"
 }
 
-# The required-skills list the marked request <corr_id> in <inbox-dir> carries
-# (bin/fm-required-skill-lib.sh), or empty.
+# The required-skills list the marked request <corr_id> carries
+# (bin/fm-required-skill-lib.sh), or empty, from <requests-file> rows as
+# fm_pending_reply_mate_requests prints them.
+fm_pending_reply_requests_skills() {  # <requests-file> <corr_id>
+  fm_pending_reply_skill_union "$(C=$2 awk -F'\t' '
+    $3 == ENVIRON["C"] { l = $0; sub(/^[^\t]*\t[^\t]*\t[^\t]*\t/, "", l); if (l != "") printf "%s,", l }' "$1")"
+}
+
+# The required-skills list the marked request <corr_id> in <inbox-dir> carries.
 fm_pending_reply_mate_required_skills() {  # <inbox-dir> <corr_id>
-  fm_pending_reply_skill_union "$(fm_pending_reply_mate_requests "$1" | C=$2 awk -F'\t' '
-    $3 == ENVIRON["C"] { l = $0; sub(/^[^\t]*\t[^\t]*\t[^\t]*\t/, "", l); if (l != "") printf "%s,", l }')"
+  fm_pending_reply_requests_skills <(fm_pending_reply_mate_requests "$1") "$2"
 }
 
 # 0 when <channel> already holds a line that resolves <corr_id>, applying the
@@ -1846,13 +1846,16 @@ fm_pending_reply_mate_answered() {  # <channel> <corr_id> [inbox-dir]
 # explicit <corr_id> already answered on <channel> while another request is
 # open is a stale reply and is refused. Prints the chosen corr; errors go to
 # stderr with return 1.
-fm_pending_reply_mate_reply_corr() {  # <home> <state> <channel> [corr_id]
-  local home=$1 state=$2 channel=$3 corr=${4-} inbox c open='' requests lines cnt list i line answered
-  local n=0
-  inbox=$(fm_pending_reply_mate_inbox_dir "$home" "$state") || inbox=
-  requests=$(mktemp "${TMPDIR:-/tmp}/fm-mate-requests.XXXXXX") || return 1
-  lines=$(mktemp "${TMPDIR:-/tmp}/fm-mate-lines.XXXXXX") || { rm -f "$requests"; return 1; }
-  [ -z "$inbox" ] || fm_pending_reply_mate_requests "$inbox" > "$requests"
+fm_pending_reply_mate_reply_corr() {  # <home> <state> <channel> [corr_id] [requests-file]
+  local home=$1 state=$2 channel=$3 corr=${4-} requests=${5-} inbox c open='' own='' lines cnt list i line
+  local answered received='' corr_answered='' n=0
+  if [ -z "$requests" ]; then
+    inbox=$(fm_pending_reply_mate_inbox_dir "$home" "$state") || inbox=
+    requests=$(mktemp "${TMPDIR:-/tmp}/fm-mate-requests.XXXXXX") || return 1
+    own=$requests
+    [ -z "$inbox" ] || fm_pending_reply_mate_requests "$inbox" > "$requests"
+  fi
+  lines=$(mktemp "${TMPDIR:-/tmp}/fm-mate-lines.XXXXXX") || { rm -f "$own"; return 1; }
   # One pass joins each received corr, oldest first, with its required skills
   # and the channel lines naming it; a corr no line names cannot be answered,
   # and every gate below reads only lines that name the corr.
@@ -1877,6 +1880,8 @@ fm_pending_reply_mate_reply_corr() {  # <home> <state> <channel> [corr_id]
       [ "$cnt" -eq 0 ] || [ -z "$(fm_pending_reply_find_resolve_line "$lines" "$c" \
         "$(fm_pending_reply_skill_union "$list")")" ] || answered=1
     fi
+    received="$received $c "
+    [ "$c" != "$corr" ] || corr_answered=$answered
     [ "$answered" = 0 ] || continue
     open="$open $c"
     n=$((n + 1))
@@ -1892,7 +1897,7 @@ fm_pending_reply_mate_reply_corr() {  # <home> <state> <channel> [corr_id]
       for (k in got) delete got[k]
       while ((p = index(rest, "corr=")) > 0) {
         k = substr(rest, p + 5, 16)
-        if (length(k) == 16 && k !~ /[^0-9a-f]/ && (k in want) && !(k in got)) {
+        if ((k in want) && !(k in got)) {
           got[k] = 1; cnt[k]++; bucket[k] = bucket[k] $0 "\n"
         }
         rest = substr(rest, p + 5)
@@ -1900,12 +1905,19 @@ fm_pending_reply_mate_reply_corr() {  # <home> <state> <channel> [corr_id]
     }
     END { for (i = 1; i <= n; i++) { c = order[i]; printf "%s\t%d\t%s\n%s", c, cnt[c], skills[c], bucket[c] } }
   ' phase=1 "$requests" phase=2 - phase=3 "$(if [ -f "$channel" ]; then printf '%s' "$channel"; else printf /dev/null; fi)")
-  rm -f "$requests" "$lines"
+  rm -f "$own" "$lines"
   if [ -n "$corr" ]; then
     # A second line on an answered request is a legitimate follow-up only
     # while nothing else is waiting; with a request open it is the stale
     # token that leaves that request unanswered.
-    if [ "$n" -gt 0 ] && fm_pending_reply_mate_answered "$channel" "$corr" "$inbox"; then
+    # A corr no marked request carries has no required skills to gate.
+    if [ "$n" -gt 0 ]; then
+      case "$received" in *" $corr "*) ;; *)
+        corr_answered=0
+        [ -z "$(fm_pending_reply_find_resolve_line "$channel" "$corr")" ] || corr_answered=1 ;;
+      esac
+    fi
+    if [ "$n" -gt 0 ] && [ "$corr_answered" = 1 ]; then
       printf 'error: corr=%s was already answered on the parent channel (stale reply); the open request is:%s - pass that corr instead\n' "$corr" "$open" >&2
       return 1
     fi

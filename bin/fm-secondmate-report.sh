@@ -106,13 +106,17 @@ if [ ! -d "$(dirname "$DESTINATION")" ]; then
   exit 1
 fi
 
-CORR=$(fm_pending_reply_mate_reply_corr "$HOME_DIR" "$STATE_DIR" "$DESTINATION" "$CORR") || exit 1
+# The inbox is parsed once per call; both the corr choice and the done gate read it.
+INBOX=$(fm_pending_reply_mate_inbox_dir "$HOME_DIR" "$STATE_DIR") || INBOX=
+REQUESTS=$(mktemp "${TMPDIR:-/tmp}/fm-mate-requests.XXXXXX") || exit 1
+trap 'rm -f "$REQUESTS"' EXIT
+[ -z "$INBOX" ] || fm_pending_reply_mate_requests "$INBOX" > "$REQUESTS"
+CORR=$(fm_pending_reply_mate_reply_corr "$HOME_DIR" "$STATE_DIR" "$DESTINATION" "$CORR" "$REQUESTS") || exit 1
 # A request that named required skills takes no done until the channel says
 # how each shaped the work (bin/fm-required-skill-lib.sh owns the gate).
 if [ "$VERB" = "done" ]; then
-  INBOX=$(fm_pending_reply_mate_inbox_dir "$HOME_DIR" "$STATE_DIR") || INBOX=
   if ! REASON=$(fm_required_skills_done_refusal "$DESTINATION" \
-    "$(fm_pending_reply_mate_required_skills "$INBOX" "$CORR")" "$CORR"); then
+    "$(fm_pending_reply_requests_skills "$REQUESTS" "$CORR")" "$CORR"); then
     echo "error: $REASON" >&2
     exit 1
   fi
