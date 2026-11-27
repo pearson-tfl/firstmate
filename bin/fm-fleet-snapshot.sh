@@ -275,10 +275,10 @@ that home.
 Each local per-task current-state read is bounded by FM_SNAPSHOT_CREW_STATE_TIMEOUT
 (default 10 seconds); a read that hits the bound reports state unknown. Local task
 observations run concurrently, up to FM_SNAPSHOT_LOCAL_READ_CONCURRENCY (default 8).
---secondmate-home-summary lets those reads share a result up to
+--secondmate-home-summary lets those reads reuse a result up to
 FM_SNAPSHOT_CREW_STATE_CACHE_TTL seconds old (default 1800, 0 disables) through
-bin/fm-crew-state.sh's opt-in cache, which any status or metadata change for
-the task invalidates; --json always reads fresh.
+bin/fm-crew-state.sh's opt-in cache (contract: that script's header); --json
+always reads fresh.
 Remote secondmate endpoint liveness is not probed by this command.
 Terminal contradiction evidence uses
 FM_SNAPSHOT_TERMINAL_LINES, FM_SNAPSHOT_TERMINAL_BYTES, and

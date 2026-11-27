@@ -698,6 +698,7 @@ test_local_only_fork_remote_allows() {
   # So is its shared current-state result (bin/fm-crew-state.sh).
   mkdir -p "$case_dir/state/.crew-state-cache"
   printf '1\nstate: working · source: pane\n' > "$case_dir/state/.crew-state-cache/task-x1"
+  : > "$case_dir/state/.crew-state-cache/task-x1.mark.999999"
 
   set +e
   run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
@@ -710,6 +711,8 @@ test_local_only_fork_remote_allows() {
     || fail "fork-allow: teardown left the task's branch outcome index behind"
   [ ! -e "$case_dir/state/.crew-state-cache/task-x1" ] \
     || fail "fork-allow: teardown left the task's shared current-state result behind"
+  [ ! -e "$case_dir/state/.crew-state-cache/task-x1.mark.999999" ] \
+    || fail "fork-allow: teardown left an abandoned current-state read mark behind"
   # The supervision branch reports the teardown it just performed AFTER the
   # task's records are gone (bin/fm-branch-prompt.sh); that report must be
   # stored, must publish its ready sequence, and must not recreate the index.

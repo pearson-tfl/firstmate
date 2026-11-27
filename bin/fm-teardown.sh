@@ -4111,6 +4111,7 @@ rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.progress" \
   "$STATE/$ID.claude-settings.json" "$STATE/$ID.devin-config.json" \
   "$STATE/$ID.polytoken-busy.sh" \
   "$STATE/.$ID.branch-outcome-index" "$STATE/.crew-state-cache/$ID" \
+  "$STATE/.crew-state-cache/$ID".mark.* \
   "$STATE/.secondmate-relaunch-$ID" "$STATE/.secondmate-relaunch-bound-$ID" \
   "$STATE/.secondmate-down-noted-$ID"
 # kiro's per-task home is a directory (its relocated KIRO_HOME holds the hook

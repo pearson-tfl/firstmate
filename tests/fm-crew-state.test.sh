@@ -3240,6 +3240,7 @@ test_cache_ttl_shares_one_result_until_status_meta_or_age_changes() {
 
   out=$(run_crew_state "$d" mate)
   assert_contains "$out" "state: working" "fresh read sees the live secondmate"
+  assert_not_contains "$out" "cached" "a fresh read is not labelled as reused"
   [ ! -e "$d/state/.crew-state-cache" ] || fail "a read without FM_CREW_STATE_CACHE_TTL must not write a cache"
 
   out=$(FM_CREW_STATE_CACHE_TTL=600 run_crew_state "$d" mate)
@@ -3247,6 +3248,7 @@ test_cache_ttl_shares_one_result_until_status_meta_or_age_changes() {
   FM_FAKE_TMUX_MISSING=1
   out=$(FM_CREW_STATE_CACHE_TTL=600 run_crew_state "$d" mate)
   assert_contains "$out" "state: working" "an opted-in caller within the TTL shares the earlier result"
+  assert_contains "$out" "reconciling routed items · cached " "a shared result discloses that it was reused"
   out=$(run_crew_state "$d" mate)
   assert_contains "$out" "state: unknown" "a caller without the TTL still reads the gone endpoint fresh"
 
@@ -3265,6 +3267,17 @@ test_cache_ttl_shares_one_result_until_status_meta_or_age_changes() {
   sleep 2
   out=$(FM_CREW_STATE_CACHE_TTL=1 run_crew_state "$d" mate)
   assert_contains "$out" "state: unknown" "a result older than the TTL is recomputed"
+
+  # A caller reading captured copies (as the fleet snapshot does) must not cache
+  # a line computed from a capture the live status log has since moved past.
+  FM_FAKE_TMUX_MISSING=0
+  mkdir -p "$d/capture" && cp -p "$d/state/mate.status" "$d/capture/mate.status"
+  sleep 0.1  # past one filesystem clock tick (the documented same-tick limit)
+  printf 'working: back on routed items\n' >> "$d/state/mate.status"
+  FM_CREW_STATE_STATUS_OVERRIDE="$d/capture/mate.status" FM_CREW_STATE_CACHE_TTL=600 run_crew_state "$d" mate >/dev/null
+  FM_FAKE_TMUX_MISSING=1
+  out=$(FM_CREW_STATE_CACHE_TTL=600 run_crew_state "$d" mate)
+  assert_contains "$out" "state: unknown" "a line computed from an outdated capture is not shared"
 
   rm -f "$d/state/mate.meta"
   out=$(FM_CREW_STATE_CACHE_TTL=600 run_crew_state "$d" mate)
