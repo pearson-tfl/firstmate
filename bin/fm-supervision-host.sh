@@ -324,17 +324,19 @@ record_process() {  # <role> <pid>
 
 # Re-record a process under its current identity. Safe only for this host's
 # own unreaped child, whose pid cannot be recycled: its first identity may have
-# been read between its fork and its exec.
+# been read between its fork and its exec. Returns 1 when the identity could
+# not be read or written, so a caller can try again.
 refresh_process() {  # <pid>
-  local pid=$1 identity tmp
+  local pid=$1 identity tmp rc=1
   [ -n "$pid" ] && [ -f "$HOST_RECORD" ] || return 0
   identity=$(identity_of "$pid")
-  [ -n "$identity" ] || return 0
+  [ -n "$identity" ] || return 1
   awk -F '\t' -v pid="$pid" -v id="$identity" '$2 == pid && $3 != id { found = 1 } END { exit !found }' "$HOST_RECORD" 2>/dev/null || return 0
-  tmp=$(mktemp "$HOST_RECORD.tmp.XXXXXX" 2>/dev/null) || return 0
+  tmp=$(mktemp "$HOST_RECORD.tmp.XXXXXX" 2>/dev/null) || return 1
   awk -F '\t' -v OFS='\t' -v pid="$pid" -v id="$identity" '$2 == pid { $3 = id } { print }' "$HOST_RECORD" > "$tmp" 2>/dev/null \
-    && mv -f "$tmp" "$HOST_RECORD" 2>/dev/null
+    && mv -f "$tmp" "$HOST_RECORD" 2>/dev/null && rc=0
   rm -f "$tmp" 2>/dev/null || true
+  return "$rc"
 }
 
 forget_process() {  # <pid>
@@ -655,6 +657,8 @@ mark_engine_compacted() {  # <ended>
 # holds open for reading and writing, which nothing ever writes. Bash before 4
 # (no fractional timeout), a FIFO that cannot be made, or a read that returns
 # early with data or end of file falls back to sleep 0.5 for good.
+# shortcut: Bash 3.2 keeps about 120 sleep starts a minute while parked; give
+# it a whole-second read timeout if a host is ever run under Bash 3.2.
 PAUSE_FD_OPEN=0
 open_pause_fd() {
   local fifo
@@ -677,13 +681,14 @@ pause_half_second() {
 # Wait for the current arm to close. Returns 0 with ARM_TEXT set,
 # or 1 when the park boundary arrives first.
 await_close() {
-  local i refreshed=0
+  local i ran refreshed=0
   while fm_pid_alive "$ARM_PID"; do
     # The arm's identity is re-read only until it has run: output from it
-    # proves its exec, so the read after that is final.
+    # proves its exec, so the first recorded read after that is final.
     if [ "$refreshed" -eq 0 ]; then
-      [ ! -s "$ARM_OUT" ] || refreshed=1
-      refresh_process "$ARM_PID"
+      ran=0
+      [ ! -s "$ARM_OUT" ] || ran=1
+      refresh_process "$ARM_PID" && refreshed=$ran
     fi
     [ "$READY_PENDING" -eq 0 ] || stream_ready_line
     boundary_reached && return 1

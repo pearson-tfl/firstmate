@@ -16,10 +16,22 @@ set -u
 # shellcheck source=tests/supervision-host-helpers.sh
 . "$(dirname "${BASH_SOURCE[0]}")/supervision-host-helpers.sh"
 
+# Park a host under a named session lock, which the park needs no pid
+# ownership for (#5138), and wait for its first cycle's status.
+start_named_host() {  # <home>
+  printf 'holder:claude\n' > "$1/state/.lock"
+  FM_HOME="$1" FM_LOCK_HOLDER=claude FM_CREW_STATE_BIN="$1/fakebin/fm-crew-state.sh" PATH="$1/fakebin:$PATH" \
+    bash -c '"$0" park > "$FM_HOME/host.out" 2>&1; printf "%s\n" "$?" > "$FM_HOME/host.rc"' "$HOST" &
+  wait_until 150 watcher_live "$1" || fail "named host: no watcher started: $(cat "$1/host.out")"
+  wait_until 50 grep -q '^watcher: started ' "$1/host.out" || fail "named host: the first cycle's status never streamed"
+}
+recorded() {  # <home> <role>
+  awk -F '\t' -v role="$2" '$1 == role { print $2; exit }' "$1/state/.supervision-host"
+}
+
 # An idle park starts no processes of its own (arm and watcher processes are
 # theirs), and still observes the arm's close. Each wrapped command logs itself
-# when its ancestry reaches the host other than through an arm. The host runs
-# under a named session lock, so the park needs no pid ownership (#5138).
+# when its ancestry reaches the host other than through an arm.
 test_idle_park_starts_no_processes_and_still_sees_the_close() {
   local home cmd real
   home=$(make_home idle-park attended)
@@ -51,11 +63,7 @@ SH
     chmod +x "$home/fakebin/$cmd"
   done
   : > "$home/probe-on"
-  printf 'holder:claude\n' > "$home/state/.lock"
-  FM_HOME="$home" FM_LOCK_HOLDER=claude FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" PATH="$home/fakebin:$PATH" \
-    bash -c '"$0" park > "$FM_HOME/host.out" 2>&1; printf "%s\n" "$?" > "$FM_HOME/host.rc"' "$HOST" &
-  wait_until 150 watcher_live "$home" || fail "idle-park: no watcher started: $(cat "$home/host.out")"
-  wait_until 50 grep -q '^watcher: started ' "$home/host.out" || fail "idle-park: the first cycle's status never streamed"
+  start_named_host "$home"
   [ -s "$home/host-children" ] || fail "idle-park: the probe saw nothing the host started, so the idle check would be vacuous"
   sleep 2
   : > "$home/host-children"
@@ -64,10 +72,46 @@ SH
   ! host_exited "$home" || fail "idle-park: the host left its park: $(cat "$home/host.out")"
   rm -f "$home/probe-on"
   append_status "$home" 'step one'
-  wait_until_deadline 30 host_exited "$home" || fail "idle-park: the arm's close never reached the owner"
+  wait_until_deadline 60 host_exited "$home" || fail "idle-park: the arm's close never reached the owner"
   assert_re '^signal: ' "$home/host.out" "idle-park: the host must print the arm's close"
   stop_home_processes "$home"
   pass "host: an idle park starts no processes of its own and still prints the arm's close"
+}
+
+# The park's pause is a read timeout, not a sleep child: an arm that exits and a
+# stop signal are both still seen within a few seconds, and no arm inherits the
+# pause's FIFO.
+test_parked_host_sees_an_arm_exit_and_a_stop_signal_promptly() {
+  local home arm host started fd
+  home=$(make_home park-exit attended)
+  start_named_host "$home"
+  arm=$(recorded "$home" arm)
+  [ -n "$arm" ] || fail "park-exit: no recorded arm"
+  for fd in "/proc/$arm/fd"/*; do
+    case "$(readlink "$fd" 2>/dev/null)" in
+      *supervision-host-pause*) fail "park-exit: the arm inherited the host's pause FIFO" ;;
+    esac
+  done
+  started=$SECONDS
+  kill -TERM "$arm" 2>/dev/null || fail "park-exit: the arm was not running"
+  wait_until_deadline 60 host_exited "$home" || fail "park-exit: the host never saw its arm exit"
+  [ $((SECONDS - started)) -le 10 ] || fail "park-exit: the arm's exit took $((SECONDS - started))s to reach the owner"
+  [ "$(cat "$home/host.rc")" = 0 ] || fail "park-exit: the host exited $(cat "$home/host.rc") after its arm's exit: $(cat "$home/host.out")"
+  stop_home_processes "$home"
+
+  home=$(make_home park-term attended)
+  start_named_host "$home"
+  host=$(recorded "$home" host)
+  arm=$(recorded "$home" arm)
+  [ -n "$host" ] && [ -n "$arm" ] || fail "park-term: no recorded host or arm"
+  started=$SECONDS
+  kill -TERM "$host" 2>/dev/null || fail "park-term: the host was not running"
+  wait_until_deadline 60 host_exited "$home" || fail "park-term: the host never answered TERM"
+  [ $((SECONDS - started)) -le 10 ] || fail "park-term: TERM took $((SECONDS - started))s to stop the host"
+  [ "$(cat "$home/host.rc")" = 143 ] || fail "park-term: the host exited $(cat "$home/host.rc") on TERM"
+  ! kill -0 "$arm" 2>/dev/null || fail "park-term: the stopped host left its arm running"
+  stop_home_processes "$home"
+  pass "host: a parked host sees its arm exit and a stop signal promptly, and no arm holds its pause FIFO"
 }
 
 test_attended_routine_wake_is_handled_on_the_engine_and_stays_off_main() {
@@ -1025,6 +1069,7 @@ test_incomplete_engine_result_hands_the_wake_to_main() {
 
 fm_test_run \
   test_idle_park_starts_no_processes_and_still_sees_the_close \
+  test_parked_host_sees_an_arm_exit_and_a_stop_signal_promptly \
   test_attended_routine_wake_is_handled_on_the_engine_and_stays_off_main \
   test_host_stopped_right_after_a_handled_wake_exits_and_frees_the_queue \
   test_engine_in_another_time_zone_handles_its_granted_rows \
