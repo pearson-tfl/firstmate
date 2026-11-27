@@ -331,7 +331,9 @@ refresh_process() {  # <pid>
   [ -n "$pid" ] && [ -f "$HOST_RECORD" ] || return 0
   identity=$(identity_of "$pid")
   [ -n "$identity" ] || return 1
-  awk -F '\t' -v pid="$pid" -v id="$identity" '$2 == pid && $3 != id { found = 1 } END { exit !found }' "$HOST_RECORD" 2>/dev/null || return 0
+  # awk exits 1 when no row needs the new identity and 2 when the record is unreadable.
+  awk -F '\t' -v pid="$pid" -v id="$identity" '$2 == pid && $3 != id { found = 1 } END { exit !found }' "$HOST_RECORD" 2>/dev/null \
+    || { [ $? -eq 1 ] && return 0; return 1; }
   tmp=$(mktemp "$HOST_RECORD.tmp.XXXXXX" 2>/dev/null) || return 1
   awk -F '\t' -v OFS='\t' -v pid="$pid" -v id="$identity" '$2 == pid { $3 = id } { print }' "$HOST_RECORD" > "$tmp" 2>/dev/null \
     && mv -f "$tmp" "$HOST_RECORD" 2>/dev/null && rc=0

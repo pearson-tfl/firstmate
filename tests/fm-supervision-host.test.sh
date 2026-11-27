@@ -87,11 +87,14 @@ test_parked_host_sees_an_arm_exit_and_a_stop_signal_promptly() {
   start_named_host "$home"
   arm=$(recorded "$home" arm)
   [ -n "$arm" ] || fail "park-exit: no recorded arm"
-  for fd in "/proc/$arm/fd"/*; do
-    case "$(readlink "$fd" 2>/dev/null)" in
-      *supervision-host-pause*) fail "park-exit: the arm inherited the host's pause FIFO" ;;
-    esac
-  done
+  # The descriptor check needs /proc (Linux CI); macOS has no per-process fd directory.
+  if [ -d "/proc/$arm/fd" ]; then
+    for fd in "/proc/$arm/fd"/*; do
+      case "$(readlink "$fd" 2>/dev/null)" in
+        *supervision-host-pause*) fail "park-exit: the arm inherited the host's pause FIFO" ;;
+      esac
+    done
+  fi
   started=$SECONDS
   kill -TERM "$arm" 2>/dev/null || fail "park-exit: the arm was not running"
   wait_until_deadline 60 host_exited "$home" || fail "park-exit: the host never saw its arm exit"
