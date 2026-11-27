@@ -59,9 +59,8 @@
 #     (detach_successor owns the persistence check and failure path). The
 #     session's next park without --restart adopts that arm as its own, so
 #     the live watcher keeps running and no downtime opens; when the arm's
-#     output was not kept it requests a take-over of its cycle instead, and
-#     bin/fm-watch-arm.sh's --take-over header owns the conditions under which
-#     that restores a single owner and the fallback;
+#     output was not kept it starts an ordinary arm, which attaches to that
+#     live watcher rather than stopping it;
 #   - away (an away record exists): every close goes to the engine.
 # Every turn that starts attended meets that rule again at its start, so a
 # close accepted away whose turn starts attended (the captain returned in
@@ -152,10 +151,9 @@
 # engine turn. It also reads the record of a successor a pass-through left for
 # main: while that arm still runs under its recorded identity, the first cycle
 # without --restart adopts it (records it as this host's arm, waits on it, and
-# reads its kept output) and drops the record, or, when its output was not
-# kept, requests a take-over rather than an ordinary attach. Activation
-# otherwise removes the record only once that identity is no longer alive, so
-# a later host retries a take-over that left it running.
+# reads its kept output) and drops the record; when its output was not kept,
+# the first cycle is an ordinary arm. Activation otherwise removes the record
+# only once that identity is no longer alive.
 #
 # STATE (all under state/, owned here): .supervision-host (this host's pid and
 # the processes it runs), .supervision-host-engine (the engine conversation:
@@ -290,9 +288,8 @@ SUCCESSOR_OUT=
 SUCCESSOR_WATCHER=
 SUCCESSOR_GENERATION=
 ENGINE_RUNNING=0
-# The successor arm a predecessor's pass-through left for main, which the
-# first cycle adopts when its output was kept (LEFT_ARM_OUT) and otherwise
-# takes over.
+# The successor arm a predecessor's pass-through left for main, and its kept
+# output (LEFT_ARM_OUT), by which the first cycle adopts it.
 LEFT_ARM=
 LEFT_ARM_OUT=
 # The running turn's result and diagnostics files, removed by the cleanup when
@@ -410,9 +407,9 @@ activate() {
   done
   rm -f "$STATE"/.supervision-host-arm.* "$STATE"/.supervision-host-warm.* "$STATE"/.supervision-host-descendants.* "$STATE"/.supervision-host-result.* \
     "$STATE"/.supervision-host-errors.* "$STATE"/.supervision-host-readback.* "$TURN_FILE" "$MIRROR_FEED" 2>/dev/null || true
-  # The successor a pass-through left for main: the first cycle adopts it,
-  # or takes it over when its output was not kept, while it still answers to
-  # its recorded identity, and its record goes only once it does not.
+  # The successor a pass-through left for main: the first cycle adopts it
+  # while it still answers to its recorded identity and its output was kept,
+  # and its record goes once it does not answer.
   if [ -f "$LEFT_RECORD" ]; then
     pid='' identity=''
     IFS="$(printf '\t')" read -r pid identity < "$LEFT_RECORD" || true
@@ -854,7 +851,7 @@ start_successor() {  # <predecessor-arm-pid>
 # then renamed to .supervision-host-left.<pid>.out for the next park to adopt
 # the cycle by; the arm already holds that descriptor and keeps writing it. A
 # capture file that cannot be renamed stays tracked so the EXIT trap unlinks
-# it, and the next park takes the cycle over instead.
+# it, and the next park attaches an ordinary arm to the cycle instead.
 detach_successor() {
   local identity tmp='' pid
   [ -n "${SUCCESSOR_PID:-}" ] || return 0
@@ -1254,9 +1251,6 @@ elif [ -n "$LEFT_ARM_OUT" ]; then
   rm -f "$LEFT_RECORD"
   STARTED_ARM_PID=$LEFT_ARM
   STARTED_ARM_OUT=$LEFT_ARM_OUT
-elif [ -n "$LEFT_ARM" ]; then
-  log_line "take-over	arm=$LEFT_ARM"
-  start_arm "$OWNER_PREDECESSOR" --take-over "$LEFT_ARM"
 else
   start_arm "$OWNER_PREDECESSOR"
 fi || { echo "watcher: FAILED - the supervision host could not start a watcher cycle"; exit 1; }

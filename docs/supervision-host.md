@@ -115,9 +115,9 @@ The host confirms no handling handoff and republishes the watcher's recovery mar
 If that publish fails, the host prints a `watcher: FAILED` line instead of the close and exits nonzero, so the arm owner reports a failure rather than a hand-back it could not deliver.
 The default successor is one-shot, so a lost main continuation can still leave supervision down after that successor's next close.
 The opt-in [acknowledged hand-back](#acknowledged-hand-back) keeps replacing those closed cycles until main acknowledges.
-The session's next park without `--restart` adopts that successor's arm as its own, so its live watcher keeps running and no downtime opens; only when the arm's output was not kept does it request a take-over to restore a single host-owned arm.
-The [host header](../bin/fm-supervision-host.sh) owns successor persistence, adoption, and cleanup, and the [arm header](../bin/fm-watch-arm.sh) owns take-over eligibility and fallback.
-OpenCode and omp still launch the host with `--restart`, which takes precedence over recorded take-over and lacks its acknowledgement-preserving handover; changing that first-cycle path remains a follow-up.
+The session's next park without `--restart` adopts that successor's arm as its own, so its live watcher keeps running and no downtime opens; when the arm's output was not kept, the park starts an ordinary arm, which attaches to that live watcher instead of stopping it.
+The [host header](../bin/fm-supervision-host.sh) owns successor persistence, adoption, and cleanup.
+OpenCode and omp still launch the host with `--restart`, which takes precedence over a recorded successor and stops its watcher; changing that first-cycle path remains a follow-up.
 The host-off Claude Stop hook's detached handling successor is also unchanged; see [Claude handling successor](watcher-continuity.md#claude-handling-successor).
 It also passes the close through unchanged, with no added line, when any of these holds (`fm_supervision_host_attended_ready` in `bin/fm-supervision-engine-lib.sh` owns the list):
 
@@ -450,7 +450,7 @@ Each arm owner's own suite covers its host mode against a stub host.
 | `tests/fm-supervision-host-drain.test.sh` | Report surface, dispatch entry, and the drain's `BRANCH OUTCOMES` section against the shared stub-engine fixtures. |
 | `tests/fm-supervision-host.test.sh` | Drives the real host against a stub engine for wakes, closes, the dialog mirror, and return outcomes, in both postures. |
 | `tests/fm-supervision-host-park.test.sh` | Latch, park boundary, compaction, and lock ownership against the same stub-engine fixtures. |
-| `tests/fm-supervision-host-hook.test.sh` | Claude Stop-hook re-arm, successor adoption and take-over, lost hand-back continuations, and guarded retry submission. |
+| `tests/fm-supervision-host-hook.test.sh` | Claude Stop-hook re-arm, successor adoption, lost hand-back continuations, and guarded retry submission. |
 | `tests/fm-claude-stop-autoarm.test.sh` | The Claude arm owner's host mode against a stub host. |
 | `tests/fm-cursor-primary.test.sh` | The Cursor arm owner's host mode against a stub host. |
 | `tests/fm-pi-watch-extension.test.sh` | The OpenCode plugin's host mode against a stub host. |

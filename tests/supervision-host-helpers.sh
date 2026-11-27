@@ -720,32 +720,6 @@ host_owns_the_only_cycle() {  # <home>
   [ "$arms" = "$arm $host" ]
 }
 
-leave_a_cycle_for_main_and_restart() {  # <home>
-  local home=$1 first_session
-  start_hook_session "$home"
-  turn_end "$home"
-  wait_until 150 watcher_live "$home" || fail "takeover: the Stop hook never started a watcher cycle: $(cat "$home/hook.err" 2>/dev/null)"
-  append_status "$home" 'which export format?' needs-decision
-  wait_until_deadline 60 hook_exited "$home" || fail "takeover: the decision close never reached the Stop hook: $(cat "$home/state/.supervision-host.log")"
-  assert_re '	pass-through	attended	main-only	signal:' "$home/state/.supervision-host.log" "fixture: the close was not a main-only pass-through"
-  assert_rewoke_main "$home" "takeover (pass-through)"
-  LEFT_WATCHER=$(cat "$home/state/.watch.lock/pid")
-  LEFT_ARM=$(parent_of "$LEFT_WATCHER")
-  [ -n "$LEFT_ARM" ] && [ "$LEFT_ARM" != 1 ] || fail "fixture: the successor watcher has no arm of its own"
-  main_drain "$home" >/dev/null
-  # shellcheck disable=SC2086 # the printed acknowledgement arguments
-  [ -z "$MAIN_ACK" ] || FM_HOME="$home" "$FAKE_CLAUDE" -c '"$0" "$@" >/dev/null 2>&1' "$ROOT/bin/fm-wake-drain.sh" $MAIN_ACK \
-    || fail "takeover: main's acknowledgement failed: $MAIN_ACK"
-  # The session restarts: the old one ends, and a new one holds the lock.
-  first_session=$(tail -n 1 "$home/claude-pids")
-  : > "$home/session.stop"
-  wait_until 100 sh -c '! kill -0 "$1" 2>/dev/null' _ "$first_session" || fail "fixture: the first session did not end"
-  rm -f "$home/session.stop"
-  kill -0 "$LEFT_ARM" 2>/dev/null || fail "fixture: the successor arm did not outlive its session"
-  start_hook_session "$home"
-}
-
-
 no_home_arms() { [ -z "$(home_arms "$1")" ]; }
 
 

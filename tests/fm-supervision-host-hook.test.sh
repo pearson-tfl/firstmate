@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Behavior tests for the supervision host Claude Stop-hook re-arm, successor take-over, and hand-back
+# Behavior tests for the supervision host Claude Stop-hook re-arm, successor adoption, and hand-back
 # (bin/fm-supervision-host.sh, docs/supervision-host.md). Shared fixtures live
 # in tests/supervision-host-helpers.sh.
 #
@@ -483,85 +483,62 @@ test_pass_through_successor_survives_the_hook_process_group_teardown() {
 # each turn end's park took over the cycle a main-only pass-through left, its
 # TERM published downtime, and a main that ended its turn without
 # acknowledging was woken again by "check: rearm-resurface" every few
-# seconds. The next park adopts that cycle's arm instead: the watcher keeps
-# running, nobody is woken, and the adopted cycle delivers the next close.
+# seconds. The next park adopts that cycle's arm instead (adopt), or, when the
+# arm's output was not kept, attaches an ordinary arm to it (attach): either
+# way the watcher keeps running, nobody is woken, and the next close arrives.
 # The session holds the lock by name, as a real Claude main does.
-test_next_park_adopts_the_cycle_a_pass_through_left_for_main() {
-  local home left_watcher left_arm host
-  home=$(make_primary_home hook-adopt)
+assert_next_park_keeps_the_left_watcher() {  # <adopt|attach>
+  local mode=$1 home left_watcher left_arm host
+  home=$(make_primary_home "hook-$mode")
   FM_LOCK_HOLDER=claude start_hook_session "$home"
   wait_until 50 test -s "$home/state/.lock" || fail "fixture: the session took no lock"
   printf 'holder:claude\n' > "$home/state/.lock"
   turn_end "$home"
-  wait_until 150 watcher_live "$home" || fail "adopt: the Stop hook never started a watcher cycle: $(cat "$home/hook.err" 2>/dev/null)"
+  wait_until_deadline 60 watcher_live "$home" || fail "$mode: the Stop hook never started a watcher cycle: $(cat "$home/hook.err" 2>/dev/null)"
   append_status "$home" 'which export format?' needs-decision
-  wait_until_deadline 60 hook_exited "$home" || fail "adopt: the decision close never reached the Stop hook: $(cat "$home/state/.supervision-host.log")"
+  wait_until_deadline 60 hook_exited "$home" || fail "$mode: the decision close never reached the Stop hook: $(cat "$home/state/.supervision-host.log")"
   assert_re '	pass-through	attended	main-only	signal:' "$home/state/.supervision-host.log" "fixture: the close was not a main-only pass-through"
-  assert_rewoke_main "$home" "adopt (pass-through)"
+  assert_rewoke_main "$home" "$mode (pass-through)"
   left_watcher=$(cat "$home/state/.watch.lock/pid")
   left_arm=$(parent_of "$left_watcher")
   # Main drains the hand-back but ends its turn without acknowledging it.
   main_drain "$home" >/dev/null
+  [ "$mode" = adopt ] || rm -f "$home/state/.supervision-host-left."*.out
   turn_end "$home"
-  wait_until 150 grep -q "	adopt	arm=$left_arm\$" "$home/state/.supervision-host.log" \
-    || fail "adopt: the next park did not adopt the left arm $left_arm: $(cat "$home/state/.supervision-host.log")"
+  if [ "$mode" = adopt ]; then
+    wait_until_deadline 60 grep -q "	adopt	arm=$left_arm\$" "$home/state/.supervision-host.log" \
+      || fail "$mode: the next park did not adopt the left arm $left_arm: $(cat "$home/state/.supervision-host.log")"
+    assert_re "^arm	$left_arm	" "$home/state/.supervision-host" "adopt: the host did not record the adopted arm as its own"
+  else
+    wait_until_deadline 60 sh -c 'grep -qs "^watcher: attached pid=$2 " "$1"/state/.supervision-host-arm.*' _ "$home" "$left_watcher" \
+      || fail "attach: the next park did not attach to the left watcher: $(cat "$home/state/.supervision-host.log")"
+  fi
   host=$(awk -F '\t' '$1 == "host" { print $2; exit }' "$home/state/.supervision-host")
-  assert_re "^arm	$left_arm	" "$home/state/.supervision-host" "adopt: the host did not record the adopted arm as its own"
   sleep 20
-  ! hook_exited "$home" || fail "adopt: the park woke main: $(cat "$home/hook.err")"
-  kill -0 "$left_watcher" 2>/dev/null || fail "adopt: the left watcher (pid $left_watcher) was stopped"
-  [ "$(cat "$home/state/.watch.lock/pid" 2>/dev/null)" = "$left_watcher" ] || fail "adopt: the watcher lock moved"
-  assert_no_re 'take-over' "$home/state/.supervision-host.log" "adopt: the park took the cycle over"
-  assert_no_re 'rearm-resurface' "$home/state/.watch-deliveries.log" "adopt: a recovery was resurfaced"
-  kill -0 "$host" 2>/dev/null || fail "adopt: the park host exited"
+  ! hook_exited "$home" || fail "$mode: the park woke main: $(cat "$home/hook.err")"
+  kill -0 "$left_watcher" 2>/dev/null || fail "$mode: the left watcher (pid $left_watcher) was stopped"
+  [ "$(cat "$home/state/.watch.lock/pid" 2>/dev/null)" = "$left_watcher" ] || fail "$mode: the watcher lock moved"
+  assert_no_re 'rearm-resurface' "$home/state/.watch-deliveries.log" "$mode: a recovery was resurfaced"
+  kill -0 "$host" 2>/dev/null || fail "$mode: the park host exited"
   append_status "$home" 'which region?' needs-decision
-  wait_until_deadline 60 hook_exited "$home" || fail "adopt: the adopted cycle did not deliver the next close: $(cat "$home/state/.supervision-host.log")"
-  assert_rewoke_main "$home" "adopt (next close)"
-  assert_re '^signal: .*demo.status' "$home/hook.err" "adopt: the next close must carry the watcher's reason line"
+  wait_until_deadline 60 hook_exited "$home" || fail "$mode: the kept cycle did not deliver the next close: $(cat "$home/state/.supervision-host.log")"
+  assert_rewoke_main "$home" "$mode (next close)"
+  assert_re '^signal: .*demo.status' "$home/hook.err" "$mode: the next close must carry the watcher's reason line"
   stop_home_processes "$home"
+}
+
+test_next_park_adopts_the_cycle_a_pass_through_left_for_main() {
+  assert_next_park_keeps_the_left_watcher adopt
   pass "host+hook: the next park adopts the cycle a main-only pass-through left, keeping its watcher and waking nobody"
 }
 
-
-# A park stopped before its take-over stops the left cycle (here held in the
-# take-over's handover snapshot by the recovery-marker lock) must not forget
-# that cycle's arm: the park the Stop hook runs next still takes it over rather
-# than attaching to it beside the orphan.
-test_a_park_stopped_mid_take_over_leaves_the_take_over_to_the_next_park() {
-  skip_5138 test_a_park_stopped_mid_take_over_leaves_the_take_over_to_the_next_park && return 0
-  local home holder host
-  home=$(make_primary_home hook-takeover-interrupted)
-  leave_a_cycle_for_main_and_restart "$home"
-  # Without the left arm's kept output the next park takes the cycle over.
-  rm -f "$home/state/.supervision-host-left."*.out
-  FM_STATE_OVERRIDE="$home/state" bash -c '
-    . "$1"
-    fm_lock_acquire_wait "$2" || exit 1
-    : > "$3"
-    while [ ! -e "$4" ]; do sleep 0.1; done
-    fm_lock_release "$2"
-  ' _ "$ROOT/bin/fm-wake-lib.sh" "$home/state/.watcher-down.lock" "$home/marker-lock-held" "$home/marker-lock-release" &
-  holder=$!
-  wait_until 100 test -e "$home/marker-lock-held" || fail "fixture: could not hold the recovery-marker lock"
-  turn_end "$home"
-  wait_until 150 grep -q "	take-over	arm=$LEFT_ARM\$" "$home/state/.supervision-host.log" \
-    || fail "interrupted takeover: the park did not start a take-over of $LEFT_ARM: $(cat "$home/state/.supervision-host.log")"
-  host=$(awk -F '\t' '$1 == "host" { print $2; exit }' "$home/state/.supervision-host")
-  sleep 1
-  kill -0 "$LEFT_WATCHER" 2>/dev/null || fail "fixture: the take-over stopped the left watcher before the park was stopped"
-  kill -TERM "$host" 2>/dev/null || fail "fixture: the park host $host was not running"
-  wait_until 150 sh -c '! kill -0 "$1" 2>/dev/null' _ "$host" || fail "fixture: the park host did not stop"
-  : > "$home/marker-lock-release"
-  wait "$holder" 2>/dev/null || true
-  # The Stop hook runs the next park in place of the one stopped by a signal.
-  wait_until 150 host_owns_the_only_cycle "$home" \
-    || fail "interrupted takeover: the next park did not own the home's only watcher cycle (left arm $LEFT_ARM):"$'\n'"$(home_arms "$home")"$'\n'"$(cat "$home/state/.supervision-host.log")"
-  ! kill -0 "$LEFT_ARM" 2>/dev/null || fail "interrupted takeover: the left arm still runs (pid $LEFT_ARM)"
-  pass "host+hook: a park stopped mid take-over leaves the take-over to the next park"
+test_next_park_attaches_to_a_left_cycle_whose_output_was_not_kept() {
+  assert_next_park_keeps_the_left_watcher attach
+  pass "host+hook: without the left arm's output the next park attaches to its watcher rather than stopping it"
 }
 
 
-# A successor the host cannot record for the next park's take-over (here the
+# A successor the host cannot record for the next park to adopt (here the
 # record path is a directory the record would land inside) must not be left
 # running: the host stops it on exit, the close still reaches main unchanged,
 # and main's next turn end owns a fresh cycle with no orphan beside it.
@@ -615,5 +592,5 @@ fm_test_run \
   test_successor_close_during_main_turn_is_delivered_at_the_next_turn_end \
   test_pass_through_successor_survives_the_hook_process_group_teardown \
   test_next_park_adopts_the_cycle_a_pass_through_left_for_main \
-  test_a_park_stopped_mid_take_over_leaves_the_take_over_to_the_next_park \
+  test_next_park_attaches_to_a_left_cycle_whose_output_was_not_kept \
   test_unrecorded_successor_is_stopped_rather_than_left_for_main
