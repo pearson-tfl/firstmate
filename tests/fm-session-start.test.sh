@@ -2131,7 +2131,7 @@ EOF
 
   out=$(FM_SESSION_START_QUEUED_LIMIT=4 run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
 
-  assert_contains "$out" "compact backlog listing (manual backend; done rows omitted; every in-flight, held, and blocked title line kept; other queued bounded to 4; indented task bodies omitted)" \
+  assert_contains "$out" "compact backlog listing (manual backend; done rows omitted; every in-flight and blocked title line kept; held bounded to 20; other queued bounded to 4; indented task bodies omitted)" \
     "manual backend did not use compact title-line rendering"
   assert_contains "$out" "## In flight" "manual compact rendering omitted the in-flight section heading"
   assert_contains "$out" "- [ ] compact-startup - Compact startup digest" \
@@ -2155,8 +2155,21 @@ EOF
   assert_contains "$out" "(21 more queued - raise FM_SESSION_START_QUEUED_LIMIT or read data/backlog.md for the rest)" \
     "manual compact rendering did not disclose an exact queued remainder"
   assert_contains "$out" "or data/backlog.md" "manual compact digest omitted the data/backlog.md full-body pointer"
+  assert_contains "$out" "(shown 1 of 1 held title line(s))" "manual compact rendering did not report its held accounting"
 
-  pass "manual backlog rendering drops done rows, keeps every held or blocked title line, and bounds the rest"
+  # The held cap: held title lines past FM_SESSION_START_HELD_LIMIT are counted, not printed; blocked lines stay.
+  perl -i -pe 'print "- [ ] held-extra-1 - Extra held one (hold: later) (hold-kind: captain)\n- [ ] held-extra-2 - Extra held two (hold: later) (hold-kind: captain)\n" if /^- \[ \] plain-1 /' "$home/data/backlog.md"
+  out=$(FM_SESSION_START_QUEUED_LIMIT=4 FM_SESSION_START_HELD_LIMIT=1 run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_contains "$out" "- [ ] held-queued - Held queued work" "manual held cap dropped a held line inside its limit"
+  assert_not_contains "$out" "Extra held one" "manual held cap did not bound held title lines"
+  assert_contains "$out" "blocked-by: compact-startup - waits for implementation" "manual held cap dropped a blocked line"
+  assert_contains "$out" "(shown 1 in-flight, 2 held or blocked queued, 4 of 25 other queued title line(s); 1 done row(s) omitted)" \
+    "manual held cap miscounted the other queued lines"
+  assert_contains "$out" "(shown 1 of 3 held title line(s))" "manual held cap did not report what it showed"
+  assert_contains "$out" "(2 more held - raise FM_SESSION_START_HELD_LIMIT or read data/backlog.md for the rest)" \
+    "manual held cap did not disclose an exact remainder"
+
+  pass "manual backlog rendering drops done rows, keeps every blocked title line, and bounds held and other queued lines"
 }
 
 test_backlog_compact_tasks_axi_unavailable_uses_manual_fallback() {

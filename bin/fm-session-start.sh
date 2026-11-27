@@ -148,10 +148,10 @@
 #     sections 7 and 10 make actionable at startup, so they are never bounded
 #     away.
 #   - The held (captain- or time-gated) group is a standing one-line-per-item
-#     listing that grew to hundreds of rows, so on a tasks-axi backlog it is
-#     bounded by FM_SESSION_START_HELD_LIMIT, default 20, with the same exact
-#     remainder count and the command that lists every held item.
-#   - Only the plain queued (dispatchable-now) listing is bounded, by
+#     listing that grew to hundreds of rows, so it is bounded by
+#     FM_SESSION_START_HELD_LIMIT, default 20, with the same exact remainder
+#     count and the command that lists every held item.
+#   - The plain queued (dispatchable-now) listing is bounded, by
 #     FM_SESSION_START_QUEUED_LIMIT, default 20. Anything it omits is disclosed
 #     with an exact remainder count and the command that shows the rest, so a
 #     deep queue costs a counter rather than kilobytes.
@@ -167,9 +167,9 @@
 # When manual mode is selected, or tasks-axi is unavailable or incompatible,
 # this script prints only backlog section headings and item title lines, so
 # title-line hold and blocked-by metadata remain visible while indented bodies
-# stay out of the startup digest; the same never-bound-a-held-or-blocked-row
-# rule applies, recognized there from the title line's own hold/blocked-by
-# markers.
+# stay out of the startup digest; the same rules apply - blocked rows never
+# bounded, held rows under the held cap - recognized there from the title
+# line's own hold/blocked-by markers.
 # Full bodies are targeted follow-up only: `bin/fm-tasks-axi.sh show <id> --full` when
 # compatible tasks-axi is available, or `data/backlog.md` when the file body is
 # truly needed.
@@ -242,8 +242,8 @@
 # Master board, read live now, is left out of the held group; one line counts
 # what was left out. That check is the digest's one synchronous network read:
 # opt-in, and run to completion with no bound of its own. A check that fails
-# or proves nothing leaves every held item printed in full, and in-flight rows
-# are never left out. Without the file the output is unchanged.
+# or proves nothing leaves no held item out (the held cap still applies), and
+# in-flight rows are never left out. Without the file the output is unchanged.
 #
 #   --source  The native session-open source, supplied only by
 #             fm-sessionstart-run.sh. A genuine `startup` that owns the active
@@ -470,9 +470,9 @@ MANUAL_KEEP_RE='[(]hold|blocked-by:'
 
 print_backlog_manual_compact() {
   local path=$1 reason=$2
-  printf 'compact backlog listing (%s; done rows omitted; every in-flight, held, and blocked title line kept; other queued bounded to %s; indented task bodies omitted)\n' \
-    "$reason" "$QUEUED_LIMIT"
-  awk -v max="$QUEUED_LIMIT" -v keep_re="$MANUAL_KEEP_RE" '
+  printf 'compact backlog listing (%s; done rows omitted; every in-flight and blocked title line kept; held bounded to %s; other queued bounded to %s; indented task bodies omitted)\n' \
+    "$reason" "$HELD_LIMIT" "$QUEUED_LIMIT"
+  awk -v max="$QUEUED_LIMIT" -v hmax="$HELD_LIMIT" -v keep_re="$MANUAL_KEEP_RE" '
     function state_for_heading(line, heading) {
       heading = line
       sub(/^##[[:space:]]+/, "", heading)
@@ -492,12 +492,17 @@ print_backlog_manual_compact() {
     state == "done" && /^[-*][[:space:]]+/ { done_total++; next }
     state == "queued" && /^[-*][[:space:]]+/ {
       queued_total++
+      if ($0 ~ /[(]hold/) {
+        held_total++
+        if (held_shown < hmax) { held_shown++; gated++; print $0 }
+        next
+      }
       if ($0 ~ keep_re) { gated++; print $0; next }
       if (plain_shown < max) { plain_shown++; print $0 }
       next
     }
     END {
-      plain_total = queued_total - gated
+      plain_total = queued_total - gated - (held_total - held_shown)
       if (in_flight + queued_total + done_total == 0) {
         print "(no backlog item title lines found)"
       } else {
@@ -505,6 +510,10 @@ print_backlog_manual_compact() {
           in_flight, gated, plain_shown, plain_total, done_total
         if (plain_total > plain_shown) {
           printf "(%d more queued - raise FM_SESSION_START_QUEUED_LIMIT or read data/backlog.md for the rest)\n", plain_total - plain_shown
+        }
+        if (held_total > 0) printf "(shown %d of %d held title line(s))\n", held_shown, held_total
+        if (held_total > held_shown) {
+          printf "(%d more held - raise FM_SESSION_START_HELD_LIMIT or read data/backlog.md for the rest)\n", held_total - held_shown
         }
       }
     }
