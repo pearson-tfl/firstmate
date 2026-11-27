@@ -117,6 +117,55 @@ test_parked_host_sees_an_arm_exit_and_a_stop_signal_promptly() {
   pass "host: a parked host sees its arm exit and a stop signal promptly, and no arm holds its pause FIFO"
 }
 
+# The arm's first recorded identity can be its pre-exec one, so the park re-reads
+# it until a refresh after the arm's first output is written. A record that is
+# unreadable at that moment is a failed refresh the park retries, not a final one.
+# A PATH bash holds the arm before its exec so the recorded identity goes stale.
+test_arm_identity_refresh_retries_an_unreadable_record() {
+  local home real_bash arm pre post now
+  home=$(make_home refresh-retry attended)
+  real_bash=$(command -v bash)
+  cat > "$home/fakebin/bash" <<SH
+#!$real_bash
+case "\${1:-}" in
+  *fm-watch-arm.sh)
+    : > "\$FM_HOME/arm-waiting"
+    while [ -e "\$FM_HOME/arm-gate" ]; do $(command -v sleep) 0.1; done
+    ;;
+esac
+exec $real_bash "\$@"
+SH
+  chmod +x "$home/fakebin/bash"
+  : > "$home/arm-gate"
+  printf 'holder:claude\n' > "$home/state/.lock"
+  FM_HOME="$home" FM_LOCK_HOLDER=claude FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" PATH="$home/fakebin:$PATH" \
+    "$real_bash" -c '"$0" park > "$FM_HOME/host.out" 2>&1; printf "%s\n" "$?" > "$FM_HOME/host.rc"' "$HOST" &
+  wait_until 150 test -e "$home/arm-waiting" || fail "refresh-retry: the arm never started: $(cat "$home/host.out")"
+  wait_until 50 test -n "$(recorded "$home" arm)" || fail "refresh-retry: no recorded arm"
+  arm=$(recorded "$home" arm)
+  sleep 2
+  pre=$(awk -F '\t' -v pid="$arm" '$2 == pid { print $3 }' "$home/state/.supervision-host")
+  chmod 000 "$home/state/.supervision-host"
+  rm -f "$home/arm-gate"
+  wait_until 150 grep -q '^watcher: started ' "$home/host.out" \
+    || { chmod 600 "$home/state/.supervision-host"; fail "refresh-retry: the released arm never streamed its status: $(cat "$home/host.out")"; }
+  sleep 3
+  chmod 600 "$home/state/.supervision-host"
+  live_identity() {
+    bash -c '. "$1/bin/fm-wake-lib.sh"; . "$1/bin/fm-supervision-engine-lib.sh"; _fm_engine_identity "$2"' _ "$ROOT" "$arm"
+  }
+  post=$(live_identity)
+  [ -n "$post" ] && [ "$post" != "$pre" ] \
+    || fail "refresh-retry: the arm's identity did not change across its exec, so the case proves nothing"
+  record_current() {
+    now=$(awk -F '\t' -v pid="$arm" '$2 == pid { print $3 }' "$home/state/.supervision-host")
+    [ "$now" = "$post" ]
+  }
+  wait_until 50 record_current || fail "refresh-retry: the record kept the arm's pre-exec identity after an unreadable refresh"
+  stop_home_processes "$home"
+  pass "host: an arm-identity refresh that meets an unreadable record is retried until the record holds the arm's identity"
+}
+
 test_attended_routine_wake_is_handled_on_the_engine_and_stays_off_main() {
   skip_5138 test_attended_routine_wake_is_handled_on_the_engine_and_stays_off_main && return 0
   local home first drained
@@ -1073,6 +1122,7 @@ test_incomplete_engine_result_hands_the_wake_to_main() {
 fm_test_run \
   test_idle_park_starts_no_processes_and_still_sees_the_close \
   test_parked_host_sees_an_arm_exit_and_a_stop_signal_promptly \
+  test_arm_identity_refresh_retries_an_unreadable_record \
   test_attended_routine_wake_is_handled_on_the_engine_and_stays_off_main \
   test_host_stopped_right_after_a_handled_wake_exits_and_frees_the_queue \
   test_engine_in_another_time_zone_handles_its_granted_rows \

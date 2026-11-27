@@ -658,9 +658,9 @@ mark_engine_compacted() {  # <ended>
 # A half-second pause that starts no process: read -t on a FIFO this host
 # holds open for reading and writing, which nothing ever writes. Bash before 4
 # (no fractional timeout), a FIFO that cannot be made, or a read that returns
-# early with data or end of file falls back to sleep 0.5 for good.
-# shortcut: Bash 3.2 keeps about 120 sleep starts a minute while parked; give
-# it a whole-second read timeout if a host is ever run under Bash 3.2.
+# early with data or end of file falls back to sleep 0.5 for good. That
+# fallback deliberately keeps the earlier sleep cadence (about 120 sleep
+# starts a minute while parked), so it is no regression; live hosts run Bash 5.
 PAUSE_FD_OPEN=0
 open_pause_fd() {
   local fifo
