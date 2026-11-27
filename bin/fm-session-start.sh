@@ -143,10 +143,14 @@
 #   - `done` rows are never listed. Retained completion history belongs to the
 #     reporting surfaces (bin/fm-bearings-snapshot.sh, /ahoy), and at startup it
 #     is pure weight - 10 done rows cost 3.3KB in an observed main-home digest.
-#   - Every in-flight, held, and blocked row is listed IN FULL, with its
+#   - Every in-flight and blocked row is listed IN FULL, with its
 #     hold_kind/hold_reason and blocked_by. Those are the rows AGENTS.md
 #     sections 7 and 10 make actionable at startup, so they are never bounded
 #     away.
+#   - The held (captain- or time-gated) group is a standing one-line-per-item
+#     listing that grew to hundreds of rows, so on a tasks-axi backlog it is
+#     bounded by FM_SESSION_START_HELD_LIMIT, default 20, with the same exact
+#     remainder count and the command that lists every held item.
 #   - Only the plain queued (dispatchable-now) listing is bounded, by
 #     FM_SESSION_START_QUEUED_LIMIT, default 20. Anything it omits is disclosed
 #     with an exact remainder count and the command that shows the rest, so a
@@ -416,6 +420,8 @@ STATUS_TAIL=${FM_SESSION_START_STATUS_TAIL:-5}
 case "$STATUS_TAIL" in ''|*[!0-9]*) STATUS_TAIL=5 ;; esac
 QUEUED_LIMIT=${FM_SESSION_START_QUEUED_LIMIT:-20}
 case "$QUEUED_LIMIT" in ''|*[!0-9]*|0) QUEUED_LIMIT=20 ;; esac
+HELD_LIMIT=${FM_SESSION_START_HELD_LIMIT:-20}
+case "$HELD_LIMIT" in ''|*[!0-9]*|0) HELD_LIMIT=20 ;; esac
 # One per-task endpoint read may never outlive this bound: a hung backend CLI
 # becomes that task's endpoint: error line instead of the digest's whole
 # runtime budget.
@@ -540,6 +546,19 @@ print_ready_queued_bounded() {
   '
 }
 
+# Bound the held group's rows (indented listing lines; every other line passes
+# through) and disclose exactly what was cut.
+print_held_bounded() {
+  awk -v max="$HELD_LIMIT" '
+    /^  / { total++; if (shown < max) { print; shown++ }; next }
+    { print }
+    END {
+      if (total > 0) printf "(shown %d of %d held item(s))\n", shown, total
+      if (total > shown) printf "(%d more held - bin/fm-tasks-axi.sh list --state held)\n", total - shown
+    }
+  '
+}
+
 # Filter only rows already emitted by the in-flight listing, retaining the
 # tool's headers and explicit counts (which are labeled as pre-deduplication).
 print_reemit_held() {
@@ -580,11 +599,11 @@ check_captain_board() {
     && BOARD_PROVEN=$("$SCRIPT_DIR/fm-captain-board.sh" "$CONFIG/captain-board" "$dir/pairs" 2>>"$dir/err"); then
     # A proven result is counted by omit_board_proven, which sees what it drops.
     [ -n "$BOARD_PROVEN" ] \
-      || BOARD_NOTE="(captain's board checked live now: no captain-held item cites an open card, so every held item is printed)"
+      || BOARD_NOTE="(captain's board checked live now: no captain-held item cites an open card, so none is left out of the held group)"
   else
     BOARD_PROVEN=
     msg=$(head -n 1 "$dir/err" 2>/dev/null)
-    BOARD_NOTE="(captain's board check failed: ${msg:-no diagnostic}; every held item is printed)"
+    BOARD_NOTE="(captain's board check failed: ${msg:-no diagnostic}; none is left out of the held group)"
   fi
   [ -z "$dir" ] || rm -rf "$dir"
 }
@@ -613,10 +632,10 @@ print_backlog_tasks_axi_compact() {
   else
     check_captain_board "$path"
     if [ "$REEMIT" -eq 1 ]; then
-      printf 'compact backlog listing (tasks-axi re-emit; hold reasons omitted, use bin/fm-tasks-axi.sh show <id> --full; overlapping in-flight/held rows shown once; ready queued bounded to %s; task bodies omitted)\n' "$QUEUED_LIMIT"
+      printf 'compact backlog listing (tasks-axi re-emit; hold reasons omitted, use bin/fm-tasks-axi.sh show <id> --full; overlapping in-flight/held rows shown once; held bounded to %s; ready queued bounded to %s; task bodies omitted)\n' "$HELD_LIMIT" "$QUEUED_LIMIT"
     else
-      printf 'compact backlog listing (tasks-axi; done rows omitted; every in-flight, held, and blocked row shown in full; ready queued bounded to %s; task bodies omitted)\n' \
-        "$QUEUED_LIMIT"
+      printf 'compact backlog listing (tasks-axi; done rows omitted; every in-flight and blocked row shown in full; held bounded to %s; ready queued bounded to %s; task bodies omitted)\n' \
+        "$HELD_LIMIT" "$QUEUED_LIMIT"
     fi
     printf '\nin flight:\n'
     printf '%s\n' "$in_flight" | fm_hold_reason_decode_stream | strip_axi_help
@@ -625,10 +644,10 @@ print_backlog_tasks_axi_compact() {
       # IDs are the first field of tasks-axi listing rows. Do not parse titles
       # or reasons as CSV: those fields may contain quoted commas/newlines.
       # Re-emit requests no reason/body fields, so each identity is one row.
-      print_reemit_held "$in_flight" "$held" | omit_board_proven
+      print_reemit_held "$in_flight" "$held" | omit_board_proven | print_held_bounded
     else
       printf '\nheld (captain- or time-gated; an in-flight item that is also held appears in both groups):\n'
-      printf '%s\n' "$held" | fm_hold_reason_decode_stream | strip_axi_help | omit_board_proven
+      printf '%s\n' "$held" | fm_hold_reason_decode_stream | strip_axi_help | omit_board_proven | print_held_bounded
     fi
     [ -z "$BOARD_NOTE" ] || printf '%s\n' "$BOARD_NOTE"
     printf '\nblocked queued:\n'

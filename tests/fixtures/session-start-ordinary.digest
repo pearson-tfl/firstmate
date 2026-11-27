@@ -124,7 +124,7 @@ FLEET STATE
 
 data/backlog.md
 --------------------------------------------------------------------------------
-compact backlog listing (tasks-axi; done rows omitted; every in-flight, held, and blocked row shown in full; ready queued bounded to 20; task bodies omitted)
+compact backlog listing (tasks-axi; done rows omitted; every in-flight and blocked row shown in full; held bounded to 20; ready queued bounded to 20; task bodies omitted)
 
 in flight:
 count: 1
@@ -135,6 +135,7 @@ held (captain- or time-gated; an in-flight item that is also held appears in bot
 count: 1
 tasks[1]{id,state,kind,repo,title,blocked_by,hold_kind,hold_reason}:
   held-queued,queued,ship,firstmate,Held queued work,none,captain,captain choice pending
+(shown 1 of 1 held item(s))
 
 blocked queued:
 count: 1

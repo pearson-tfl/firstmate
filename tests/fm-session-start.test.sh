@@ -2013,7 +2013,7 @@ EOF
   out=$(FM_FAKE_TASKS_AXI_LOG="$log" FM_FAKE_TASKS_AXI_READY=3 \
     run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
 
-  assert_contains "$out" "compact backlog listing (tasks-axi; done rows omitted; every in-flight, held, and blocked row shown in full; ready queued bounded to 20; task bodies omitted)" \
+  assert_contains "$out" "compact backlog listing (tasks-axi; done rows omitted; every in-flight and blocked row shown in full; held bounded to 20; ready queued bounded to 20; task bodies omitted)" \
     "compatible tasks-axi backend did not render the compact backlog listing"
   assert_contains "$out" "tasks[1]{id,state,kind,repo,title,blocked_by,hold_kind,hold_reason}:" \
     "tasks-axi compact listing omitted the expected structured field header"
@@ -2050,7 +2050,7 @@ EOF
   assert_grep "ready --file $home/data/backlog.md" "$log" \
     "session start did not ask tasks-axi for the dispatchable queued set"
 
-  pass "compatible tasks-axi backlog rendering drops done rows and keeps every in-flight, held, and blocked row"
+  pass "compatible tasks-axi backlog rendering drops done rows and keeps every in-flight and blocked row"
 }
 
 # The bound may only ever cut the dispatchable-now listing, and whatever it cuts
@@ -2086,6 +2086,36 @@ EOF
     "the queued bound swallowed an in-flight row"
 
   pass "the startup backlog bound cuts only dispatchable queued rows and discloses the remainder exactly"
+}
+
+# A standing one-line-per-item listing is capped in its own script: the held
+# group stops at FM_SESSION_START_HELD_LIMIT and discloses the exact remainder.
+test_backlog_held_bound_discloses_its_remainder() {
+  local rec root home fakebin out rows mode flag
+  rec=$(new_world backlog-held-bound)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_tasks_axi_compact "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  write_long_body_backlog "$home/data/backlog.md"
+  rows=$(for i in 1 2 3 4; do printf '  extra-held-%s,queued,ship,firstmate,Extra held %s,none,captain,later\n' "$i" "$i"; done)
+
+  for mode in startup reemit; do
+    flag=
+    [ "$mode" = startup ] || flag=--reemit
+    out=$(FM_FAKE_TASKS_AXI_EXTRA_HELD=$rows FM_SESSION_START_HELD_LIMIT=2 \
+      run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" $flag)
+    assert_contains "$out" "Held queued work" "$mode: the held bound dropped a row inside its own limit"
+    assert_contains "$out" "Extra held 1" "$mode: the held bound dropped a row inside its own limit"
+    assert_not_contains "$out" "Extra held 2" "$mode: the held bound did not bound the held listing"
+    assert_contains "$out" "(shown 2 of 5 held item(s))" "$mode: the held listing did not report what it showed"
+    assert_contains "$out" "(3 more held - bin/fm-tasks-axi.sh list --state held)" \
+      "$mode: the held listing did not disclose an exact remainder and how to see it"
+  done
+
+  pass "the startup held listing is capped and discloses the remainder exactly"
 }
 
 test_backlog_compact_manual_backend_skips_indented_bodies() {
@@ -2498,7 +2528,7 @@ EOF
   for kept in "On the board" "Card done" "No link"; do
     assert_contains "$out" "$kept" "an unreachable board still left out a held item ($kept)"
   done
-  assert_contains "$out" "every held item is printed" "an unreachable board was not disclosed"
+  assert_contains "$out" "none is left out of the held group" "an unreachable board was not disclosed"
   assert_contains "$out" "cannot read Notion data source" "the board failure diagnostic is missing"
   out=$(FM_FAKE_NTN_DOWN_DS=$master run_board)
   for kept in "On the board" "Master open"; do
@@ -3243,6 +3273,7 @@ test_non_pi_session_start_leaves_branch_state_untouched
 test_session_start_seeds_the_outcome_display_tail_while_away
 test_backlog_compact_tasks_axi_omits_bodies_and_keeps_metadata
 test_backlog_queued_bound_discloses_its_remainder
+test_backlog_held_bound_discloses_its_remainder
 test_backlog_compact_manual_backend_skips_indented_bodies
 test_backlog_compact_tasks_axi_unavailable_uses_manual_fallback
 test_fleet_digest_empty_fleet
