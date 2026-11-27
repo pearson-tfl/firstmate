@@ -16,31 +16,58 @@ set -u
 # shellcheck source=tests/supervision-host-helpers.sh
 . "$(dirname "${BASH_SOURCE[0]}")/supervision-host-helpers.sh"
 
-test_park_exit_probe_uses_half_second_child_sleeps() {
-  skip_5138 test_park_exit_probe_uses_half_second_child_sleeps && return 0
-  local home host_pid
-  home=$(make_home park-cadence attended)
-  cat > "$home/fakebin/sleep" <<'SH'
+# An idle park starts no processes of its own (arm and watcher processes are
+# theirs), and still observes the arm's close. Each wrapped command logs itself
+# when its ancestry reaches the host other than through an arm. The host runs
+# under a named session lock, so the park needs no pid ownership (#5138).
+test_idle_park_starts_no_processes_and_still_sees_the_close() {
+  local home cmd real
+  home=$(make_home idle-park attended)
+  for cmd in sleep cat od tr sed awk ps head wc grep mktemp date; do
+    real=$(command -v "$cmd") || fail "idle-park: $cmd is not installed"
+    cat > "$home/fakebin/$cmd" <<SH
 #!/bin/bash
-pid=''
-if [ -f "$FM_HOME/probe-host" ]; then
-  IFS= read -r pid < "$FM_HOME/probe-host" || true
-  if [ "$PPID" = "$pid" ]; then
-    printf '%s\n' "$1" >> "$FM_HOME/park-sleeps"
-  fi
+if [ -f "\$FM_HOME/probe-on" ] && [ -f "\$FM_HOME/state/.supervision-host" ]; then
+  host=''
+  while IFS=\$'\t' read -r role pid _; do
+    [ "\$role" = host ] && { host=\$pid; break; }
+  done < "\$FM_HOME/state/.supervision-host"
+  prev=\$\$ p=\$PPID
+  while [ -n "\$host" ] && [ -n "\$p" ] && [ "\$p" -gt 1 ]; do
+    if [ "\$p" = "\$host" ]; then
+      case "\$($(command -v ps) -o args= -p "\$prev" 2>/dev/null)" in
+        *fm-watch-arm.sh*) ;;
+        *) printf '%s %s\n' "$cmd" "\$*" >> "\$FM_HOME/host-children" ;;
+      esac
+      break
+    fi
+    prev=\$p
+    p=\$($(command -v ps) -o ppid= -p "\$p" 2>/dev/null)
+    p=\${p//[[:space:]]/}
+  done
 fi
-exec /bin/sleep "$@"
+exec $real "\$@"
 SH
-  chmod +x "$home/fakebin/sleep"
-  start_host "$home"
-  wait_until 150 watcher_live "$home" || fail "park-cadence: no watcher started"
-  host_pid=$(awk -F '\t' '$1 == "host" { print $2; exit }' "$home/state/.supervision-host")
-  [ -n "$host_pid" ] || fail "park-cadence: no recorded host"
-  printf '%s\n' "$host_pid" > "$home/probe-host"
-  wait_until 100 test -s "$home/park-sleeps" || fail "park-cadence: no child sleep observed"
-  [ "$(sort -u "$home/park-sleeps")" = 0.5 ] || fail "park-cadence: exit probing did not use half-second sleeps"
+    chmod +x "$home/fakebin/$cmd"
+  done
+  : > "$home/probe-on"
+  printf 'holder:claude\n' > "$home/state/.lock"
+  FM_HOME="$home" FM_LOCK_HOLDER=claude FM_CREW_STATE_BIN="$home/fakebin/fm-crew-state.sh" PATH="$home/fakebin:$PATH" \
+    bash -c '"$0" park > "$FM_HOME/host.out" 2>&1; printf "%s\n" "$?" > "$FM_HOME/host.rc"' "$HOST" &
+  wait_until 150 watcher_live "$home" || fail "idle-park: no watcher started: $(cat "$home/host.out")"
+  wait_until 50 grep -q '^watcher: started ' "$home/host.out" || fail "idle-park: the first cycle's status never streamed"
+  [ -s "$home/host-children" ] || fail "idle-park: the probe saw nothing the host started, so the idle check would be vacuous"
+  sleep 2
+  : > "$home/host-children"
+  sleep 4
+  [ ! -s "$home/host-children" ] || fail "idle-park: the parked host started processes: $(sort "$home/host-children" | uniq -c)"
+  ! host_exited "$home" || fail "idle-park: the host left its park: $(cat "$home/host.out")"
+  rm -f "$home/probe-on"
+  append_status "$home" 'step one'
+  wait_until_deadline 30 host_exited "$home" || fail "idle-park: the arm's close never reached the owner"
+  assert_re '^signal: ' "$home/host.out" "idle-park: the host must print the arm's close"
   stop_home_processes "$home"
-  pass "host: parked child-exit sampling uses ordinary half-second sleeps"
+  pass "host: an idle park starts no processes of its own and still prints the arm's close"
 }
 
 test_attended_routine_wake_is_handled_on_the_engine_and_stays_off_main() {
@@ -997,7 +1024,7 @@ test_incomplete_engine_result_hands_the_wake_to_main() {
 }
 
 fm_test_run \
-  test_park_exit_probe_uses_half_second_child_sleeps \
+  test_idle_park_starts_no_processes_and_still_sees_the_close \
   test_attended_routine_wake_is_handled_on_the_engine_and_stays_off_main \
   test_host_stopped_right_after_a_handled_wake_exits_and_frees_the_queue \
   test_engine_in_another_time_zone_handles_its_granted_rows \

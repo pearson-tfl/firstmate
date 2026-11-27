@@ -181,9 +181,11 @@
 # successor cycle may take to verify), FM_SUPERVISION_HOST_POLL (1).
 # Park duration uses Bash's process-relative SECONDS counter (including Bash
 # 3.2), while durable timestamps still use epoch time. This is not a portable
-# monotonic-clock guarantee. Arm exit probes use ordinary 0.5-second child
-# sleeps within the unchanged POLL-cadence maintenance and boundary checks;
-# close observation and a shell-only caught signal may wait that interval plus
+# monotonic-clock guarantee. Arm exit probes run every 0.5 seconds within the
+# POLL-cadence boundary checks, pausing with a read timeout on a private FIFO
+# rather than a sleep child (pause_half_second owns the fallback), and the
+# arm's identity is re-read only until the arm has printed, so an idle park
+# starts no processes; close observation may wait that interval plus
 # work/scheduling time. No stop-signal disposition or cleanup bound changes.
 # FM_TEST_SUPERVISION_HOST_CLOCK names a file holding the park's elapsed
 # seconds, which the park and turn boundary checks read in place of SECONDS
@@ -508,9 +510,9 @@ start_arm() {  # <predecessor-arm-pid or empty> [--restart]; sets the started pi
   # (the shape start_handling_successor in bin/fm-claude-stop-autoarm.sh uses).
   [ "${ARM_OWN_GROUP:-0}" -ne 1 ] || set -m 2>/dev/null || true
   if [ -n "$predecessor" ]; then
-    FM_WATCH_PREDECESSOR_ARM_PID=$predecessor FM_GUARD_GRACE="$GRACE" "$SCRIPT_DIR/fm-watch-arm.sh" "$@" >"$out" 2>&1 </dev/null &
+    FM_WATCH_PREDECESSOR_ARM_PID=$predecessor FM_GUARD_GRACE="$GRACE" "$SCRIPT_DIR/fm-watch-arm.sh" "$@" >"$out" 2>&1 </dev/null 7<&- &
   else
-    FM_GUARD_GRACE="$GRACE" "$SCRIPT_DIR/fm-watch-arm.sh" "$@" >"$out" 2>&1 </dev/null &
+    FM_GUARD_GRACE="$GRACE" "$SCRIPT_DIR/fm-watch-arm.sh" "$@" >"$out" 2>&1 </dev/null 7<&- &
   fi
   pid=$!
   [ "${ARM_OWN_GROUP:-0}" -ne 1 ] || set +m 2>/dev/null || true
@@ -649,20 +651,47 @@ mark_engine_compacted() {  # <ended>
   fi
 }
 
+# A half-second pause that starts no process: read -t on a FIFO this host
+# holds open for reading and writing, which nothing ever writes. Bash before 4
+# (no fractional timeout), a FIFO that cannot be made, or a read that returns
+# early with data or end of file falls back to sleep 0.5 for good.
+PAUSE_FD_OPEN=0
+open_pause_fd() {
+  local fifo
+  [ "${BASH_VERSINFO[0]}" -ge 4 ] || return 0
+  fifo=$(mktemp -u "$STATE/.supervision-host-pause.XXXXXX") || return 0
+  mkfifo -m 600 "$fifo" 2>/dev/null || return 0
+  exec 7<>"$fifo" && PAUSE_FD_OPEN=1
+  rm -f "$fifo"
+}
+pause_half_second() {
+  local rc=0
+  if [ "$PAUSE_FD_OPEN" -eq 1 ]; then
+    read -r -t 0.5 -u 7 2>/dev/null || rc=$?
+    [ "$rc" -le 128 ] || return 0
+    PAUSE_FD_OPEN=0
+  fi
+  sleep 0.5
+}
+
 # Wait for the current arm to close. Returns 0 with ARM_TEXT set,
 # or 1 when the park boundary arrives first.
 await_close() {
-  local i
+  local i refreshed=0
   while fm_pid_alive "$ARM_PID"; do
-    refresh_process "$ARM_PID"
+    # The arm's identity is re-read only until it has run: output from it
+    # proves its exec, so the read after that is final.
+    if [ "$refreshed" -eq 0 ]; then
+      [ ! -s "$ARM_OUT" ] || refreshed=1
+      refresh_process "$ARM_PID"
+    fi
     [ "$READY_PENDING" -eq 0 ] || stream_ready_line
     boundary_reached && return 1
     warm_compact_tick
-    # Probe the arm's exit twice a second between POLL-cadence checks, without
-    # changing the outer identity refresh, readiness, or boundary cadence.
+    # Probe the arm's exit twice a second between POLL-cadence checks.
     i=$((POLL * 2))
     while [ "$i" -gt 0 ] && fm_pid_alive "$ARM_PID"; do
-      sleep 0.5
+      pause_half_second
       i=$((i - 1))
     done
   done
@@ -1239,6 +1268,7 @@ trap 'exit 143' TERM
 trap 'exit 130' INT
 activate || { echo "supervision-host stood down: the host record could not be written"; exit 0; }
 log_line "start	gen=$GEN	primary=$PRIMARY"
+open_pause_fd
 
 # The first cycle.
 if [ "$FIRST_ARM_RESTART" -eq 1 ]; then
