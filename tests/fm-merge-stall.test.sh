@@ -1207,6 +1207,47 @@ test_held_task_with_gone_worker_stays_silent() {
   pass "held tasks with gone workers stay silent without reading worker activity and still retire when merged"
 }
 
+# Unreadable evidence keeps only the stall live records still support: a
+# notified merge or a replaced waiting line ends its episode regardless.
+test_uncertainty_keeps_only_live_episodes() {
+  local ending channel key out next=https://github.com/owner/repo/pull/629
+  for ending in merged-then-registered replaced-wait; do
+    make_world "uncertain-live-$ending"; bind_mate local
+    channel="$MAIN/state/mate.status"
+    write_task "$MATE" child on "paused [at=$T0]: ready PR awaits home"
+    scan "$MATE" $((T0 + 1800)) >/dev/null || fail "$ending fixture escalation failed"
+    key=$(parent_open "$channel" | cut -f1)
+    [ -n "$key" ] || fail "$ending fixture did not escalate"
+    if [ "$ending" = merged-then-registered ]; then
+      observe_merge "$MATE" child || fail "could not record the first PR merge"
+      printf 'pr=%s\n' "$next" >> "$MATE/state/child.meta"
+    else
+      printf 'working [at=%s]: more work\npaused [at=%s]: second wait\n' "$((T0 + 1850))" "$((T0 + 1900))" >> "$MATE/state/child.status"
+    fi
+    out=$(FM_TEST_BAD_TASK=child FM_TEST_ACTIVITY_RC=2 scan "$MATE" $((T0 + 2000))) || fail "$ending uncertain scan failed"
+    case "$out" in *'evidence unavailable: current activity read failed for child'*) ;; *) fail "$ending uncertainty lost its diagnostic: $out" ;; esac
+    [ ! -s "$MATE/state/.merge-stall" ] || fail "$ending uncertainty kept an ended episode: $(cat "$MATE/state/.merge-stall")"
+    channel_lines "$channel" | grep -Fq "resolved [key=$key]:" || fail "$ending uncertainty left the ended episode open upstream"
+  done
+  pass "unreadable activity keeps no episode a notified merge or a replaced waiting line has ended"
+}
+
+# A recorded PR that closes inside a reminder interval is noticed on the next
+# scan, so the task's replacement PR surfaces then rather than an interval later.
+test_ended_pr_found_within_reminder_interval() {
+  local out next=https://github.com/owner/repo/pull/629
+  make_world ended-within-interval
+  write_unregistered_task "$MAIN" t paused
+  printf 'pr=%s\n' "$URL" >> "$MAIN/state/t.meta"
+  out=$(scan "$MAIN" $((T0 + 1800))) || fail "first escalation failed"
+  case "$out" in "t PR $URL unmerged 1800s"*) ;; *) fail "recorded PR did not wake: $out" ;; esac
+  out=$(FM_TEST_CLOSED_URL="$URL" FM_TEST_BRANCH_URL="$next" scan "$MAIN" $((T0 + 2100))) || fail "replacement scan failed"
+  case "$out" in "t PR $next unmerged 2100s"*"merge it now with bin/fm-pr-merge.sh t $next"*) ;; *) fail "replacement PR waited out the closed PR's reminder interval: $out" ;; esac
+  pass "a recorded PR closed within its reminder interval yields its replacement on the next scan"
+}
+
+test_uncertainty_keeps_only_live_episodes
+test_ended_pr_found_within_reminder_interval
 test_slow_forge_read_succeeds_under_default_timeout
 test_held_task_with_gone_worker_stays_silent
 test_retired_pr_is_not_restored_by_uncertainty
