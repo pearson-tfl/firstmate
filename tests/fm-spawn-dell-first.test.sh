@@ -137,7 +137,7 @@ PARENT="$CASE_DIR/parent"
 mkdir -p "$PARENT/data"
 mv "$HOME_DIR/data/secondmates.md" "$PARENT/data/secondmates.md"
 printf '%s\n' '- otherdell - Dell lanes for other. (host: dell; root: /r; home: /h; scope: other; projects: q; added 2026-11-27)' \
-  '- childdell - Dell lanes for child. (host: dell; root: /r; home: /h; scope: child work; projects: p; added 2026-11-27)' \
+  '- childdell - Dell lanes. (host: dell; root: /r; home: /h; scope: child work; projects: p; added 2026-11-27)' \
   >> "$PARENT/data/secondmates.md"
 printf 'child\n' > "$HOME_DIR/.fm-secondmate-home"
 printf 'schema=fm-secondmate-parent.v1\nroute=local\nparent_home=%s\n' "$PARENT" > "$HOME_DIR/.fm-secondmate-parent"

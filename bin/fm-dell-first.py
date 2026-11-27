@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 """Dell-first placement for a fresh ship or scout spawn on a Mac home.
 
-fm-spawn.sh owns when this runs and the --mac-reason/--needs-tool flags.
-Prints the task's one-line mac_reason on stdout and exits 0 when the worker may
-start on the Mac; exits 1 with the refusal on stderr when the Dell has room and
-no reason was given. Capacity is AHR's own check
-($HOME/Code/Agent-Harness-Reconfig/ops/claude-lane/placement.py) and the tool
-list is AHR's ops/lane-tools (tools.json and the Dell's `lane-tools.py --check`
-line); neither is re-implemented here. An unreadable Dell or a missing AHR probe
-warns and allows the Mac, recording why.
+docs/configuration.md "Dell-first placement" owns the decision; fm-spawn.sh
+owns when this runs. Prints the one-line mac_reason and exits 0 to start on
+the Mac; exits 1 with the refusal on stderr.
 """
 
 import argparse
@@ -96,13 +91,21 @@ def dell_room(placement, cfg, project):
 
 
 def registered(home, host):
-    """(id, line) for each secondmate route in home's registry hosted on host."""
-    try:
-        lines = (Path(home) / "data/secondmates.md").read_text().splitlines()
-    except OSError:
+    """(id, summary and scope) for each remote route in home's registry on host,
+    read through the shared parser (bin/fm-secondmate-registry-lib.sh)."""
+    reg = Path(home) / "data/secondmates.md"
+    if not reg.is_file():
         return []
-    found = (re.match(r"- (\S+) - .*\(host: (\S+?);", line) for line in lines)
-    return [(m.group(1), m.group(0)) for m in found if m and m.group(2) == host]
+    proc = subprocess.run(["bash", "-c", """. "$1" || exit 2
+while IFS= read -r line || [ -n "$line" ]; do
+  secondmate_registry_parse_line "$line" && [ "$SECONDMATE_REGISTRY_REMOTE" = 1 ] &&
+    printf '%s\\t%s\\t%s %s\\n' "$SECONDMATE_REGISTRY_ID" "$SECONDMATE_REGISTRY_HOST" \\
+      "$SECONDMATE_REGISTRY_SUMMARY" "$SECONDMATE_REGISTRY_SCOPE"
+done < "$2"
+""", "registry", str(Path(__file__).resolve().parent / "fm-secondmate-registry-lib.sh"), str(reg)],
+        capture_output=True, text=True)
+    rows = [line.split("\t", 2) for line in proc.stdout.splitlines()]
+    return [(sid, text) for sid, rhost, text in rows if rhost == host]
 
 
 def dell_route(home, task, host):
@@ -119,7 +122,7 @@ def dell_route(home, task, host):
     parent = marker.get("parent_home") if marker.get("route") == "local" else None
     if parent:
         theirs = registered(parent, host)
-        mine = [p for p, line in theirs if re.search(rf"\b{re.escape(me)}\b", line)] if me else []
+        mine = [p for p, text in theirs if re.search(rf"\b{re.escape(me)}\b", text)] if me else []
         routes += [f"FM_HOME={parent} bin/fm-backlog-handoff.sh {p} {task}"
                    for p in (mine or [p for p, _ in theirs])]
     if routes:

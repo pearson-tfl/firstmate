@@ -10,14 +10,9 @@
 #   records, or the spawn refuses; it writes required_skills= to the task's
 #   meta, which a relaunch keeps, and leaves the start-proof record in the
 #   task's steering inbox (bin/fm-required-skill-lib.sh owns the gates).
-#   --mac-reason <words> and --needs-tool <lane-tool> (repeatable) apply to a
-#   fresh ship or scout spawn on a Mac (uname Darwin) home, which first asks
-#   bin/fm-dell-first.py for Dell-first placement: a written reason, a named
-#   lane tool the Dell lacks, a Dell without room, or an unreadable Dell (with a
-#   warning) starts the worker on the Mac and records mac_reason=<one line> in
-#   its meta; a Dell with room and no reason refuses, naming the home's Dell
-#   partner hand-off. Relaunch keeps the recorded mac_reason and is never placed;
-#   a spawn on the Dell and a secondmate are never placed.
+#   --mac-reason <words> and --needs-tool <lane-tool> (repeatable) feed Dell-first
+#   placement of a fresh ship or scout spawn on a Mac home, which records
+#   mac_reason= in the task's meta (docs/configuration.md "Dell-first placement").
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
 #   spawn and refused on --scout and --secondmate spawns. Firstmate resolves both
 #   per task at intake (AGENTS.md section 7); data/projects.md holds the captain's
