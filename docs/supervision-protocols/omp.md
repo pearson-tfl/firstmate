@@ -20,6 +20,8 @@ When this session owns supervision and away mode is not active:
 11. Never use shell `&` for watcher supervision.
    The arm mechanism above is extension-owned, not a model tool call, but a manual recovery probe that backgrounds, pipes, or bundles the arm is denied automatically by the pre-tool seatbelt (`bin/fm-arm-pretool-check.sh`, wired into the turn-end guard extension at `__FM_OMP_TURNEND_EXT__`).
 
+Away and quiet mode on omp: while `state/.afk` exists the watch extension keeps no arm and arms again once the record is gone, and in a session with no terminal pane it runs the away daemon itself and delivers the daemon's escalations and acknowledged hand-back retries as follow-up turns; `__FM_OMP_EXT__`'s header owns the mechanism.
+
 The turn-end guard on omp is structural, not advisory: `__FM_OMP_TURNEND_EXT__` answers omp's blocking `session_stop` hook, and when `bin/fm-turnend-guard.sh` returns 2 it forces one continuation carrying the guard text, bounded to one per turn by the `stop_hook_active` flag omp sets on the continuation's own stop.
 An interrupted turn never raises `session_stop`, so a supervisor-initiated interrupt is not guarded; `bin/fm-control.sh` owns that postcondition.
 

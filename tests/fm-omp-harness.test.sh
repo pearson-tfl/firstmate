@@ -1130,6 +1130,100 @@ EOF
   pass ".omp watch extension: a host close split across stream chunks reaches main as one whole follow-up"
 }
 
+# Away mode on an omp primary: an away record keeps the arm down, the
+# extension starts the pane-free daemon pinned to this session, relays the
+# daemon's queued escalations as follow-ups, and re-arms once the record goes.
+test_watch_extension_hands_away_mode_to_the_daemon() {
+  local repo home log out status
+  repo="$TMP_ROOT/watch-away/repo"; home="$TMP_ROOT/watch-away/home"; log="$TMP_ROOT/watch-away/arm.log"
+  install_omp_extension_fixture "$repo"
+  mkdir -p "$home/state"
+  : > "$home/state/.afk"
+  cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'plain-arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+printf 'watcher: started pid=%s (beacon 0s)\n' "$$"
+sleep 30
+SH
+  cat > "$repo/bin/fm-afk-start.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'daemon backend=%s target=%s prepared=%s\n' "${FM_SUPERVISOR_BACKEND:-}" "${FM_SUPERVISOR_TARGET:-}" \
+  "${FM_AFK_STATE_PREPARED:-}" >> "${FM_ARM_LOG:?}"
+trap 'printf "daemon stopped\n" >> "$FM_ARM_LOG"; exit 0' TERM
+sleep 30 & wait
+SH
+  chmod +x "$repo/bin/fm-watch-arm.sh" "$repo/bin/fm-afk-start.sh"
+  out=$(FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_OMP_AWAY_POLL_MS=50 \
+    EXT="$repo/.omp/extensions/fm-primary-omp-watch.ts" node --input-type=module 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+import { writeFileSync, readFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+const state = `${process.env.FM_HOME}/state`;
+writeFileSync(`${state}/.lock`, `${process.pid}\n`);
+const handlers = new Map(); let tool = null; const sent = [];
+const pi = {
+  on(e, h) { handlers.set(e, h); },
+  registerCommand() {},
+  registerTool(t) { tool = t; },
+  sendUserMessage(m, o) { sent.push({ m, o }); return undefined; },
+};
+const rows = () => (existsSync(process.env.FM_ARM_LOG) ? readFileSync(process.env.FM_ARM_LOG, "utf8") : "");
+const until = async (ok, what) => {
+  for (let i = 0; i < 100 && !ok(); i += 1) await new Promise((r) => setTimeout(r, 50));
+  if (!ok()) throw new Error(`${what}: ${rows()}`);
+};
+const mod = await import(pathToFileURL(process.env.EXT).href);
+mod.default(pi);
+const result = await tool.execute();
+if (!/the away-mode daemon owns supervision/.test(result.content[0].text)) throw new Error(`no stand-down: ${result.content[0].text}`);
+await until(() => rows().includes(`daemon backend=omp target=${process.pid} prepared=1`), "the daemon was not started for this session");
+if (rows().includes("plain-arm=")) throw new Error(`an away record still armed: ${rows()}`);
+const spool = `${state}/extensions/omp-primary-watch/deliveries`;
+mkdirSync(spool, { recursive: true });
+writeFileSync(`${spool}/1-1-1.msg`, "away escalation");
+await until(() => sent.length === 1, "the queued escalation was not delivered");
+if (sent[0].m !== "away escalation" || sent[0].o?.deliverAs !== "followUp") throw new Error(`bad delivery: ${JSON.stringify(sent)}`);
+if (existsSync(`${spool}/1-1-1.msg`)) throw new Error("a delivered escalation stayed queued");
+rmSync(`${state}/.afk`);
+await until(() => rows().includes("daemon stopped") && rows().includes("plain-arm="), "the return did not stop the daemon and re-arm");
+await handlers.get("session_shutdown")({}, {});
+process.exit(0);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "omp watch extension away mode: $out"
+  [ -z "$out" ] || fail "omp watch extension away mode test printed output: $out"
+  pass ".omp watch extension: an away record hands supervision to a pane-free daemon whose escalations arrive as follow-ups"
+}
+
+# The acknowledged hand-back owner on an omp primary retries through the
+# extension's delivery queue, never a pane.
+test_handoff_retry_queues_an_omp_delivery() {
+  local home owner msg i
+  home="$TMP_ROOT/handoff-omp"
+  mkdir -p "$home/state" "$home/config"
+  printf 'holder:omp\n' > "$home/state/.lock"
+  printf 'tok-1\n' > "$home/state/.supervision-handoff-pending"
+  : > "$home/config/supervision-handoff-ack"
+  fm_test_track_watcher_state "$home/state"
+  FM_HOME="$home" FM_LOCK_HOLDER=omp FM_SUPERVISION_HOST_PRIMARY=omp FM_SUPERVISION_HANDOFF_RETRY_SECONDS=1 \
+    FM_POLL=1 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    "$ROOT/bin/fm-supervision-handoff.sh" tok-1 999999 >/dev/null 2>&1 &
+  owner=$!
+  for i in $(seq 1 200); do
+    msg=$(find "$home/state/extensions/omp-primary-watch/deliveries" -name '*.msg' 2>/dev/null | head -1)
+    [ -z "$msg" ] || break
+    sleep 0.1
+  done
+  rm -f "$home/state/.supervision-handoff-pending"
+  wait "$owner" 2>/dev/null || true
+  kill -TERM "$(cut -f1 "$home/state/.supervision-host-left" 2>/dev/null)" 2>/dev/null || true
+  FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" "$ROOT/bin/fm-watch-arm.sh" --stop >/dev/null 2>&1 || true
+  [ -n "$msg" ] || fail "omp hand-back: no retry was queued: $(cat "$home/state/.supervision-handoff.log" 2>/dev/null)"
+  assert_grep 'FIRSTMATE_OP: v1 watcher: check: supervision-handoff' "$msg" "the retry must be operational watcher input"
+  assert_grep $'\tretry\ttok-1\tqueued' "$home/state/.supervision-handoff.log" "the retry must log its queued verdict"
+  pass "omp hand-back: an unacknowledged hand-back retries through the extension's delivery queue"
+}
+
 test_detection_anchored_name_and_marker_precedence
 test_lock_identity_and_liveness_classification
 test_spawn_launch_line_and_worker_wiring
@@ -1152,3 +1246,5 @@ test_watch_extension_runs_the_supervision_host quiet
 test_watch_extension_keeps_the_arm_without_the_file_or_with_off
 test_watch_extension_replays_a_host_only_boundary_across_replacement
 test_watch_extension_delivers_a_split_host_close_whole
+test_watch_extension_hands_away_mode_to_the_daemon
+test_handoff_retry_queues_an_omp_delivery

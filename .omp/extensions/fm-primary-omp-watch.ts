@@ -36,6 +36,18 @@
 //     readiness and the handling handoff work as they do for the arm, with a
 //     longer readiness budget for the host's own startup. On a home that does
 //     not run the host nothing below changes.
+//   - Away and quiet mode: while state/.afk exists the daemon owns supervision,
+//     so this extension stops its arm child and starts none, as Claude's Stop
+//     auto-arm stands down, and arms again once the record is gone. In a
+//     session with no terminal pane (bin/fm-supervisor-target-lib.sh resolves
+//     none, as in an Orca bot) it also runs bin/fm-afk-start.sh as its own
+//     child when no daemon is live, with FM_SUPERVISOR_BACKEND=omp and this
+//     process's pid as the target; it ends that child once the record is gone
+//     or this process exits.
+//   - Deliveries: every file fm_omp_delivery_write (bin/fm-operational-input.sh) queued
+//     under state/extensions/omp-primary-watch/deliveries/ is sent to main as
+//     a follow-up in name order and then removed, so the daemon and the host
+//     hand-back owner reach main without typing into a pane.
 //
 // Session-generation ownership (stated once here):
 // omp emits session_shutdown for ordinary same-process replacements (/new,
@@ -59,7 +71,7 @@
 // replacement handoff.
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 // typebox resolves inside omp's extension loader (verified, omp 18.1.11); the
@@ -83,6 +95,7 @@ type ExtensionAPI = {
 type ArmResult = {
   ok: boolean;
   message: string;
+  standDown?: true;
 };
 
 type LockOwnership = "owned" | "missing" | "other";
@@ -131,6 +144,9 @@ type SessionGeneration = {
   // still delivering the wake it was started for; its bounded retry runs once
   // that delivery settles instead of being skipped by the single-flight guard.
   deferredClose: { message: string; predecessorArmPid: string } | null;
+  // Set while state/.afk keeps this generation from arming.
+  stoodDown: boolean;
+  awayTimer: ReturnType<typeof setInterval> | null;
 };
 
 const extensionFile = fileURLToPath(import.meta.url);
@@ -202,6 +218,10 @@ const armRetired = new WeakSet<ChildProcess>();
 const armRecovery = new WeakMap<ChildProcess, { generation: string; watcherPid: string }>();
 const armPendingActionable = new WeakMap<ChildProcess, PendingActionableClose>();
 const armHostMode = new WeakMap<ChildProcess, boolean>();
+const deliveryDir = `${state}/extensions/omp-primary-watch/deliveries`;
+const awayPollMs = positiveInteger("FM_OMP_AWAY_POLL_MS", 2000);
+// The away daemon this process started; one per process, kept across replacements.
+let awayDaemon: ChildProcess | null = null;
 
 function positiveInteger(name: string, fallback: number): number {
   const value = Number(process.env[name]);
@@ -222,6 +242,40 @@ function pidAlive(pid: string): boolean {
   } catch {
     return false;
   }
+}
+
+// Decided once: the supervisor-endpoint owner finds no terminal pane to type into.
+const paneFree = spawnSync("bash", ["-c", '. "$1" && discover_supervisor_target >/dev/null', "_", `${fmRoot}/bin/fm-supervisor-target-lib.sh`], {
+  stdio: "ignore",
+}).status !== 0;
+
+function awayDaemonRunning(): boolean {
+  if (awayDaemon && awayDaemon.exitCode === null && awayDaemon.signalCode === null) return true;
+  let pid = "";
+  try {
+    pid = readFileSync(`${state}/.supervise-daemon.lock/pid`, "utf8").trim();
+  } catch {
+    return false;
+  }
+  return /^[0-9]+$/.test(pid) && pid !== "0" && pidAlive(pid);
+}
+
+function startAwayDaemon(): void {
+  awayDaemon = spawn("bash", [`${fmRoot}/bin/fm-afk-start.sh`], {
+    cwd: fmRoot,
+    env: {
+      ...process.env,
+      FM_HOME: fmHome,
+      FM_ROOT_OVERRIDE: fmRoot,
+      FM_CONFIG_OVERRIDE: config,
+      FM_AFK_STATE_PREPARED: "1",
+      FM_SUPERVISOR_BACKEND: "omp",
+      FM_SUPERVISOR_TARGET: String(process.pid),
+      FM_DAEMON_PRIMARY_HARNESS: "omp",
+    },
+    stdio: "ignore",
+  });
+  awayDaemon.on("error", () => {});
 }
 
 function lockOwnership(): LockOwnership {
@@ -493,6 +547,8 @@ function createGeneration(): SessionGeneration {
     cleanupFailure: "",
     unconsumedWakes: new Map(),
     deferredClose: null,
+    stoodDown: false,
+    awayTimer: null,
   };
 }
 
@@ -510,6 +566,8 @@ function stopGeneration(generation: SessionGeneration): ChildProcess | null {
   if (generation.cleanupTimer) clearTimeout(generation.cleanupTimer);
   generation.retryTimer = null;
   generation.cleanupTimer = null;
+  if (generation.awayTimer) clearInterval(generation.awayTimer);
+  generation.awayTimer = null;
   const child = generation.child;
   if (child) child.kill("SIGTERM");
   generation.child = null;
@@ -559,6 +617,7 @@ async function stopSessionGeneration(generation: SessionGeneration, replacement:
 
 const cleanupOnProcessExit = () => {
   if (activeGeneration) stopGeneration(activeGeneration);
+  awayDaemon?.kill("SIGTERM");
 };
 process.once("exit", cleanupOnProcessExit);
 
@@ -674,6 +733,53 @@ export default function (pi: ExtensionAPI) {
     void sendWake(owner, message).catch(() => {
       // omp owns delivery errors; continuity restoration never waits on prompting.
     });
+  }
+
+  // Each queued delivery is removed before it is sent, so a file that cannot
+  // be removed is never sent twice; a send omp refuses puts it back.
+  function deliverQueued(): void {
+    let names: string[];
+    try {
+      names = readdirSync(deliveryDir).filter((name) => name.endsWith(".msg")).sort();
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      const path = `${deliveryDir}/${name}`;
+      let content: string;
+      try {
+        content = readFileSync(path, "utf8");
+        unlinkSync(path);
+      } catch {
+        return;
+      }
+      try {
+        void Promise.resolve(pi.sendUserMessage(content, { deliverAs: "followUp" })).catch(() => {});
+      } catch {
+        writeFileSync(path, content);
+        return;
+      }
+    }
+  }
+
+  // One poll per owning generation (header "Away and quiet mode", "Deliveries").
+  function superviseAway(owner: SessionGeneration): void {
+    if (!generationIsLive(owner) || lockOwnership() !== "owned") return;
+    deliverQueued();
+    if (existsSync(`${state}/.afk`)) {
+      owner.stoodDown = true;
+      if (owner.child) void retireArm(owner.child);
+      else if (paneFree && !awayDaemonRunning()) startAwayDaemon();
+      return;
+    }
+    if (awayDaemon && awayDaemon.exitCode === null && awayDaemon.signalCode === null) {
+      awayDaemon.kill("SIGTERM");
+      return;
+    }
+    if (!owner.stoodDown || owner.restoring) return;
+    owner.stoodDown = false;
+    const result = startArm(owner);
+    if (!result.ok) surfaceFailure(owner, `watcher: FAILED - omp extension could not re-arm after away mode ended\n${result.message}`);
   }
 
   function enqueuePendingActionable(
@@ -893,6 +999,7 @@ export default function (pi: ExtensionAPI) {
     for (let attempt = 0; attempt <= retryLimit; attempt += 1) {
       if (!generationIsLive(owner)) return { failure: "" };
       const replacement = startArm(owner, predecessorArmPid);
+      if (replacement.standDown) return { failure: "" };
       const successorChild = owner.child;
       if (replacement.ok && successorChild && await waitForReadiness(successorChild)) {
         return { failure: "", recovery: armRecovery.get(successorChild) };
@@ -951,6 +1058,14 @@ export default function (pi: ExtensionAPI) {
       };
     }
     markLoaded();
+    if (existsSync(`${state}/.afk`)) {
+      owner.stoodDown = true;
+      return {
+        ok: true,
+        standDown: true,
+        message: "watcher: unchanged - the away-mode daemon owns supervision while state/.afk exists; the omp extension arms again once it is gone; no manual re-arm needed",
+      };
+    }
     if (owner.child) {
       return {
         ok: true,
@@ -1056,6 +1171,8 @@ export default function (pi: ExtensionAPI) {
         }
         return;
       }
+      // A child this extension retired, as for an away stand-down, earns no retry.
+      if (armRetired.has(armChild)) return;
       scheduleRetry(owner, classification.message, predecessor);
     });
     armChild.on("error", (error: Error) => {
@@ -1078,6 +1195,10 @@ export default function (pi: ExtensionAPI) {
     if (!generationIsLive(owner)) return { ok: false, message: shuttingDownMessage };
     if (lockOwnership() !== "owned") return startArm(owner);
     replacementCoordinator.receiver = receiveReplacementActionable;
+    if (!owner.awayTimer) {
+      owner.awayTimer = setInterval(() => superviseAway(owner), awayPollMs);
+      owner.awayTimer.unref();
+    }
     let pending: PendingActionableClose[] = [];
     let loadFailure = "";
     try {

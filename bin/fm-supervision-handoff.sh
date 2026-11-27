@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # fm-supervision-handoff.sh <token> <predecessor-arm-pid>
-# Private Claude host hand-back owner, enabled by config/supervision-handoff-ack.
+# Private Claude and omp host hand-back owner, enabled by config/supervision-handoff-ack.
 # The host queues check: supervision-handoff:<token> and starts this detached
 # child before returning its close. Only main's sequence-bound wake-drain ack
 # removes .supervision-handoff-pending. Until then this owner replaces each
@@ -15,8 +15,11 @@
 # pid and show no busy signature; Orca, which reports no terminal process, must
 # list an idle agent on the inherited ORCA_TERMINAL_HANDLE. Either way that
 # session must still be in the terminal's foreground group and the composer
-# must be empty. All other endpoints retain the queued wake and keep watching
-# but need a normal turn or human message to resume main.
+# must be empty. On an omp primary (FM_SUPERVISION_HOST_PRIMARY=omp), which
+# holds main by name, the retry is queued with fm_omp_delivery_write for its
+# watch extension to deliver as a turn, and nothing is typed. All other
+# endpoints retain the queued wake and keep watching but need a normal turn or
+# human message to resume main.
 # No terminal text proves acknowledgement. Busy, unknown, or pending input is
 # never overwritten. The existing backend submit primitive owns Enter retries.
 # Removing the opt-in, losing the pinned session, or entering daemon-backed
@@ -50,8 +53,13 @@ case "$RETRY" in ''|0*|*[!0-9]*) RETRY=300 ;; esac
 fm_session_lock_owned_by_self "$STATE" || exit 1
 [ "$(cat "$PENDING" 2>/dev/null)" = "$TOKEN" ] || exit 1
 SESSION=$(cat "$STATE/.lock" 2>/dev/null) || exit 1
-SESSION_ID=$(fm_pid_identity "$SESSION") || exit 1
-[ -n "$SESSION_ID" ] || exit 1
+OMP=0
+if [ "${FM_SUPERVISION_HOST_PRIMARY:-}" = omp ]; then
+  OMP=1
+else
+  SESSION_ID=$(fm_pid_identity "$SESSION") || exit 1
+  [ -n "$SESSION_ID" ] || exit 1
+fi
 ARM=
 OUT=
 ARM_RECORDED=0
@@ -77,15 +85,26 @@ trap cleanup EXIT
 trap 'exit 0' TERM INT
 
 session_owned() {
-  [ "$(cat "$STATE/.lock" 2>/dev/null)" = "$SESSION" ] \
-    && fm_pid_alive "$SESSION" \
+  [ "$(cat "$STATE/.lock" 2>/dev/null)" = "$SESSION" ] || return 1
+  [ "$OMP" = 0 ] || return 0
+  fm_pid_alive "$SESSION" \
     && [ "$(fm_pid_identity "$SESSION" 2>/dev/null)" = "$SESSION_ID" ]
+}
+
+retry_text() {
+  printf 'check: supervision-handoff - the host hand-back is still unacknowledged. Run %s, handle its queued work, and run its exact WAKE_ACK_REQUIRED command. This is automatic supervision, not a captain return.' "$(fm_wake_drain_cmd)"
 }
 
 retry_delivery() {
   local pane_pid ancestor message verdict=deferred tmp pgid tpgid backend='' target=''
   # No fallback target: a guessed pane can belong to another home.
-  if session_owned; then
+  if [ "$OMP" = 1 ]; then
+    if session_owned && [ "$(cat "$PENDING" 2>/dev/null)" = "$TOKEN" ] \
+      && fm_operational_input_encode watcher "$(retry_text)" message \
+      && fm_omp_delivery_write "$STATE" "$message"; then
+      verdict=queued
+    fi
+  elif session_owned; then
     if [ -n "${TMUX_PANE:-}" ]; then
       pane_pid=$(tmux display-message -p -t "$TMUX_PANE" '#{pane_pid}' 2>/dev/null) || pane_pid=
       ancestor=$SESSION
@@ -111,8 +130,7 @@ retry_delivery() {
       && fm_harness_pid_alive "$SESSION" \
       && [ "$(fm_backend_composer_state "$backend" "$target" 2>/dev/null)" = empty ] \
       && session_owned && [ "$(cat "$PENDING" 2>/dev/null)" = "$TOKEN" ]; then
-      if fm_operational_record_write "$STATE" watcher \
-        "check: supervision-handoff - the host hand-back is still unacknowledged. Run $(fm_wake_drain_cmd), handle its queued work, and run its exact WAKE_ACK_REQUIRED command. This is automatic supervision, not a captain return." message; then
+      if fm_operational_record_write "$STATE" watcher "$(retry_text)" message; then
         verdict=$(fm_backend_send_text_submit "$backend" "$target" "$message" 2 0.2 0.2 2>/dev/null) || verdict=unconfirmed
       fi
     fi

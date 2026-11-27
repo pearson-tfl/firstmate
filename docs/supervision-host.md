@@ -234,7 +234,7 @@ The captain row is still durable, and the next drain presents it until it is ack
 
 ## Acknowledged hand-back
 
-On Claude, the home-local [configuration flag](configuration.md#acknowledged-hand-back-configsupervision-handoff-ack) replaces the default hand-back with an acknowledged transfer.
+On Claude and omp, the home-local [configuration flag](configuration.md#acknowledged-hand-back-configsupervision-handoff-ack) replaces the default hand-back with an acknowledged transfer.
 It covers park boundaries, attended pass-throughs, and other host exits that hand work to main, without changing branch eligibility or the park bound.
 Before emitting the close, the host queues a token-bound check and verifies a detached successor against the home's watcher identity and fresh beacon.
 `bin/fm-supervision-handoff.sh` keeps replacing each closed one-shot cycle while that check remains unacknowledged.
@@ -242,6 +242,7 @@ Only main's sequence-bound `bin/fm-wake-drain.sh` acknowledgement of that specif
 The acknowledgement leaves a verified watcher running.
 The next park stops the retry owner before taking over its recorded arm, retaining exactly one watcher.
 The helper's header owns the records, retry interval, process cleanup, and transport guards.
+On omp the first delivery is the watch extension's follow-up, and each retry is a follow-up the extension delivers from a queued file, never typed text.
 
 ### Reaching a lost Claude continuation
 

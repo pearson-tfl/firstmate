@@ -438,7 +438,7 @@ While the home runs the host, main's lease-checked commands also take the per-ta
 
 ### Acknowledged hand-back (config/supervision-handoff-ack)
 
-Create the empty, home-local `config/supervision-handoff-ack` file to enable acknowledged hand-backs on a Claude primary that runs the supervision host.
+Create the empty, home-local `config/supervision-handoff-ack` file to enable acknowledged hand-backs on a Claude or omp primary that runs the supervision host.
 The flag is off when absent, is not inherited, and has no effect on other primaries or the host-off Stop path.
 The host reads its presence at each hand-back, so enabling it needs no session restart.
 Removing it stops further retries and leaves the current watcher for the ordinary next park.

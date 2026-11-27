@@ -934,6 +934,30 @@ unit_native_lifecycle() {
   rm -rf "$st"
 }
 
+# A pane-free omp primary: the live watch extension hosts the daemon, so
+# `start` prepares state with no terminal; without a live extension it still
+# refuses for want of a pane.
+unit_omp_pane_free_start_goes_native() {
+  local st
+  st=$(mktemp -d "${TMPDIR:-/tmp}/fm-afk-omp-native.XXXXXX")
+  mkdir -p "$st/state"
+  enter_posture "$st" || fail "omp pane-free start: could not enter fixture posture"
+  if env -u TMUX -u TMUX_PANE -u ORCA_TERMINAL_HANDLE -u HERDR_ENV -u REX_SESSION -u FM_SUPERVISOR_TARGET \
+    FM_TEST_HARNESS=omp FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" start >/dev/null 2>&1; then
+    fail "omp pane-free start: started with no pane and no live extension"
+  fi
+  printf 'sha256:x\n%s\n' "$$" > "$st/state/.omp-watch-extension-loaded"
+  if env -u TMUX -u TMUX_PANE -u ORCA_TERMINAL_HANDLE -u HERDR_ENV -u REX_SESSION -u FM_SUPERVISOR_TARGET \
+    FM_TEST_HARNESS=omp FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" start >/dev/null 2>&1 \
+    && [ "$(cut -f1 "$st/state/.afk-daemon-terminal")" = none ] && [ -e "$st/state/.afk" ]; then
+    pass "omp pane-free start: the live extension hosts the daemon, start records no terminal"
+  else
+    fail "omp pane-free start: start did not prepare state for the extension"
+  fi
+  FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" "$LAUNCH" stop >/dev/null 2>&1
+  rm -rf "$st"
+}
+
 # A Claude home runs the supervision host by default and it is the home's away
 # session, so away mode launches no daemon there with no file or any file but
 # off; quiet mode still does, a plain refresh of a running quiet daemon is
@@ -1817,6 +1841,7 @@ unit_readiness_failure_rolls_back_terminal
 unit_readiness_failure_preserves_unconfirmed_record
 unit_tmux_absence_distinguishes_probe_failure
 unit_native_lifecycle
+unit_omp_pane_free_start_goes_native
 unit_supervision_host_claude_home_runs_no_away_daemon
 unit_supervision_host_other_harnesses_run_no_away_daemon
 unit_daemon_quiet_entry_holds_nothing_for_a_return

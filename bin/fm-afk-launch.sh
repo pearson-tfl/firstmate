@@ -106,7 +106,9 @@
 # has no away mode). Others (zellij, orca, cmux, paseo, tern) have no verified
 # non-visible-launch primitive here yet and refuse loudly. On rex the daemon
 # runs in a dedicated Rex session of its own, so the captain's session gains no
-# tab and keeps its focus.
+# tab and keeps its focus. A pane-free omp primary whose watch extension is
+# live makes `start` act as `start-native`: the extension runs the daemon as
+# its own child while state/.afk exists (.omp/extensions/fm-primary-omp-watch.ts).
 #
 # Test seam: FM_AFK_LAUNCH_ENTRY overrides the command run in the created
 # terminal (default bin/fm-afk-start.sh), so a topology test can run a harmless
@@ -765,6 +767,17 @@ fm_afk_launch_create_tmux() {  # <captain-target> <captain-backend>
   fm_afk_launch_log "daemon launched in detached tmux session '$session', supervising $captain_target"
 }
 
+# A pane-free omp primary (an Orca bot) has no terminal to type into: its live
+# watch extension starts the daemon itself while state/.afk exists and
+# delivers the escalations as turns, so `start` prepares state as start-native.
+fm_afk_launch_omp_extension_hosts() {
+  local pid
+  [ "$(fm_afk_launch_primary_harness)" = omp ] || return 1
+  pid=$(sed -n 2p "$FM_AFK_LAUNCH_STATE/.omp-watch-extension-loaded" 2>/dev/null)
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  fm_pid_alive "$pid"
+}
+
 fm_afk_launch_start() {
   local captain_target captain_backend backup artifact had_afk=0 result
   fm_afk_launch_catchup_pending && return 1
@@ -772,6 +785,11 @@ fm_afk_launch_start() {
   fm_afk_launch_record_require || return 1
   # Capture the captain endpoint FIRST, before creating anything.
   captain_target=$(discover_supervisor_target) || {
+    if fm_afk_launch_omp_extension_hosts; then
+      fm_afk_launch_start_native || return 1
+      fm_afk_launch_log "no terminal pane: the omp watch extension runs the daemon and delivers its escalations as turns"
+      return 0
+    fi
     fm_afk_launch_log "could not resolve the captain supervisor pane (set FM_SUPERVISOR_TARGET)"
     return 1; }
   captain_backend=$(discover_supervisor_backend) || {

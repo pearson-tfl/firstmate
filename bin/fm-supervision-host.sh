@@ -104,7 +104,7 @@
 # (bin/fm-branch-report.sh), so it still reaches main when the host dies at the
 # turn's end or its owner drops the handoff, as a superseded Cursor park does.
 #
-# ACKNOWLEDGED HAND-BACK (Claude only, config/supervision-handoff-ack).
+# ACKNOWLEDGED HAND-BACK (Claude and omp, config/supervision-handoff-ack).
 # With that opt-in, every main hand-back first queues a token-bound check and
 # verifies a detached bin/fm-supervision-handoff.sh owner. That owner keeps
 # replacing closed arms until main acknowledges the check, and leaves its
@@ -714,7 +714,7 @@ exit_to_main() {  # <why> [further lines]
 # The opt-in path never changes the default hand-back paths. It must verify
 # protection before emitting the close, not assume a detached process started.
 acknowledged_handback() {  # [extra output lines]; returns only when disabled
-  [ "$PRIMARY" = claude ] && [ -e "$CONFIG/supervision-handoff-ack" ] || return 1
+  case "$PRIMARY" in claude|omp) [ -e "$CONFIG/supervision-handoff-ack" ] || return 1 ;; *) return 1 ;; esac
   host_still_owner || stand_down "this session no longer owns supervision"
   local predecessor=${SUCCESSOR_PID:-${ARM_PID:-${CLOSED_ARM_PID:-$HOST_PID}}} pid out deadline tmp
   retire_arm "$ARM_PID" "$ARM_OUT"

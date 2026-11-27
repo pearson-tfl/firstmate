@@ -447,6 +447,23 @@ fm_operational_main() {
   esac
 }
 
+# fm_omp_delivery_write <state> <text>
+# Queue one complete message for a pane-free omp primary. Its watch extension
+# (.omp/extensions/fm-primary-omp-watch.ts) delivers each file under
+# state/extensions/omp-primary-watch/deliveries/ as a follow-up turn in name
+# order and then removes it, so a producer never types into a pane.
+fm_omp_delivery_write() {
+  local dir="${1-}/extensions/omp-primary-watch/deliveries" tmp
+  [ -n "${1-}" ] && [ -n "${2-}" ] || return 2
+  mkdir -p "$dir" 2>/dev/null || return 1
+  tmp=$(mktemp "$dir/.tmp.XXXXXX") || return 1
+  if printf '%s' "$2" > "$tmp" && mv -f "$tmp" "$dir/$(date +%s)-$$-$RANDOM.msg"; then
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   fm_operational_main "$@"
   exit $?

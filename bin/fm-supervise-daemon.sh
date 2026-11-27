@@ -91,7 +91,7 @@
 #                                   terminal handle, or a T3 thread id; which one it's read as is decided
 #                                   by FM_SUPERVISOR_BACKEND (below),
 #                                   independently.
-#          FM_SUPERVISOR_BACKEND    supervisor endpoint BACKEND (tmux|herdr|rex|orca|t3code;
+#          FM_SUPERVISOR_BACKEND    supervisor endpoint BACKEND (tmux|herdr|rex|orca|t3code|omp;
 #                                   override; otherwise resolved by
 #                                   bin/fm-supervisor-target-lib.sh - $TMUX_PANE
 #                                   selects tmux, $HERDR_ENV=1 selects herdr,
@@ -103,6 +103,12 @@
 #                                   supported as supervisor backends; the daemon
 #                                   refuses loudly at startup rather than trying
 #                                   tmux primitives against an unsupported endpoint.
+#                                   omp is pane-free and never discovered: the
+#                                   omp watch extension that launches this
+#                                   daemon passes it with its own pid as the
+#                                   target, and each escalation is queued with
+#                                   fm_omp_delivery_write for the extension to
+#                                   deliver as a turn, never typed.
 #          FM_INJECT_SKIP           |-prefixes force-self-handle bypassing
 #                                   classification (default "heartbeat"); empty
 #                                   disables. Use sparingly: it overrides the
@@ -220,7 +226,7 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 # instead of silently running tmux primitives against a pane that is not a tmux
 # pane. t3code injects through the adapter's t3_thread_send, with its
 # thread status table as the busy verdict.
-FM_SUPERVISOR_SUPPORTED_BACKENDS="tmux herdr rex orca t3code"
+FM_SUPERVISOR_SUPPORTED_BACKENDS="tmux herdr rex orca t3code omp"
 INJECT_SKIP_DEFAULT="heartbeat"
 STALE_ESCALATE_SECS_DEFAULT=240
 ESCALATE_BATCH_SECS_DEFAULT=90
@@ -741,6 +747,18 @@ fm_daemon_primary_harness() {
     [ -n "$FM_DAEMON_PRIMARY_HARNESS" ] || FM_DAEMON_PRIMARY_HARNESS=unknown
   fi
   printf '%s' "$FM_DAEMON_PRIMARY_HARNESS"
+}
+
+# supervisor_target_exists <backend> <target> <state>
+# An omp target is the pid of the omp session whose watch extension launched
+# this daemon, live while that session still records itself as the loaded
+# extension; every other backend asks its adapter in bin/fm-backend.sh.
+supervisor_target_exists() {
+  if [ "$1" = omp ]; then
+    [ "$(sed -n 2p "$3/.omp-watch-extension-loaded" 2>/dev/null)" = "$2" ] && kill -0 "$2" 2>/dev/null
+    return
+  fi
+  fm_backend_target_exists "$1" "$2"
 }
 
 pane_is_busy() {  # <target> [backend]
@@ -1628,8 +1646,16 @@ inject_msg() {  # <message> [state] [exact] [request-id]
   # its backend. Falls back to tmux when unset (sourced/test contexts that never
   # ran fm_super_main's startup discovery), matching this function's default.
   backend="${FM_SUPERVISOR_BACKEND:-tmux}"
-  fm_backend_target_exists "$backend" "$target" \
+  supervisor_target_exists "$backend" "$target" "$state" \
     || { INJECT_LAST_FAILURE="supervisor target $target not found on $backend"; return 1; }
+  # The omp extension delivers the queued envelope as a follow-up turn, which a
+  # busy session queues itself, so there is no screen for the guards below.
+  if [ "$backend" = omp ]; then
+    fm_omp_delivery_write "$state" "$msg" && { log "inject queued for the omp extension"; return 0; }
+    INJECT_LAST_FAILURE="the omp delivery could not be queued"
+    log "inject failed: $INJECT_LAST_FAILURE"
+    return 1
+  fi
   # (3) Busy-guard: never inject into an in-use supervisor endpoint.
   if pane_is_busy "$target" "$backend"; then
     INJECT_LAST_FAILURE="deferred: supervisor pane busy (agent mid-turn)"
@@ -2045,7 +2071,7 @@ fm_super_main() {
   # refusal the task calls for, instead of a confusing "does not resolve to a
   # tmux pane" error.
   if ! fm_backend_list_contains "$FM_SUPERVISOR_SUPPORTED_BACKENDS" "$BACKEND"; then
-    echo "error: away-mode daemon does not support supervisor backend '$BACKEND' yet (supported: $FM_SUPERVISOR_SUPPORTED_BACKENDS); set FM_SUPERVISOR_BACKEND=tmux|herdr|rex|orca|t3code and FM_SUPERVISOR_TARGET to run firstmate's own pane under a supported backend" >&2
+    echo "error: away-mode daemon does not support supervisor backend '$BACKEND' yet (supported: $FM_SUPERVISOR_SUPPORTED_BACKENDS); set FM_SUPERVISOR_BACKEND=tmux|herdr|rex|orca|t3code|omp and FM_SUPERVISOR_TARGET to run firstmate's own pane under a supported backend" >&2
     log "startup failed: unsupported supervisor backend '$BACKEND' (source=$backend_source)"
     fm_lock_release "$LOCK" 2>/dev/null || true
     rm -f "$PIDFILE" 2>/dev/null || true
@@ -2087,7 +2113,7 @@ fm_super_main() {
   # --- validate supervisor target at startup (a missing target is a typo) ---
   # Dispatch through bin/fm-backend.sh so each supervisor pane or T3 thread is checked by
   # its backend.
-  if ! fm_backend_target_exists "$BACKEND" "$TARGET"; then
+  if ! supervisor_target_exists "$BACKEND" "$TARGET" "$STATE"; then
     echo "error: supervisor target '$TARGET' does not resolve to a $BACKEND pane; set FM_SUPERVISOR_TARGET" >&2
     log "startup failed: target '$TARGET' not found (backend=$BACKEND)"
     fm_lock_release "$LOCK" 2>/dev/null || true
@@ -2155,7 +2181,12 @@ fm_super_main() {
     # has nowhere to go, and firstmate itself is the consumer of escalations.
     # Catch-up signals persist in state/*.status and flow on the next run, so
     # this delays rather than loses work.
-    if ! fm_backend_target_exists "$BACKEND" "$TARGET"; then
+    if ! supervisor_target_exists "$BACKEND" "$TARGET" "$STATE"; then
+      if [ "$BACKEND" = omp ]; then
+        # An omp pid never returns; the next session's extension starts a fresh daemon.
+        log "supervisor omp session $TARGET ended; exiting with buffered escalations kept"
+        cleanup
+      fi
       log "warn: supervisor target '$TARGET' gone; backing off ${INJECT_FAIL_SLEEP}s, will retry"
       # Flush is pointless with no pane; preserve any buffered escalations.
       sleep "$INJECT_FAIL_SLEEP"

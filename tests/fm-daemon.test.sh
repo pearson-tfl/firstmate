@@ -2074,6 +2074,35 @@ test_busy_guard_defers_when_supervisor_busy() {
   pass "busy-guard defers injection when supervisor pane is busy"
 }
 
+test_omp_backend_queues_delivery_without_typing() {
+  local dir state fakebin sent capture deliveries
+  dir=$(make_supercase omp-delivery)
+  state="$dir/state"
+  fakebin="$dir/fakebin"
+  deliveries="$state/extensions/omp-primary-watch/deliveries"
+  sent="$dir/sent.log"; : > "$sent"
+  capture="$dir/pane.txt"; printf 'esc to interrupt\n' > "$capture"
+  printf 'sha256:x\n%s\n' "$$" > "$state/.omp-watch-extension-loaded"
+  escalate_add "$state" "done: PR 1"
+  afk_enter "$state"
+  if PATH="$fakebin:$PATH" FM_FAKE_TMUX_PANE_ALIVE=1 FM_FAKE_TMUX_SENT="$sent" FM_FAKE_TMUX_CAPTURE="$capture" \
+    FM_SUPERVISOR_BACKEND=omp FM_SUPERVISOR_TARGET=999999 FM_DAEMON_PRIMARY_HARNESS=omp \
+    FM_ESCALATE_BATCH_SECS=0 escalate_flush "$state"; then
+    fail "escalate_flush succeeded for an omp target that is not the loaded session"
+  fi
+  [ ! -d "$deliveries" ] || [ -z "$(ls "$deliveries")" ] || fail "a gone omp session was queued a delivery"
+  [ -s "$state/.subsuper-escalations" ] || fail "buffer not preserved for a gone omp session"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_PANE_ALIVE=1 FM_FAKE_TMUX_SENT="$sent" FM_FAKE_TMUX_CAPTURE="$capture" \
+    FM_SUPERVISOR_BACKEND=omp FM_SUPERVISOR_TARGET=$$ FM_DAEMON_PRIMARY_HARNESS=omp \
+    FM_ESCALATE_BATCH_SECS=0 escalate_flush "$state" || fail "escalate_flush failed for the live omp session"
+  [ ! -s "$sent" ] || fail "the omp backend typed into a pane"
+  [ "$(find "$deliveries" -name '*.msg' | wc -l | tr -d ' ')" = 1 ] || fail "the omp backend did not queue exactly one delivery"
+  grep -F "${FM_OPERATIONAL_PREFIX}v1 away-supervisor: " "$deliveries"/*.msg >/dev/null \
+    || fail "the omp delivery lost the away-supervisor envelope"
+  grep -F 'done: PR 1' "$deliveries"/*.msg >/dev/null || fail "the omp delivery lost the digest"
+  pass "the omp backend queues the away-supervisor envelope for the extension even while busy, and never types"
+}
+
 test_marker_detection() {
   local marker_hex
   marker_hex=$(printf '%s' "$FM_INJECT_MARK" | od -An -tx1 | tr -d ' \n')
@@ -3549,6 +3578,7 @@ test_signal_escalate_marks_seen_no_catchall_refire
 test_collapse_newlines_pure
 test_afk_absent_daemon_does_not_inject
 test_busy_guard_defers_when_supervisor_busy
+test_omp_backend_queues_delivery_without_typing
 test_marker_detection
 test_afk_turn_exemption
 test_should_exit_afk_when_afk_inactive
