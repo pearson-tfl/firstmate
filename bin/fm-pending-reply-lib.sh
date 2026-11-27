@@ -1885,7 +1885,7 @@ fm_pending_reply_mate_reply_corr() {  # <home> <state> <channel> [corr_id] [requ
     [ "$answered" = 0 ] || continue
     open="$open $c"
     n=$((n + 1))
-  done < <(sort -n -k1,1 "$requests" | LC_ALL=C awk -F'\t' '
+  done < <(sort -n -k1,1 "$requests" | FM_PR_CORR_RE=$FM_PENDING_REPLY_CORR_RE LC_ALL=C awk -F'\t' '
     phase == 1 {
       l = $0; sub(/^[^\t]*\t[^\t]*\t[^\t]*\t/, "", l)
       if (l != "") skills[$3] = ($3 in skills) ? skills[$3] "," l : l
@@ -1895,12 +1895,12 @@ fm_pending_reply_mate_reply_corr() {  # <home> <state> <channel> [corr_id] [requ
     {
       rest = $0
       for (k in got) delete got[k]
-      while ((p = index(rest, "corr=")) > 0) {
-        k = substr(rest, p + 5, 16)
+      while (match(rest, ENVIRON["FM_PR_CORR_RE"])) {
+        k = substr(rest, RSTART, RLENGTH); sub(/^[^=]*=/, "", k)
         if ((k in want) && !(k in got)) {
           got[k] = 1; cnt[k]++; bucket[k] = bucket[k] $0 "\n"
         }
-        rest = substr(rest, p + 5)
+        rest = substr(rest, RSTART + RLENGTH)
       }
     }
     END { for (i = 1; i <= n; i++) { c = order[i]; printf "%s\t%d\t%s\n%s", c, cnt[c], skills[c], bucket[c] } }
