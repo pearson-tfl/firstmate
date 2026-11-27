@@ -4443,8 +4443,9 @@ else
 fi
 # Dell-first placement (bin/fm-dell-first.py owns the decision), before anything
 # is made; a relaunch replaces a worker where its worktree and endpoint already are.
+# A missing brief is refused below without a Dell read.
 SPAWN_MAC_REASON=
-if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] && [ "$(uname -s)" = Darwin ]; then
+if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] && [ -f "$BRIEF" ] && [ "$(uname -s)" = Darwin ]; then
   placement_args=(--project "$PROJ_ABS" --task "$ID" --home "$FM_HOME" --mac-reason "$MAC_REASON")
   for needs_tool in ${NEEDS_TOOL_ARGS[@]+"${NEEDS_TOOL_ARGS[@]}"}; do
     placement_args+=(--needs-tool "$needs_tool")
