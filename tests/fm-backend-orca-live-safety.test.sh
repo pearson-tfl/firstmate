@@ -71,7 +71,7 @@ screen_json() {  # <status>
       printf '%s\n' "$l"
     done < "$S/screen" > "$rows"
   fi
-  node -e 'const fs=require("fs"); const t=fs.existsSync(process.argv[1])?fs.readFileSync(process.argv[1],"utf8").split("\n").filter((l,i,a)=>i<a.length-1):[]; process.stdout.write(JSON.stringify({ok:true,result:{terminal:{handle:"term_fake",status:process.argv[2],source:process.argv[3],tail:t}}}))' "$rows" "$1" "$source"
+  node -e 'const fs=require("fs"); const lines=f=>fs.existsSync(f)?fs.readFileSync(f,"utf8").split("\n").filter((l,i,a)=>i<a.length-1):[]; const t=lines(process.argv[1]), w=lines(process.argv[4]); process.stdout.write(JSON.stringify({ok:true,result:{terminal:{handle:"term_fake",status:process.argv[2],source:process.argv[3],tail:t,tailRows:t.map((l,i)=>({wrapped:w[i]==="1"}))}}}))' "$rows" "$1" "$source" "$S/screen.wrapped"
 }
 case "$cmd" in
   "--version ") echo 9.9.9-fake ;;
@@ -110,6 +110,17 @@ case "$cmd" in
       own | own-orca) prompt > "$S/screen" ;;
       foreign | spawn-foreign) printf '● Kneading…\n❯ \n' > "$S/screen" ;;
       login) printf 'bash-3.2$ \n' > "$S/screen" ;;
+      spawn-direnv-narrow | spawn-direnv-wide)
+        # The direnv refusal a new AHR worktree prints, as Orca drew it on 27 Nov 2026;
+        # narrow, Orca wraps it onto a second row it marks wrapped in tailRows.
+        d='direnv: error /Users/johnp/firstmate-homes/ahr/projects/Agent-Harness-Reconfig/.envrc is blocked. Run `direnv allow` to approve its content'
+        if [ "$mode" = spawn-direnv-narrow ]; then
+          printf '%s\n%s\n' "${d:0:94}" "${d:94}" > "$S/screen"; printf '0\n1\n0\n' > "$S/screen.wrapped"
+        else
+          printf '%s\n' "$d" > "$S/screen"
+        fi
+        printf '➜  Agent-Harness-Reconfig git:(master)\n' >> "$S/screen"
+        ;;
       spawn-shell | spawn-agent) printf '➜  %s git:(%s)\n' "${worktree##*/}" "${worktree##*/}" > "$S/screen" ;;
       spawn-hidden-tmux) printf 'johnp@mac firstmate %% git status\nnothing to commit, working tree clean\n➜  %s git:(%s)\n' "${worktree##*/}" "${worktree##*/}" > "$S/screen" ;;
       spawn-tmux) printf 'johnp@mac ~ %% \n 1:andrew-assistant \n' > "$S/screen" ;;
@@ -276,4 +287,14 @@ assert_grep 'orca terminal show --terminal term_fake' "$D/state/log" "a plain-sh
 assert_grep 'orca agent list --worktree' "$D/state/log" "a plain-shell spawn must ask Orca for agents on the pane"
 assert_grep 'orca terminal send --terminal term_fake --text cd -- ' "$D/state/log" "a plain-shell spawn must type its cd into the terminal"
 pass "orca spawn: a bare prompt in the new worktree, with no agent Orca lists on its pane, passes the guard and receives the launch"
+
+# A one-line notice above the prompt is one logical line however narrow the pane:
+# rows Orca marks wrapped join the row above before the row count.
+for mode in spawn-direnv-narrow spawn-direnv-wide; do
+  spawn_case "$mode" "orca-guard-${mode#spawn-}"
+  expect_code 0 "$RC" "spawn into a $mode shell must succeed"$'\n'"$OUT"
+  assert_grep 'orca terminal send --terminal term_fake --text cd -- ' "$D/state/log" "a $mode spawn must type its cd into the terminal"
+done
+[ "$(wc -l < "$TMP_ROOT/spawn-direnv-narrow/state/screen.wrapped")" -eq 3 ] || fail "the narrow case must draw three rows, one of them wrapped"
+pass "orca spawn: a direnv notice above the prompt passes whether Orca draws it on one row or wraps it onto two"
 

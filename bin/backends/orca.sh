@@ -343,7 +343,7 @@ fm_backend_orca_fresh_shell() {  # <terminal-id> <orca-worktree-id>
   tries=$((FM_BACKEND_ORCA_FRESH_SHELL_WAIT_S * 2))
   for ((i = 0; i <= tries; i++)); do
     [ "$i" -eq 0 ] || sleep 0.5
-    if ! screen=$(fm_backend_orca_screen_read "$terminal" 2>/dev/null); then
+    if ! screen=$(fm_backend_orca_screen_read "$terminal" --logical 2>/dev/null); then
       verdict=unreadable prev=''
       continue
     fi
@@ -441,13 +441,15 @@ fm_backend_orca_home_worktree() {  # <home-path>
 # for the drawn screen. A read whose reported source is not `screen` (a stream
 # read, `screen-unavailable` falling back to the stream, or a host predating the
 # field) is refused rather than passed off as the screen. The drawn screen has
-# no scrollback, and Orca omits its blank rows.
-fm_backend_orca_screen_read() {  # <terminal-id> [orca read args...]
-  local terminal=$1 out
+# no scrollback, and Orca omits its blank rows. --logical joins each row Orca
+# marks wrapped onto the row above, so a long line counts once at any width.
+fm_backend_orca_screen_read() {  # <terminal-id> [--logical] [orca read args...]
+  local terminal=$1 out fold=''
   shift
+  [ "${1:-}" != --logical ] || { fold=logical; shift; }
   fm_backend_orca_tool_check || return 1
   out=$(fm_backend_orca_cli terminal read --terminal "$terminal" --screen "$@" --json) || return 1
-  fm_backend_orca_json_text "$out"
+  fm_backend_orca_json_text "$out" "$fold"
 }
 
 # fm_backend_orca_capture: the bottom <lines> rows of the drawn screen; with
@@ -628,7 +630,7 @@ fm_backend_orca_endpoint_absence_recheck() {  # <terminal-id> <worktree-id>
   printf 'gone'
 }
 
-fm_backend_orca_json_text() {  # <json>
+fm_backend_orca_json_text() {  # <json> [logical]
   printf '%s' "$1" | node -e '
 const fs = require("fs");
 const data = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -643,8 +645,17 @@ if (t.source !== "screen" || !Array.isArray(t.tail)) {
   console.error("error: orca terminal read returned source " + (t.source || "(none)") + ", not the drawn screen");
   process.exit(3);
 }
-process.stdout.write(t.tail.join("\n"));
-'
+let rows = t.tail;
+const wraps = t.tailRows;
+if (process.argv[1] === "logical" && Array.isArray(wraps) && wraps.length === rows.length) {
+  rows = [];
+  t.tail.forEach((row, i) => {
+    if (i > 0 && wraps[i] && wraps[i].wrapped === true) rows[rows.length - 1] += row;
+    else rows.push(row);
+  });
+}
+process.stdout.write(rows.join("\n"));
+' "${2:-}"
 }
 
 # fm_backend_orca_composer_capture: the orca composer screen - the bottom
