@@ -86,26 +86,32 @@ fm_agent_process_classify_name() {  # <path> [argv0] -> agent|shell|other
   esac
 }
 
-# Tmux's Oh My Pi probe also handles Bun scripts. Attribute only the executable script
+# Tmux's Oh My Pi probe also handles Bun processes. Attribute only the executable script
 # position, never a prompt, --cwd, extension path, or later mention of omp.
 # A bare Bun interpreter is not an agent. Linux preserves argv boundaries;
 # the flattened fallback on macOS accepts only an unambiguous script token.
+# Two installed shapes run as `bun <abs path>`: the bun global package, whose
+# launcher symlinks to dist/cli.js, and the Bun-compiled executable, which
+# still reports comm=bun and argv `bun ~/.bun/bin/omp ...` (verified on macOS,
+# 23 Nov 2026).
 fm_agent_process_omp_script() {  # <interpreter> <script>
   local canonical installed
   case "${1##*/}" in bun|bun.exe) ;; *) return 1 ;; esac
-  # A script merely named omp is not identity. Require the installed package
-  # entry, following the launcher symlink with the existing portable resolver.
+  # A script merely named omp is not identity. Require the installed omp itself,
+  # following the launcher symlink with the existing portable resolver.
   case "$2" in /*) ;; *) return 1 ;; esac
   canonical=$(fm_cursor_canonical_path "$2") || return 1
   [ -f "$canonical" ] || return 1
   # Match the same PATH-selected tool the launch owner trusts, not a stranger
   # reproducing the package's directory spelling elsewhere. Never execute it.
-  installed=$(command -v omp 2>/dev/null) || return 1
-  case "$installed" in /*) ;; *) return 1 ;; esac
+  # The primary seat's PATH may lack ~/.bun/bin, so fall back to that default.
+  installed=$(command -v omp 2>/dev/null) || installed=
+  case "$installed" in /*) ;; *) installed=${HOME:+$HOME/.bun/bin/omp} ;; esac
+  [ -n "$installed" ] && [ -x "$installed" ] || return 1
   installed=$(fm_cursor_canonical_path "$installed") || return 1
   [ "$canonical" = "$installed" ] || return 1
   case "$canonical" in */@oh-my-pi/pi-coding-agent/dist/cli.js) return 0 ;; esac
-  return 1
+  [ -x "$canonical" ]
 }
 
 fm_agent_process_omp_args() {  # <flattened-args>

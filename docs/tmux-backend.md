@@ -61,7 +61,7 @@ Scoping the second source to the foreground process group rather than to the pan
 The same scoping covers multi-process launchers without a special case, so the Pi Launcher path is attributed through its `pi-signed` wrapper and `pi` engine even though its title is the exact foreground command `pi-launcher`.
 Direct executable identities `pi`, `pi-signed`, and `Pi` remain accepted exactly, and similar or prefixed process names are not accepted through those exact Pi-family entries.
 Muse is likewise anchored to the exact `muse` launcher identity or the installed `muse-bin-<version>` prefix, so unrelated names such as `musescore` and `amuse` remain ambiguous.
-Compiled omp retains its exact `omp` identity; Bun-script installations use the process-identity library's canonical package-entry proof, so an unrelated script merely named `omp` remains ambiguous.
+A compiled omp that reports the exact name `omp` keeps that identity; installations that run as `bun <path>/omp`, whether the package entry or a compiled executable, use the process-identity library's canonical installed-omp proof, so an unrelated script merely named `omp` remains ambiguous.
 The credentialed guard `tests/fm-control-omp-live-e2e.test.sh` and [runtime verification](verification/runtime-backends.md#bun-script-lifecycle-on-tmux) cover this path.
 AGY, Devin, and Command Code are anchored to the exact `agy`, `devin`, and `command-code` identities for the same reason, so unrelated names containing any of those fragments remain ambiguous.
 Polytoken is anchored to the exact `polytoken` identity for the same reason, so unrelated names containing that fragment remain ambiguous.
