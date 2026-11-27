@@ -643,6 +643,10 @@ prefetch_task_observations() {  # <meta> <id>
 
   snapshot_task_generation_is_current "$meta" "$id" || generation_current=0
   if [ "$generation_current" = 1 ]; then
+    # Identity first: a log replaced before or during the copy then fails
+    # snapshot_open_decisions' identity check and folds the captured copy.
+    _fm_open_decisions_file_ident "$status_log" > "$status_capture.ident" 2>/dev/null \
+      || rm -f -- "$status_capture.ident"
     snapshot_capture_optional "$status_log" "$status_capture" || current_rc=1
     snapshot_mark_optional_present "$report_path" "$report_capture" || current_rc=1
   fi
@@ -744,24 +748,32 @@ prefetch_task_current_states() {
 # Fold a task's open decisions through the persisted incremental cursor the
 # wake drain keeps current, bounded at the captured length, so a long-lived log
 # costs only its new appends rather than a whole-file fold on every
-# publication. When the live log no longer extends the captured copy (removed
-# or replaced mid-snapshot) or the cursor read fails, fold the captured copy.
+# publication. The cursor is used only while the live log is still the file
+# that was captured (same identity, at least the captured length) before and
+# after the read; otherwise the captured copy is folded whole. A cursor the
+# drain already advanced past the captured length answers for that later
+# offset: that set is newer than the capture, never a decision the log did not
+# record, and rewinding would mean the whole-file fold this avoids.
 snapshot_open_decisions() {  # <captured-status> <live-status> <kind>
-  local captured=$1 live=$2 kind=$3 end size
+  local captured=$1 live=$2 kind=$3 recorded end open
   [ -f "$captured" ] || return 0
+  recorded=$(cat "$captured.ident" 2>/dev/null) || recorded=
   end=$(wc -c < "$captured") || end=
   end=${end//[[:space:]]/}
-  size=$(_fm_status_file_size "$live") || size=
-  size=${size//[[:space:]]/}
-  case "$end:$size" in
-    *[!0-9:]*|:*|*:) ;;
-    *)
-      if [ "$end" -le "$size" ] && status_open_decisions_incremental "$live" "$end"; then
-        return 0
-      fi
-      ;;
-  esac
+  if [ -n "$recorded" ] && [ -n "$end" ] && snapshot_live_log_matches "$live" "$recorded" "$end" \
+    && open=$(status_open_decisions_incremental "$live" "$end") \
+    && snapshot_live_log_matches "$live" "$recorded" "$end"; then
+    printf '%s' "$open"
+    return 0
+  fi
   status_open_decisions "$captured" "$kind"
+}
+
+snapshot_live_log_matches() {  # <live-status> <identity> <min-size>
+  [ -f "$1" ] && _fm_status_read_ident_size "$1" || return 1
+  [ "$_FM_STAT_IDENTITY" = "$2" ] || return 1
+  case "${_FM_STAT_SIZE//[[:space:]]/}" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$3" -le "${_FM_STAT_SIZE//[[:space:]]/}" ]
 }
 
 task_json_lines() {

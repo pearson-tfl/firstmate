@@ -22,8 +22,9 @@
 # worker's lock to remove them at once.
 #
 # The lock holder creates state/.home-summary-attempt when it starts and
-# removes it on publication, so the file's presence and mtime record an
-# attempt in flight or one that did not publish. fm-watch.sh starts no refresh
+# removes it on publication, and a failed refresh's parent refreshes it, so
+# the file's presence and mtime record an attempt in flight or one that did
+# not publish. fm-watch.sh starts no refresh
 # while that record is younger than FM_HOME_SUMMARY_INTERVAL, so a failing
 # refresh backs off across watcher restarts.
 #
@@ -232,17 +233,21 @@ home_summary_log_failure() {
 }
 
 if [ "$HOME_SUMMARY_MODE" = after-failure ]; then
-  # The failed worker is gone, so its lock is reclaimable; a live holder
-  # sweeps for itself.
+  # Report first and record the attempt next, so the bounded helper's deadline
+  # can only cost the cleanup: a failure before the worker recorded its attempt
+  # (state initialization, lock wait, worker startup) still backs off. The
+  # failed worker is gone, so its lock is reclaimable; a live holder sweeps for
+  # itself.
+  if [ "$BEST_EFFORT" -eq 1 ]; then
+    HOME_SUMMARY_ERROR=${FM_HOME_SUMMARY_PARENT_ERROR:-"refresh worker failed"}
+    HOME_SUMMARY_FAILURE_STAMP=${FM_HOME_SUMMARY_PARENT_STAMP:-}
+    home_summary_log_failure
+  fi
+  : > "$ATTEMPT_RECORD" 2>/dev/null || true
   if fm_lock_try_acquire "$REFRESH_LOCK"; then
     home_summary_sweep_temps
     fm_lock_release "$REFRESH_LOCK" || true
   fi
-  [ "$BEST_EFFORT" -eq 0 ] || {
-    HOME_SUMMARY_ERROR=${FM_HOME_SUMMARY_PARENT_ERROR:-"refresh worker failed"}
-    HOME_SUMMARY_FAILURE_STAMP=${FM_HOME_SUMMARY_PARENT_STAMP:-}
-    home_summary_log_failure
-  }
   exit 0
 fi
 

@@ -573,6 +573,8 @@ PATH="$SIGNALBIN:$FAKEBIN:$PATH" FM_TEST_REAL_ENV="$REAL_ENV" \
 grep -F 'refresh worker failed with exit 143' \
   "$HOME_DIR/state/.home-summary-refresh.log" >/dev/null \
   || fail "worker termination was not logged at the parent boundary"
+[ -e "$HOME_DIR/state/.home-summary-attempt" ] \
+  || fail "a worker that failed before recording its attempt left no backoff record"
 pass "best-effort refresh logs worker termination"
 
 rm -f "$SIGNAL_MARKER" "$HOME_DIR/state/.home-summary-refresh.log"
@@ -1150,6 +1152,30 @@ jq -e '
   || fail "the producer re-read more than the appended bytes: $(cat "$FOLD_PROBE" 2>/dev/null || echo 'no incremental fold recorded')"
 pass "producer folds open decisions through the warm incremental cursor"
 
+# A log that is no longer the file the producer captured (replaced between the
+# copy and the fold) is folded from the captured copy, never from a cursor
+# that may belong to another file.
+# The first identity read is the capture's; every later read sees another file.
+cat > "$TMP_ROOT/replaced-identity" <<'SH'
+#!/usr/bin/env bash
+if [ -e "$FM_TEST_IDENTITY_SEEN" ]; then printf replacement-log; else : > "$FM_TEST_IDENTITY_SEEN"; printf captured-log; fi
+SH
+chmod +x "$TMP_ROOT/replaced-identity"
+: > "$FOLD_PROBE"
+PATH="$FAKEBIN:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$FOLD_HOME" \
+  FM_SNAPSHOT_NOW="$NOW_ONE" FM_SNAPSHOT_NOW_EPOCH="$EPOCH_ONE" \
+  FM_OPEN_DECISIONS_READ_PROBE="$FOLD_PROBE" \
+  FM_STATUS_IDENTITY_READER="$TMP_ROOT/replaced-identity" FM_TEST_IDENTITY_SEEN="$TMP_ROOT/identity-seen" \
+  "$SNAPSHOT" --secondmate-home-summary > "$TMP_ROOT/fold-replaced.json" \
+  || fail "the producer failed on a replaced status log"
+jq -e '
+  [.decisions_open[].key] | (index("old-gate") != null) and (index("new-gate") != null)
+' "$TMP_ROOT/fold-replaced.json" >/dev/null \
+  || fail "the replaced-log fallback lost an open decision: $(jq -c .decisions_open "$TMP_ROOT/fold-replaced.json")"
+[ ! -s "$FOLD_PROBE" ] \
+  || fail "the producer used the cursor for a replaced status log: $(cat "$FOLD_PROBE")"
+pass "producer folds the captured copy when the status log was replaced"
+
 # A failing publication backs off for the refresh interval across watcher
 # restarts: the record of the last attempt lives in the home, not in one
 # watcher's memory, so a replacement watcher does not start another attempt
@@ -1160,29 +1186,70 @@ mkdir -p "$BACKOFF_HOME/state" "$BACKOFF_HOME/data" "$BACKOFF_HOME/config" \
 printf '# Seeded Firstmate home\n' > "$BACKOFF_HOME/AGENTS.md"
 printf 'backoff\n' > "$BACKOFF_HOME/.fm-secondmate-home"
 printf '## In flight\n\n## Queued\n\n## Done\n' > "$BACKOFF_HOME/data/backlog.md"
-for round in one two; do
+backoff_attempts() {
+  local n
+  n=$(grep -c 'refresh exceeded its 1-second deadline' "$BACKOFF_HOME/state/.home-summary-refresh.log" 2>/dev/null)
+  printf '%s\n' "${n:-0}"
+}
+start_backoff_watcher() {  # <round>
   rm -f "$BACKOFF_HOME/state/.last-watcher-beat"
   PATH="$HANGBIN:$FAKEBIN:$PATH" FM_TEST_REAL_JQ="$REAL_JQ" \
     FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$BACKOFF_HOME" \
-    FM_POLL=1 FM_HOME_SUMMARY_INTERVAL=60 FM_HOME_SUMMARY_TIMEOUT=1 \
+    FM_POLL=1 FM_HOME_SUMMARY_INTERVAL=600 FM_HOME_SUMMARY_TIMEOUT=1 \
     FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=9999999 FM_HEARTBEAT=9999999 \
-    "$WATCH" > "$TMP_ROOT/backoff-watch-$round.out" 2> "$TMP_ROOT/backoff-watch-$round.err" &
+    "$WATCH" > "$TMP_ROOT/backoff-watch-$1.out" 2> "$TMP_ROOT/backoff-watch-$1.err" &
   WATCH_PID=$!
   i=0
-  while [ ! -e "$BACKOFF_HOME/state/.last-watcher-beat" ] && [ "$i" -lt 100 ]; do
+  while [ ! -e "$BACKOFF_HOME/state/.last-watcher-beat" ] && [ "$i" -lt 200 ]; do
     kill -0 "$WATCH_PID" 2>/dev/null || break
     sleep 0.05
     i=$((i + 1))
   done
   [ -e "$BACKOFF_HOME/state/.last-watcher-beat" ] \
-    || fail "the backoff watcher ($round) did not begin polling: $(cat "$TMP_ROOT/backoff-watch-$round.err" 2>/dev/null)"
-  sleep 5
+    || fail "the backoff watcher ($1) did not begin polling: $(cat "$TMP_ROOT/backoff-watch-$1.err" 2>/dev/null)"
+}
+stop_backoff_watcher() {
   kill "$WATCH_PID" >/dev/null 2>&1 || true
   wait "$WATCH_PID" >/dev/null 2>&1 || true
   WATCH_PID=
+}
+start_backoff_watcher one
+i=0
+while [ "$(backoff_attempts)" -lt 1 ] && [ "$i" -lt 300 ]; do
+  sleep 0.1
+  i=$((i + 1))
 done
-sleep 2
-attempts=$(grep -c 'refresh exceeded its 1-second deadline' "$BACKOFF_HOME/state/.home-summary-refresh.log" 2>/dev/null || true)
+[ "$(backoff_attempts)" -ge 1 ] || fail "the backoff watcher never attempted a publication"
+stop_backoff_watcher
+start_backoff_watcher two
+# Three completed polls by replacement watchers: each one would have started a
+# refresh without the backoff, and a started one would be logged at its
+# one-second deadline before the third poll ends. A replacement that exits to
+# surface the earlier watcher's downtime is restarted, as supervision would.
+beats=0
+round=2
+last_beat=$(beat_mtime "$BACKOFF_HOME/state/.last-watcher-beat")
+i=0
+while [ "$beats" -lt 3 ] && [ "$i" -lt 300 ]; do
+  if ! kill -0 "$WATCH_PID" 2>/dev/null && [ "$round" -lt 5 ]; then
+    wait "$WATCH_PID" >/dev/null 2>&1 || true
+    round=$((round + 1))
+    start_backoff_watcher "$round"
+    last_beat=$(beat_mtime "$BACKOFF_HOME/state/.last-watcher-beat")
+  fi
+  sleep 0.1
+  now_beat=$(beat_mtime "$BACKOFF_HOME/state/.last-watcher-beat" 2>/dev/null || printf '%s' "$last_beat")
+  if [ "$now_beat" != "$last_beat" ]; then beats=$((beats + 1)); last_beat=$now_beat; fi
+  i=$((i + 1))
+done
+[ "$beats" -ge 3 ] || fail "the replacement backoff watcher did not keep polling"
+i=0
+while [ -e "$BACKOFF_HOME/state/.home-summary-refresh.lock" ] && [ "$i" -lt 100 ]; do
+  sleep 0.1
+  i=$((i + 1))
+done
+stop_backoff_watcher
+attempts=$(backoff_attempts)
 [ "$attempts" = 1 ] \
   || fail "a failing publication was retried $attempts times inside one refresh interval across a watcher restart"
 pass "a failing publication backs off for the refresh interval across watcher restarts"
