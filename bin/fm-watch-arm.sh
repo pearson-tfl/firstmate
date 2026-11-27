@@ -70,10 +70,11 @@
 #
 # --take-over <arm-pid>: own the cycle that arm <arm-pid> owns, for an owner
 # that left a successor cycle running through main's turn and now parks again
-# (bin/fm-supervision-host.sh). Only when this home's healthy watcher is that
-# arm's own child, it stops that watcher by its locked identity: a cycle that
-# delivered a reason before the stop landed reports it exactly as an attached
-# arm would, and otherwise this arm owns a fresh cycle as a plain arm does.
+# without that arm's output to adopt it by (bin/fm-supervision-host.sh). Only
+# when this home's healthy watcher is that arm's own child, it stops that
+# watcher by its locked identity: a cycle that delivered a reason before the
+# stop landed reports it exactly as an attached arm would, and otherwise this
+# arm owns a fresh cycle as a plain arm does.
 # Recovery restoration follows docs/watcher-continuity.md "Generation reuse";
 # an unconfirmed stop leaves downtime for the fresh cycle's recovery check.
 # Any other watcher, or one that outlives the stop,

@@ -1162,9 +1162,9 @@ _fm_recovery_marker_reopen_announced() {
 # The handover rule for a watcher stopped by bin/fm-watch-arm.sh --take-over
 # (docs/watcher-continuity.md "Generation reuse" owns it). The snapshot reads
 # the marker token and the queue's append sequence under both locks before the
-# stop; handover-restore puts an acknowledged token back only while that
-# sequence is unchanged and the marker reads the fresh pending downtime the
-# stopped watcher's own close published.
+# stop; handover-restore puts that token back only while that sequence is
+# unchanged and the marker reads the pending downtime the stopped watcher's own
+# close published in its place.
 FM_RECOVERY_HANDOVER_TOKEN=
 FM_RECOVERY_HANDOVER_SEQ=
 fm_recovery_marker_handover_snapshot() {  # <marker>
@@ -1189,7 +1189,7 @@ fm_recovery_marker_handover_snapshot() {  # <marker>
 
 _fm_recovery_marker_handover_restore() {
   local marker=$1 token=$2 seq=$3 lock status=0
-  case "$token" in acked:*) ;; *) return 0 ;; esac
+  [ -n "$token" ] || return 0
   lock="${marker}.lock"
   fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK" || return 1
   if ! fm_lock_acquire_wait "$lock"; then
@@ -1200,7 +1200,7 @@ _fm_recovery_marker_handover_restore() {
     && fm_recovery_marker_read "$marker"; then
     case "$FM_RECOVERY_MARKER_TOKEN" in
       pending:downtime:*)
-        if [ "${FM_RECOVERY_MARKER_TOKEN##*:}" != "${token##*:}" ]; then
+        if [ "$FM_RECOVERY_MARKER_TOKEN" != "$token" ]; then
           _fm_recovery_marker_restore_token_locked "$marker" "$token" || status=1
         fi
         ;;

@@ -57,9 +57,11 @@
 #     left, so the re-arm owner delivers the close to main; a failed publish
 #     prints a watcher FAILED line instead of the close. The host records that successor's arm before relinquishing it
 #     (detach_successor owns the persistence check and failure path). The
-#     session's next park without --restart requests a take-over of its cycle
-#     rather than an ordinary attach; bin/fm-watch-arm.sh's --take-over header owns the
-#     conditions under which that restores a single owner and the fallback;
+#     session's next park without --restart adopts that arm as its own, so
+#     the live watcher keeps running and no downtime opens; when the arm's
+#     output was not kept it requests a take-over of its cycle instead, and
+#     bin/fm-watch-arm.sh's --take-over header owns the conditions under which
+#     that restores a single owner and the fallback;
 #   - away (an away record exists): every close goes to the engine.
 # Every turn that starts attended meets that rule again at its start, so a
 # close accepted away whose turn starts attended (the captain returned in
@@ -149,10 +151,11 @@
 # releases the branch actor's leases; it releases them again after every
 # engine turn. It also reads the record of a successor a pass-through left for
 # main: while that arm still runs under its recorded identity, the first cycle
-# without --restart requests a take-over rather than an ordinary attach.
-# Activation removes the
-# record only once that identity is no longer alive, so a later host retries a
-# take-over that left it running.
+# without --restart adopts it (records it as this host's arm, waits on it, and
+# reads its kept output) and drops the record, or, when its output was not
+# kept, requests a take-over rather than an ordinary attach. Activation
+# otherwise removes the record only once that identity is no longer alive, so
+# a later host retries a take-over that left it running.
 #
 # STATE (all under state/, owned here): .supervision-host (this host's pid and
 # the processes it runs), .supervision-host-engine (the engine conversation:
@@ -163,7 +166,8 @@
 # .supervision-host-mirror (the dialog-mirror feed while an attended wake is
 # rendered), .supervision-host-left (the pid and identity of the successor arm a
 # pass-through or the acknowledged hand-back owner left running for main, until
-# that arm is gone),
+# that arm is gone or adopted) and .supervision-host-left.<pid>.out (that
+# arm's output, which an adopting host reads),
 # .supervision-host-health (the latch: errors, cooldown, and probe time, keyed
 # to the main session, engine, and model), and .supervision-host.log (a bounded
 # ledger of where every close went, with each engine turn's usage and
@@ -261,6 +265,8 @@ ENGINE_PID_FILE="$STATE/.supervision-host.engine-pid"
 HEALTH_FILE="$STATE/.supervision-host-health"
 MIRROR_FEED="$STATE/.supervision-host-mirror"
 LEFT_RECORD="$STATE/.supervision-host-left"
+# The left arm's kept output, named by that arm's pid (.supervision-host-left.<pid>.out).
+LEFT_OUT_PREFIX="$STATE/.supervision-host-left."
 
 HOST_PID=$$
 HOST_STARTED_SECONDS=$SECONDS
@@ -285,8 +291,10 @@ SUCCESSOR_WATCHER=
 SUCCESSOR_GENERATION=
 ENGINE_RUNNING=0
 # The successor arm a predecessor's pass-through left for main, which the
-# first cycle takes over.
+# first cycle adopts when its output was kept (LEFT_ARM_OUT) and otherwise
+# takes over.
 LEFT_ARM=
+LEFT_ARM_OUT=
 # The running turn's result and diagnostics files, removed by the cleanup when
 # the host is stopped mid-turn.
 TURN_RESULT=
@@ -367,7 +375,7 @@ release_branch_leases() {
 # auto-arm admits one generation at a time, so a predecessor still alive here
 # was superseded (its owner died or went stale) or crashed mid-cleanup.
 activate() {
-  local role pid identity
+  local role pid identity f
   mkdir -p "$STATE" || return 1
   if [ -f "$HOST_RECORD" ]; then
     # The predecessor host first, with room for its own cleanup (which stops
@@ -402,18 +410,22 @@ activate() {
   done
   rm -f "$STATE"/.supervision-host-arm.* "$STATE"/.supervision-host-warm.* "$STATE"/.supervision-host-descendants.* "$STATE"/.supervision-host-result.* \
     "$STATE"/.supervision-host-errors.* "$STATE"/.supervision-host-readback.* "$TURN_FILE" "$MIRROR_FEED" 2>/dev/null || true
-  # The successor a pass-through left for main: the first cycle takes it over
-  # while it still answers to its recorded identity, and its record goes only
-  # once it does not.
+  # The successor a pass-through left for main: the first cycle adopts it,
+  # or takes it over when its output was not kept, while it still answers to
+  # its recorded identity, and its record goes only once it does not.
   if [ -f "$LEFT_RECORD" ]; then
     pid='' identity=''
     IFS="$(printf '\t')" read -r pid identity < "$LEFT_RECORD" || true
     if fm_pid_alive "$pid" && [ -n "$identity" ] && [ "$(identity_of "$pid")" = "$identity" ]; then
       LEFT_ARM=$pid
+      [ ! -f "$LEFT_OUT_PREFIX$pid.out" ] || [ -L "$LEFT_OUT_PREFIX$pid.out" ] || LEFT_ARM_OUT=$LEFT_OUT_PREFIX$pid.out
     else
       rm -f "$LEFT_RECORD"
     fi
   fi
+  for f in "$LEFT_OUT_PREFIX"*.out; do
+    [ "$f" = "$LEFT_ARM_OUT" ] || rm -f "$f"
+  done
   printf 'host\t%s\t%s\n' "$HOST_PID" "$(identity_of "$HOST_PID")" > "$HOST_RECORD" || return 1
   release_branch_leases
 }
@@ -838,11 +850,13 @@ start_successor() {  # <predecessor-arm-pid>
 # back as a regular file holding exactly its pid and identity stays tracked,
 # so the cleanup stops it and main's next turn end arms a fresh cycle; that
 # returns 1. The shell signals background jobs when it exits, and this arm's
-# handler would then stop the watcher, so disown it first. The capture file
-# stays tracked so the EXIT trap unlinks it; the arm already holds that
-# descriptor and keeps waiting on the watcher.
+# handler would then stop the watcher, so disown it first. The capture file is
+# then renamed to .supervision-host-left.<pid>.out for the next park to adopt
+# the cycle by; the arm already holds that descriptor and keeps writing it. A
+# capture file that cannot be renamed stays tracked so the EXIT trap unlinks
+# it, and the next park takes the cycle over instead.
 detach_successor() {
-  local identity tmp=
+  local identity tmp='' pid
   [ -n "${SUCCESSOR_PID:-}" ] || return 0
   identity=$(identity_of "$SUCCESSOR_PID")
   if [ -z "$identity" ] || ! tmp=$(mktemp "$LEFT_RECORD.tmp.XXXXXX" 2>/dev/null) \
@@ -856,7 +870,11 @@ detach_successor() {
   fi
   disown "$SUCCESSOR_PID" 2>/dev/null || true
   forget_process "$SUCCESSOR_PID"
+  pid=$SUCCESSOR_PID
   SUCCESSOR_PID=
+  if mv -f "$SUCCESSOR_OUT" "$LEFT_OUT_PREFIX$pid.out" 2>/dev/null; then
+    SUCCESSOR_OUT=
+  fi
 }
 
 # Main receives this close only on downtime, even when a preceding engine
@@ -1228,6 +1246,14 @@ log_line "start	gen=$GEN	primary=$PRIMARY"
 # The first cycle.
 if [ "$FIRST_ARM_RESTART" -eq 1 ]; then
   start_arm "$OWNER_PREDECESSOR" --restart
+elif [ -n "$LEFT_ARM_OUT" ]; then
+  # Adopt the left cycle rather than stopping a live watcher: its arm becomes
+  # this host's arm, so the record that left it for main goes.
+  log_line "adopt	arm=$LEFT_ARM"
+  record_process arm "$LEFT_ARM"
+  rm -f "$LEFT_RECORD"
+  STARTED_ARM_PID=$LEFT_ARM
+  STARTED_ARM_OUT=$LEFT_ARM_OUT
 elif [ -n "$LEFT_ARM" ]; then
   log_line "take-over	arm=$LEFT_ARM"
   start_arm "$OWNER_PREDECESSOR" --take-over "$LEFT_ARM"

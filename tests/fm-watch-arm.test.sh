@@ -1275,6 +1275,39 @@ test_take_over_owns_a_fresh_cycle_and_keeps_queued_work_surfacing() {
   pass "watch-arm: --take-over owns a fresh cycle without a recovery wake and still surfaces queued work"
 }
 
+# The rearm-resurface loop (AHR #6587): main drained a hand-back but ended its
+# turn without acknowledging it, so the episode still read handling when the
+# next park took the cycle over. The take-over is not downtime: it restores
+# that handling episode, and the fresh cycle wakes nobody.
+test_take_over_keeps_an_unacknowledged_handling_episode_quiet() {
+  local dir state fakebin armout owner token
+  dir=$(make_case take-over-handling)
+  state="$dir/state"
+  fakebin="$dir/fakebin"
+  armout="$dir/arm.out"
+  start_rearm_arm "$dir" "$state" "$fakebin" "$dir/owner.out" "$$"
+  owner=$ARM_PID
+  SEED_PID=$(cat "$state/.watch.lock/pid")
+  append_wake "$state" signal take-over "signal: fixture presented to main"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" >/dev/null 2>&1 || fail "fixture: main could not drain the wake"
+  token=$(cat "$state/.watcher-down" 2>/dev/null)
+  case "$token" in pending:handling:*|announced:handling:*) ;; *) fail "fixture: the drain did not begin handling: $token" ;; esac
+  PATH="$fakebin:$PATH" FM_HOME="$dir" FM_STATE_OVERRIDE="$state" \
+    FM_POLL=1 FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 \
+    "$WATCH_ARM" --take-over "$owner" > "$armout" &
+  ARM_PID=$!
+  wait_for_file_text "$armout" 'watcher: started pid=' \
+    || fail "--take-over did not own a fresh cycle: $(cat "$armout")"
+  wait_for_exit "$SEED_PID" 50 >/dev/null 2>&1 || true
+  sleep 3
+  is_live_non_zombie "$ARM_PID" || fail "the take-over over an unacknowledged handling episode woke main: $(cat "$armout")"
+  [ "$(cat "$state/.watcher-down" 2>/dev/null)" = "$token" ] \
+    || fail "the take-over did not restore the handling episode $token: $(cat "$state/.watcher-down" 2>/dev/null)"
+  kill -TERM "$ARM_PID" 2>/dev/null || true
+  wait_for_exit "$ARM_PID" 50 >/dev/null 2>&1 || true
+  pass "watch-arm: --take-over over an unacknowledged handling episode restores it and wakes nobody"
+}
+
 # A fake herdr for one live, busy crew pane, plus an event reader that behaves
 # like herdr-eventwait.py on a quiet fleet: it subscribes, then blocks for its
 # whole timeout budget. Nothing here reaches a real herdr server.
@@ -2157,6 +2190,7 @@ test_handling_delivered_accepts_already_acked_generation
 test_handling_delivered_rejects_a_superseded_generation
 test_take_over_attaches_to_a_cycle_the_named_arm_does_not_own
 test_take_over_owns_a_fresh_cycle_and_keeps_queued_work_surfacing
+test_take_over_keeps_an_unacknowledged_handling_episode_quiet
 test_take_over_preserves_downtime_from_watcher_self_exit
 test_take_over_confirms_a_watcher_stopped_inside_its_event_wait
 test_opencode_arm_plugin_decides_with_the_shared_predicate
