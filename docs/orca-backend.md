@@ -61,10 +61,10 @@ Before its first key, spawn checks terminal placement, listed agents, and screen
 
 - `orca terminal show` places the terminal in the task worktree or secondmate home entry selected by spawn.
 - `orca agent list` names no agent on the terminal's pane.
-- The drawn screen reads the same twice in a row, has one or two nonblank rows, and shows no tmux status or session-picker row, no box-drawn chrome, and no agent composer the shared classifier recognizes.
+- The drawn screen reads the same twice in a row, has one or two nonblank lines once each row Orca marks wrapped is joined to the row above, and shows no tmux status or session-picker row, no box-drawn chrome, and no agent composer the shared classifier recognizes.
 
 These checks cannot prove the foreground process is a shell: Orca reports no process for the terminal, so a tmux client with its status row off whose attached pane shows only a bare prompt would pass (code).
-A prompt the shared classifier reads as an agent composer (a lone `❯`, as some themes draw) or one drawn over more than two nonblank rows refuses (code).
+A prompt the shared classifier reads as an agent composer (a lone `❯`, as some themes draw) or one drawn over more than two nonblank lines refuses (code).
 
 A refused spawn closes that terminal and releases the worktree it just created, like any other failed Orca spawn (code).
 `bin/backends/orca.sh` (`fm_backend_orca_fresh_shell`) owns those checks and the screen-read wait.

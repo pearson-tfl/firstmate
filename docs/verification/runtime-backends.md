@@ -2515,6 +2515,16 @@ With `--screen`, `--limit` keeps the bottom rows, an unlimited read returns exac
 A Firstmate-adapter run of the changed capture against real Orca, and a real agent on Orca, were not exercised in that session.
 `tests/fm-backend-orca.test.sh` pins the source check, the unlimited viewport read, and the liveness probe.
 
+A row too long for the pane is drawn as more than one row, and `tailRows` marks each continuation `wrapped: true`.
+Observed on 2026-11-27 on macOS (Orca version not recorded with the capture) in a narrow Orca pane on a new Agent-Harness-Reconfig worktree whose `.envrc` direnv had not allowed, with `orca terminal read --terminal $term --screen --json`; `result.terminal` held:
+
+```text
+tail     ["direnv: error /Users/johnp/firstmate-homes/ahr/projects/Agent-Harness-Reconfig/.envrc is block","ed. Run `direnv allow` to approve its content","➜  Agent-Harness-Reconfig git:(master)"]
+tailRows [{"wrapped":false},{"wrapped":true},{"wrapped":false}]
+```
+
+The spawn fresh-shell check joins each wrapped row onto the row above before counting rows; `tests/fm-backend-orca-live-safety.test.sh` carries this screen and the same lines drawn wide.
+
 ### Orca 1.4.271 readiness and CLI
 
 Re-read on 2026-11-23 against the running macOS desktop app, with read-only commands only.

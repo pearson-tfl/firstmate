@@ -113,11 +113,11 @@ case "$cmd" in
       spawn-direnv-narrow | spawn-direnv-wide)
         # The direnv refusal a new AHR worktree prints, as Orca drew it on 27 Nov 2026;
         # narrow, Orca wraps it onto a second row it marks wrapped in tailRows.
-        d='direnv: error /Users/johnp/firstmate-homes/ahr/projects/Agent-Harness-Reconfig/.envrc is blocked. Run `direnv allow` to approve its content'
+        direnv_notice='direnv: error /Users/johnp/firstmate-homes/ahr/projects/Agent-Harness-Reconfig/.envrc is blocked. Run `direnv allow` to approve its content'
         if [ "$mode" = spawn-direnv-narrow ]; then
-          printf '%s\n%s\n' "${d:0:94}" "${d:94}" > "$S/screen"; printf '0\n1\n0\n' > "$S/screen.wrapped"
+          printf '%s\n%s\n' "${direnv_notice:0:94}" "${direnv_notice:94}" > "$S/screen"; printf '0\n1\n0\n' > "$S/screen.wrapped"
         else
-          printf '%s\n' "$d" > "$S/screen"
+          printf '%s\n' "$direnv_notice" > "$S/screen"
         fi
         printf '➜  Agent-Harness-Reconfig git:(master)\n' >> "$S/screen"
         ;;
