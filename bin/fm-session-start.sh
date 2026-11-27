@@ -492,12 +492,13 @@ print_backlog_manual_compact() {
     state == "done" && /^[-*][[:space:]]+/ { done_total++; next }
     state == "queued" && /^[-*][[:space:]]+/ {
       queued_total++
-      if ($0 ~ /[(]hold/) {
+      # Blocked first: a row both blocked and held is never cut by the held cap.
+      if ($0 ~ /blocked-by:/) { gated++; print $0; next }
+      if ($0 ~ keep_re) {
         held_total++
         if (held_shown < hmax) { held_shown++; gated++; print $0 }
         next
       }
-      if ($0 ~ keep_re) { gated++; print $0; next }
       if (plain_shown < max) { plain_shown++; print $0 }
       next
     }

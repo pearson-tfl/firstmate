@@ -2158,12 +2158,13 @@ EOF
   assert_contains "$out" "(shown 1 of 1 held title line(s))" "manual compact rendering did not report its held accounting"
 
   # The held cap: held title lines past FM_SESSION_START_HELD_LIMIT are counted, not printed; blocked lines stay.
-  perl -i -pe 'print "- [ ] held-extra-1 - Extra held one (hold: later) (hold-kind: captain)\n- [ ] held-extra-2 - Extra held two (hold: later) (hold-kind: captain)\n" if /^- \[ \] plain-1 /' "$home/data/backlog.md"
+  perl -i -pe 'print "- [ ] held-extra-1 - Extra held one (hold: later) (hold-kind: captain)\n- [ ] held-extra-2 - Extra held two (hold: later) (hold-kind: captain)\n- [ ] held-blocked - Held and blocked blocked-by: compact-startup (hold: later) (hold-kind: captain)\n" if /^- \[ \] plain-1 /' "$home/data/backlog.md"
   out=$(FM_SESSION_START_QUEUED_LIMIT=4 FM_SESSION_START_HELD_LIMIT=1 run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
   assert_contains "$out" "- [ ] held-queued - Held queued work" "manual held cap dropped a held line inside its limit"
   assert_not_contains "$out" "Extra held one" "manual held cap did not bound held title lines"
   assert_contains "$out" "blocked-by: compact-startup - waits for implementation" "manual held cap dropped a blocked line"
-  assert_contains "$out" "(shown 1 in-flight, 2 held or blocked queued, 4 of 25 other queued title line(s); 1 done row(s) omitted)" \
+  assert_contains "$out" "Held and blocked" "manual held cap dropped a row that is both blocked and held"
+  assert_contains "$out" "(shown 1 in-flight, 3 held or blocked queued, 4 of 25 other queued title line(s); 1 done row(s) omitted)" \
     "manual held cap miscounted the other queued lines"
   assert_contains "$out" "(shown 1 of 3 held title line(s))" "manual held cap did not report what it showed"
   assert_contains "$out" "(2 more held - raise FM_SESSION_START_HELD_LIMIT or read data/backlog.md for the rest)" \
