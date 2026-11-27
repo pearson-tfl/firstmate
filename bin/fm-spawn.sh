@@ -558,8 +558,9 @@
 #   in this launching home, then falls back to its home-wide pin when absent.
 #   Pins are never inherited; remote per-mate overrides refuse locally.
 #   T3 Code refuses a pin because its provider instance owns the account.
-#   Orca refuses Claude pins, including cswap lane and rules selections, before
-#   provisioning because its managed terminal profile can override the account.
+#   Orca refuses an ordinary Claude pin (~/.claude) because its wrapper replaces
+#   that user-default path on resume; a cswap or explicit-root pin is launched
+#   with the tmux wrap and a per-cwd pin record for bin/fm-orca-claude-pin.sh.
 #   bin/fm-worker-account-lib.sh owns parsing, the check, and the shed list.
 # Account rules (config/account-rules): when present, a Claude launch chooses
 #   its cswap account through the same seam instead of config/claude-account,
@@ -7995,6 +7996,17 @@ if [ -n "$WORKER_ACCOUNT" ]; then
   esac
 elif [ "$HARNESS" = claude ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
   LAUNCH="CLAUDE_CONFIG_DIR=$(shell_quote "$CLAUDE_CONFIG_DIR") $LAUNCH"
+fi
+# Orca reopen types `claude --resume` without this wrap. Record the pinned
+# root against the seat cwd so bin/fm-orca-claude-pin.sh can export it.
+if [ "$BACKEND" = orca ] && [ "$HARNESS" = claude ] && [ -n "$WORKER_ACCOUNT_ROOT" ]; then
+  ORCA_PIN_CWD=$WT
+  [ "$KIND" = secondmate ] && ORCA_PIN_CWD=$PROJ_ABS
+  if [ -z "$ORCA_PIN_CWD" ]; then
+    echo "error: backend=orca cannot write the Claude pin record because the seat working directory is unknown" >&2
+    exit 1
+  fi
+  fm_worker_account_orca_pin_write "$ORCA_PIN_CWD" "$WORKER_ACCOUNT_ROOT" || exit 1
 fi
 # Every launch names its home and clears this process's overrides: a pane
 # otherwise inherits the long-lived tmux/herdr server's global environment,

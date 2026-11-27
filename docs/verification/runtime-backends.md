@@ -2501,23 +2501,18 @@ tests/fm-bootstrap.test.sh
 
 The fake-Orca suite covers readiness, registration, create response parsing, metadata routing, popup-safe submit, path-matched release refusal, and the drawn-screen read contract.
 
-### Orca Claude account pin refusal
+### Orca Claude account pin
 
-Verified on 2026-11-24 with Bash 5.3.15 and Node v26.8.1 against fake Orca through the public spawn interface:
+Verified on 2026-11-27 against fake Orca through the public spawn interface:
 
 ```sh
 bash bin/fm-test-run.sh tests/fm-spawn-orca-worktree.test.sh
 ```
 
-The account-pin case reports:
+An ordinary Claude pin (`~/.claude`) is still refused before provisioning.
+A cswap lane pin launches: the staged command wraps `cswap run`, spawn writes a pin record for the seat working directory, and `bin/fm-orca-claude-pin.sh` exports that root as `CLAUDE_CONFIG_DIR` when `ORCA_TERMINAL_HANDLE` is set.
 
-```text
-ok - Orca refuses a pinned Claude relaunch while preserving existing metadata and unlanded work
-ok - Orca refuses ordinary, root, lane cswap, and rules-based Claude pins before provisioning
-```
-
-The case asserts that no worktree, terminal, terminal input, worker process, or task metadata is produced.
-This proves the refusal boundary and does not claim successful account binding against real Orca.
+The case does not claim a live Orca quit-and-reopen; that proof is the scratch-seat readback under the #6586 pin route.
 
 ### Orca drawn-screen read
 

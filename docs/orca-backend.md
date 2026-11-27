@@ -52,6 +52,8 @@ The adapter's typed steer writes its text without Enter, so control bytes inside
 An Orca terminal opens your normal login shell in your real home folder with your personal shell startup files, and a variable set in the environment Orca starts from reaches every new terminal (real Orca).
 `config/launch-env-allowlist` alone therefore cannot scope worker credentials on Orca, because allowlisted values resolve from the Orca terminal's own environment.
 Orca also sets `CLAUDE_CONFIG_DIR` in its terminals to its own managed Claude folder, so a Claude launched there without a Firstmate account pin uses that folder's sign-in rather than the home's (real Orca).
+A cswap lane pin or an explicit Claude config root is applied on the first launch wrap and recorded for that seat working directory so an Orca quit-and-reopen can export the same root before Orca types `claude --resume` (code).
+An ordinary pin (`~/.claude`) is still refused, because Orca's wrapper treats that path as the user default and replaces it with the selected managed profile on resume (code).
 To scope worker credentials, configure an [Orca environment source](configuration.md#orca-environment-source-configlaunch-env-vault-configlaunch-env-tmux-session): a vault, with no tmux, or a tmux session.
 
 ## Shell ownership
@@ -183,7 +185,8 @@ A refused relaunch closes the fresh terminal it opened and never the worktree (c
   Pointing a home at another machine's runtime with `--environment` or `ORCA_ENVIRONMENT` is unsupported.
 - The Orca runtime must be running and report ready.
 - No real agent has run as a second mate on Orca, and away mode's `start` has no Orca launch (code).
-- Claude launches with a worker account pin, a cswap lane account, or an account-rules selection are refused before provisioning and before a control-plane relaunch stops the existing worker because Firstmate cannot guarantee that Orca's managed terminal profile honors the selected account (code).
+- Claude launches with an ordinary worker account pin (`~/.claude`) are refused before provisioning and before a control-plane relaunch stops the existing worker, because Orca's wrapper replaces that user-default path with the selected managed profile on resume (code).
+  A cswap lane pin, an account-rules cswap choice, or an explicit config root is launched with the same wrap as tmux, and a pin record for the seat working directory is written so the login-shell snippet (`bin/fm-orca-claude-pin.sh`) can export `CLAUDE_CONFIG_DIR` on Orca reopen (code).
 - An interrupt is reported delivered with its cancellation unconfirmed unless the harness keeps its own confirmation record (muse confirms from its session log), and an interrupt for a harness that must read its screen between or after presses (Devin and Command Code) is refused because Orca's screen read has never been verified with a real Devin or Command Code on it (code); [`agent-control.md`](agent-control.md) owns the per-backend control matrix.
 - `exit` and `relaunch` act only on an agent Orca lists; a running terminal with no listed agent reads unverified and refuses (code).
 - `exit` and `relaunch` have not yet run against a real agent on real Orca.

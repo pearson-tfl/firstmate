@@ -5,7 +5,10 @@
 # environment credentials a pinned Claude launch sheds.
 #
 # docs/configuration.md "Worker account pin" owns the operator-facing contract.
-# Sourced by bin/fm-spawn.sh and bin/fm-control.sh.
+# Sourced by bin/fm-spawn.sh, bin/fm-control.sh, and bin/fm-teardown.sh.
+# Orca reopen cannot re-run the launch wrap: spawn writes a pin record keyed by
+# the seat working directory, the login-shell snippet in bin/fm-orca-claude-pin.sh
+# exports that root as CLAUDE_CONFIG_DIR, and teardown clears the record.
 #
 # Pinnable runners, each a credential store inside a root its vendor lets a
 # process select:
@@ -57,11 +60,74 @@
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fm-timeout-lib.sh"
 
 fm_worker_account_backend_check() {
-  if [ "$1" = orca ] && [ "$2" = claude ] && [ -n "$3" ]; then
-    echo "error: backend=orca cannot guarantee the Claude worker account pin (${3%%$'\t'*}) because Orca manages the terminal's Claude profile; refusing to launch on a potentially different account; choose another backend to honor the pin" >&2
+  local declared root rest
+  [ "$1" = orca ] && [ "$2" = claude ] && [ -n "$3" ] || return 0
+  declared=${3%%$'\t'*}
+  rest=${3#*$'\t'}
+  root=${rest%%$'\t'*}
+  if [ -z "$root" ]; then
+    echo "error: backend=orca cannot guarantee the ordinary Claude account pin ($declared) because that login is ~/.claude, which Orca's wrapper treats as the user default and replaces with the selected managed profile on resume; pin an explicit root or a cswap lane, or choose another backend" >&2
     return 1
   fi
   return 0
+}
+
+# fm_worker_account_orca_pin_state
+# Prints the directory that holds Orca Claude pin records for this HOME.
+fm_worker_account_orca_pin_state() {
+  printf '%s\n' "${XDG_STATE_HOME:-${HOME:-}/.local/state}/firstmate/orca-claude-pin"
+}
+
+# fm_worker_account_orca_pin_key <workdir>
+# Prints the filename for the pin record of <workdir> (sha256 of the
+# physical path when the directory exists).
+fm_worker_account_orca_pin_key() {
+  local dir=$1 canon hash
+  if [ -d "$dir" ]; then
+    canon=$(cd "$dir" && pwd -P) || canon=$dir
+  else
+    canon=$dir
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    hash=$(printf '%s' "$canon" | shasum -a 256 | awk '{print $1}')
+  elif command -v sha256sum >/dev/null 2>&1; then
+    hash=$(printf '%s' "$canon" | sha256sum | awk '{print $1}')
+  else
+    echo "error: cannot hash the Orca Claude pin key for $dir (need shasum or sha256sum)" >&2
+    return 1
+  fi
+  case "$hash" in
+    *[!0-9a-fA-F]*|'') echo "error: cannot hash the Orca Claude pin key for $dir" >&2; return 1 ;;
+  esac
+  printf '%s\n' "$hash"
+}
+
+# fm_worker_account_orca_pin_write <workdir> <root>
+# Writes the absolute Claude config root for this seat working directory.
+fm_worker_account_orca_pin_write() {
+  local dir=$1 root=$2 state key dest tmp
+  case "$root" in
+  /*) ;;
+  *) echo "error: Orca Claude pin root must be an absolute path" >&2; return 1 ;;
+  esac
+  state=$(fm_worker_account_orca_pin_state) || return 1
+  key=$(fm_worker_account_orca_pin_key "$dir") || return 1
+  mkdir -p "$state" || return 1
+  dest="$state/$key"
+  tmp="$dest.tmp.$$"
+  (umask 077; printf '%s\n' "$root" > "$tmp") || return 1
+  mv "$tmp" "$dest"
+}
+
+# fm_worker_account_orca_pin_clear <workdir>
+# Removes the pin record for this seat working directory if it exists.
+fm_worker_account_orca_pin_clear() {
+  local dir=$1 state key dest
+  [ -n "$dir" ] || return 0
+  state=$(fm_worker_account_orca_pin_state) || return 0
+  key=$(fm_worker_account_orca_pin_key "$dir") || return 0
+  dest="$state/$key"
+  rm -f "$dest"
 }
 
 FM_WORKER_ACCOUNT_CHECK_SECONDS=${FM_WORKER_ACCOUNT_CHECK_SECONDS:-30}
