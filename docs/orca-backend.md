@@ -14,14 +14,14 @@ Each behavioral claim below ends with one of these marks.
 - **(code)** - read from Firstmate's own scripts, which own the exact behavior; not exercised on real Orca.
 - **(reported)** - recorded by an earlier Orca evaluation and not re-checked.
 
-No real agent has yet run a whole Firstmate task on Orca: `fm-spawn.sh` and `fm-send.sh` have not run end to end against real Orca, and `fm-teardown.sh` has run there only on scratch ship tasks with no agent.
-The [whole-task proof](verification/runtime-backends.md#orca-whole-task-proof) section is where that proof is recorded once it runs.
+Real agents have run whole Firstmate tasks on Orca in daily use, from `fm-spawn.sh` through `fm-send.sh` steering to landing and `fm-teardown.sh` cleanup, on a Linux paired Orca server (real Orca).
+The [whole-task proof](verification/runtime-backends.md#orca-whole-task-proof) section records it.
 
 ## Setup
 
 Pick Orca when you already use Orca and want Orca-managed worktrees and terminals instead of Treehouse plus a session multiplexer.
 Orca is explicit-only (code); a second mate runs in a terminal opened in its home ([Second-mate seats](#second-mate-seats)).
-Firstmate's Orca backend has run its adapter building blocks only on macOS (real Orca); on Linux only the CLI lookup and readiness check have run against a paired Orca server (real Orca).
+Firstmate's Orca backend has run whole tasks with real agents on a Linux paired Orca server, and its adapter building blocks on macOS (real Orca).
 
 Prerequisites:
 
@@ -189,8 +189,7 @@ A refused relaunch closes the fresh terminal it opened and never the worktree (c
 - Firstmate checks readiness, not Orca's version (code).
 - The [shell-ownership check](#shell-ownership) has screen-based acceptance and prompt-compatibility limits (code).
 - Only the verified terminal-handle and worktree result fields are accepted; speculative response shapes are rejected (fake Orca).
-- Orca's linked worktree has the shape the spawn-time Claude workspace-trust check in `bin/fm-claude-trust.sh` requires (real Orca), but that check has not run against an Orca worktree.
-- No real agent has run a whole task on Orca.
+- Orca's linked worktree has the shape the spawn-time Claude workspace-trust check in `bin/fm-claude-trust.sh` requires, and every Claude worker launched on Orca has passed that check (real Orca).
 
 ## Regression entry points
 

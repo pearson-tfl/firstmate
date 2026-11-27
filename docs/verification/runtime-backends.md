@@ -2576,7 +2576,7 @@ tool-available
 ```
 
 The runtime answered with the same `runtimeId` the paired macOS client reports for that server through `orca status --environment <name> --json`.
-No worktree, terminal, or agent was created on the server, so the spawn, steer, and cleanup paths remain proven only by the fake-Orca suite on Linux.
+That check created no worktree, terminal, or agent; the [whole-task proof](#orca-whole-task-proof) covers spawn, steer, and cleanup on a Linux paired server.
 
 ### Orca agent state
 
@@ -2647,9 +2647,29 @@ Each command below ran with `--json`; the table keeps the fields the adapter rea
 
 ### Orca whole-task proof
 
-Not yet proved.
-No real agent has run a whole Firstmate task on Orca: spawn through `fm-spawn.sh`, steering through `fm-send.sh`, landing, and cleanup through `fm-teardown.sh`.
-When that run happens, record it here: the date, Orca version, macOS version, harness and version, Firstmate commit, the exact commands, and their output.
+Proved in daily use, which stands as this section's proof: no separate proof run is made.
+Observed on 2026-11-27 on Linux x86_64 in one Firstmate home with `config/backend` set to `orca`, against a paired Orca server at app 1.4.273 and CLI 1.4.277, with the home's code root at Firstmate `b38f7a4a`.
+Harnesses installed there: Claude Code 2.1.332, Codex CLI 0.164.0, and Oh My Pi 19.2.1.
+
+Six ship tasks ran in Orca worktrees under `~/orca/workspaces/<project>/fm-<id>`, from `fm-spawn.sh` to `fm-teardown.sh`, on 2026-11-26.
+Each landed its PR, and each worktree is gone from disk and from the project's `git worktree list`:
+
+```sh
+for p in firstmate/fm-ahrprcheckwt firstmate/fm-fixfwdstategone firstmate/fm-stallgonelane firstmate/fm-ahrskillgate Agent-Harness-Reconfig/fm-ahrorcahookdig Agent-Harness-Reconfig/fm-ahrgardgate; do test -d ~/orca/workspaces/$p && echo "$p present" || echo "$p absent"; done
+gh pr view <n> -R <owner>/<repo> --json state,mergedAt   # firstmate 81, 83, 84, 85; Agent-Harness-Reconfig 6542, 6543
+```
+
+Observed output: all six worktrees `absent`, and all six PRs `MERGED` on 2026-11-26.
+
+Tasks live on the backend at the same read, with claude, codex, and omp harnesses:
+
+```sh
+grep -l '^backend=orca$' "$FM_HOME"/state/*.meta | wc -l
+```
+
+Observed output: `18`.
+A worker on that runtime moved a steer that `fm-send.sh` delivered into its task inbox's `handled/` directory, and the Claude workspace-trust check (`bin/fm-claude-trust.sh`) registered every Orca worktree a Claude worker launched in.
+Exit, relaunch, a second mate, and a real agent turn cancelled by an interrupt are not covered here.
 
 ### Orca environment source
 
