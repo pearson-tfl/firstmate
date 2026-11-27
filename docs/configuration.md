@@ -642,6 +642,7 @@ Task meta records `backend=` only for a non-default backend; an absent `backend=
 
 - A tern task additionally records `tern_session_id=`, `tern_tab_id=`, and `tern_block_id=`.
 - An hc task additionally records `hc_session=` and `hc_terminal=`, with `window=<hc_session>:<hc_terminal>`.
+- A ship or scout started on the Mac by a Mac home records `mac_reason=<one line>`, the reason Dell-first placement allowed the Mac; a relaunch keeps it, and a Dell-hosted spawn writes none ([Dell-first placement](#dell-first-placement)).
 
 ### Task selectors
 
@@ -1838,6 +1839,14 @@ The stand-in itself is supplied by the operator and is outside Firstmate; a `PAT
 The file is local to each home and is not inherited into secondmate homes, so each home on a machine sets it to that machine's stand-in directory.
 
 Independently of this file, ship and scout workers on a pane backend also start cut off from the tmux server they were launched on, so a tmux command that names no server reaches an empty private folder; `bin/fm-spawn.sh`'s header ("Worker tmux isolation") owns which names are removed, the folder, and the limits, including that `backend=t3code` workers and second mates are not isolated.
+
+## Dell-first placement
+
+A fresh ship or scout spawn on a Mac (`uname -s` reports `Darwin`) home first asks [`bin/fm-dell-first.py`](../bin/fm-dell-first.py) where the worker belongs, reusing Agent-Harness-Reconfig's `ops/claude-lane/placement.py` capacity check and `ops/lane-tools` list from `$HOME/Code/Agent-Harness-Reconfig`.
+The worker starts on the Mac, recording `mac_reason=` in its task record, when the spawn gives `--mac-reason <words>`, when a `--needs-tool <lane-tool>` names a tool the Dell's `lane-tools.py --check` line reports absent (`tool missing on Dell: <tool>`), when the Dell has no room by placement's limits, or, with a warning, when the Dell or the probe cannot be read.
+Otherwise the Dell has room and the spawn refuses, naming the hand-off to the home's Dell partner: a remote secondmate in this home's `data/secondmates.md`, or for a local secondmate home, its parent's route that names it.
+Nothing declares which lane tools a task needs, so a tool gap counts only when `--needs-tool` names it.
+A relaunch is never placed and keeps its recorded `mac_reason=`; a spawn on the Dell and a secondmate launch are never placed.
 
 ## Project capacity (config/project-capacity)
 

@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
 # Spawn a direct report: a crewmate in a treehouse or Orca worktree, or a
 # secondmate in its isolated firstmate home.
-# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--loadout <role>] [--workflows <on|off>] [--herdr-resume-lock-wait]
+# Usage: fm-spawn.sh <task-id> <project-dir> --mode <no-mistakes|direct-PR|local-only> --yolo <on|off> [--branch-prefix <prefix>] [--base-branch <branch>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--loadout <role>] [--workflows <on|off>] [--herdr-resume-lock-wait] [--mac-reason <words>] [--needs-tool <lane-tool>]...
 #        fm-spawn.sh <task-id> --relaunch [--harness <name>] [--model <name>] [--effort <level>] [--resume-session <prompt-file>]
-#        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--required-skill <name>]... [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--loadout <role>] [--workflows <on|off>] [--herdr-resume-lock-wait]
+#        fm-spawn.sh <task-id> <project-dir> --scout [--base-branch <branch>] [--required-skill <name>]... [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] [--loadout <role>] [--workflows <on|off>] [--herdr-resume-lock-wait] [--mac-reason <words>] [--needs-tool <lane-tool>]...
 #        fm-spawn.sh <task-id> [<firstmate-home>] [--harness <name>|harness|launch-command] [--model <name>] [--effort <level>] [--backend <name>] --secondmate
 #   --required-skill <name> (repeatable, ship and scout spawns, also on the ship
 #   usage line) must name exactly the skills the brief's "Required skills:" line
 #   records, or the spawn refuses; it writes required_skills= to the task's
 #   meta, which a relaunch keeps, and leaves the start-proof record in the
 #   task's steering inbox (bin/fm-required-skill-lib.sh owns the gates).
+#   --mac-reason <words> and --needs-tool <lane-tool> (repeatable) apply to a
+#   fresh ship or scout spawn on a Mac (uname Darwin) home, which first asks
+#   bin/fm-dell-first.py for Dell-first placement: a written reason, a named
+#   lane tool the Dell lacks, a Dell without room, or an unreadable Dell (with a
+#   warning) starts the worker on the Mac and records mac_reason=<one line> in
+#   its meta; a Dell with room and no reason refuses, naming the home's Dell
+#   partner hand-off. Relaunch keeps the recorded mac_reason and is never placed;
+#   a spawn on the Dell and a secondmate are never placed.
 #   --mode and --yolo are this task's delivery contract, REQUIRED for every ship
 #   spawn and refused on --scout and --secondmate spawns. Firstmate resolves both
 #   per task at intake (AGENTS.md section 7); data/projects.md holds the captain's
@@ -1114,6 +1122,9 @@ BASE_BRANCH_SET=0
 UPSTREAM_CONSENT=
 UPSTREAM_CONSENT_SET=0
 REQUIRED_SKILL_ARGS=()
+MAC_REASON=
+MAC_REASON_SET=0
+NEEDS_TOOL_ARGS=()
 LOADOUT_ROLE=
 LOADOUT_SET=0
 WORKFLOWS=
@@ -1175,6 +1186,11 @@ for a in "$@"; do
       UPSTREAM_CONSENT_SET=1
       ;;
     required-skill) REQUIRED_SKILL_ARGS+=("$a") ;;
+    mac-reason)
+      MAC_REASON=$a
+      MAC_REASON_SET=1
+      ;;
+    needs-tool) NEEDS_TOOL_ARGS+=("$a") ;;
     loadout)
       LOADOUT_ROLE=$a
       LOADOUT_SET=1
@@ -1254,6 +1270,13 @@ for a in "$@"; do
   --upstream-consent) want_value="upstream-consent" ;;
   --required-skill) want_value="required-skill" ;;
   --required-skill=*) REQUIRED_SKILL_ARGS+=("${a#--required-skill=}") ;;
+  --mac-reason) want_value=mac-reason ;;
+  --mac-reason=*)
+    MAC_REASON=${a#--mac-reason=}
+    MAC_REASON_SET=1
+    ;;
+  --needs-tool) want_value=needs-tool ;;
+  --needs-tool=*) NEEDS_TOOL_ARGS+=("${a#--needs-tool=}") ;;
   --upstream-consent=*)
     UPSTREAM_CONSENT=${a#--upstream-consent=}
     UPSTREAM_CONSENT_SET=1
@@ -1316,6 +1339,12 @@ if [ -n "$REQUIRED_SKILLS" ]; then
   }
   [ "$KIND" != secondmate ] || {
     echo "error: --required-skill applies only to ship and scout spawns; a secondmate's required skills travel on each marked request (bin/fm-send.sh --required-skill)" >&2
+    exit 1
+  }
+fi
+if [ "$MAC_REASON_SET" -eq 1 ] || [ "${#NEEDS_TOOL_ARGS[@]}" -gt 0 ]; then
+  [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] || {
+    echo "error: --mac-reason and --needs-tool apply only to a fresh ship or scout spawn; a relaunch keeps the task's recorded placement" >&2
     exit 1
   }
 fi
@@ -2228,6 +2257,10 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   [ -z "$MODEL" ] || shared_args+=(--model "$MODEL")
   [ -z "$EFFORT" ] || shared_args+=(--effort "$EFFORT")
   [ -z "$BACKEND_ARG" ] || shared_args+=(--backend "$BACKEND_ARG")
+  [ "$MAC_REASON_SET" -eq 0 ] || shared_args+=(--mac-reason "$MAC_REASON")
+  for needs_tool in ${NEEDS_TOOL_ARGS[@]+"${NEEDS_TOOL_ARGS[@]}"}; do
+    shared_args+=(--needs-tool "$needs_tool")
+  done
   # One delivery contract applies to every pair in a batch, exactly like the shared
   # harness. Each pair still re-validates it against its own brief, so a batch
   # spanning several modes is two invocations rather than a silent mixed dispatch.
@@ -4412,6 +4445,16 @@ else
   PROJ_ABS="$(cd "$(resolve_project_dir_arg "$PROJ")" && pwd)"
   WT=""
   BRIEF="$DATA/$ID/brief.md"
+fi
+# Dell-first placement (bin/fm-dell-first.py owns the decision), before anything
+# is made; a relaunch replaces a worker where its worktree and endpoint already are.
+SPAWN_MAC_REASON=
+if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] && [ "$(uname -s)" = Darwin ]; then
+  placement_args=(--project "$PROJ_ABS" --task "$ID" --home "$FM_HOME" --mac-reason "$MAC_REASON")
+  for needs_tool in ${NEEDS_TOOL_ARGS[@]+"${NEEDS_TOOL_ARGS[@]}"}; do
+    placement_args+=(--needs-tool "$needs_tool")
+  done
+  SPAWN_MAC_REASON=$(python3 "$SCRIPT_DIR/fm-dell-first.py" "${placement_args[@]}") || exit 1
 fi
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] &&
   git -C "$PROJ_ABS" rev-parse --git-dir >/dev/null 2>&1 &&
@@ -7550,6 +7593,8 @@ preserve_relaunch_meta() {
   [ -z "$UPSTREAM_CONSENT" ] || echo "upstream_consent=$UPSTREAM_CONSENT"
   # Read by bin/fm-required-skill-lib.sh's done gate; preserved on relaunch.
   [ -z "$REQUIRED_SKILLS" ] || echo "required_skills=$REQUIRED_SKILLS"
+  # Why a Mac home started this worker on the Mac (bin/fm-dell-first.py); kept on relaunch.
+  [ -z "$SPAWN_MAC_REASON" ] || echo "mac_reason=$SPAWN_MAC_REASON"
   # Read by bin/fm-dod-lib.sh's ready-report gate; absent on every other forge.
   [ "$EXTERNAL_REVIEW" = 0 ] || echo "forge=external"
   [ -z "$EXTERNAL_BACKUP_REMOTE" ] || echo "backup_remote=$EXTERNAL_BACKUP_REMOTE"

@@ -403,7 +403,7 @@ family_for_basename() {
     fm-control.test.sh|fm-control-relaunch.test.sh|\
     fm-herdr-session-cleanup.test.sh|fm-send-resolve-key.test.sh|fm-send-strict.test.sh|\
     fm-send-inbox.test.sh|fm-spawn-batch.test.sh|\
-    fm-spawn-dispatch-profile.test.sh|fm-claude-trust.test.sh|\
+    fm-spawn-dispatch-profile.test.sh|fm-spawn-dell-first.test.sh|fm-claude-trust.test.sh|\
     fm-worker-account.test.sh|\
     fm-git-strip-ai-trailers.test.sh|\
     fm-trace-context-spawn.test.sh|fm-spawn-worktree-settle.test.sh|\
@@ -947,6 +947,7 @@ tests/fm-sessionstart-nudge.test.sh 67687
 tests/fm-shared-captain-inheritance.test.sh 8909
 tests/fm-spawn-compact-adviser-disable-remote.test.sh 78398
 tests/fm-spawn-compact-adviser-disable.test.sh 38429
+tests/fm-spawn-dell-first.test.sh 20000
 tests/fm-spawn-dispatch-profile.test.sh 570908
 tests/fm-spawn-external-review.test.sh 7882
 tests/fm-spawn-loadout.test.sh 61185
@@ -1929,6 +1930,9 @@ families_for_changed_path() {
       printf '%s\n' backend-dispatch
       printf '%s\n' pure-contract-unit
       printf '%s\n' live-harness-optin
+      ;;
+    bin/fm-dell-first.py)
+      printf '%s\n' '__script__:fm-spawn-dell-first.test.sh'
       ;;
     bin/fm-spawn.sh|bin/fm-send.sh|bin/fm-harness.sh|\
     bin/fm-peek.sh|bin/fm-composer*)
