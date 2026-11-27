@@ -565,7 +565,7 @@ fi
 exec "$FM_TEST_REAL_ENV" "$@"
 SH
 chmod +x "$SIGNALBIN/env"
-rm -f "$HOME_DIR/state/.home-summary-refresh.log"
+rm -f "$HOME_DIR/state/.home-summary-refresh.log" "$HOME_DIR/state/.home-summary-attempt"
 PATH="$SIGNALBIN:$FAKEBIN:$PATH" FM_TEST_REAL_ENV="$REAL_ENV" \
   FM_TEST_SIGNAL_MARKER="$SIGNAL_MARKER" FM_TIMEOUT_MECHANISM_OVERRIDE=bash \
   FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$HOME_DIR" "$WRITER" --best-effort \
@@ -577,7 +577,8 @@ grep -F 'refresh worker failed with exit 143' \
   || fail "a worker that failed before recording its attempt left no backoff record"
 pass "best-effort refresh logs worker termination"
 
-rm -f "$SIGNAL_MARKER" "$HOME_DIR/state/.home-summary-refresh.log"
+
+rm -f "$SIGNAL_MARKER" "$HOME_DIR/state/.home-summary-refresh.log" "$HOME_DIR/state/.home-summary-attempt"
 mkdir "$HOME_DIR/state/.home-summary-refresh.log"
 if ! PATH="$SIGNALBIN:$FAKEBIN:$PATH" FM_TEST_REAL_ENV="$REAL_ENV" \
   FM_TEST_SIGNAL_MARKER="$SIGNAL_MARKER" FM_TIMEOUT_MECHANISM_OVERRIDE=bash \
@@ -616,6 +617,8 @@ PY
 then
   fail "best-effort failure reporting was not fully bounded"
 fi
+[ -e "$HOME_DIR/state/.home-summary-attempt" ] \
+  || fail "blocked failure reporting kept the failed attempt from backing off"
 pass "best-effort refresh bounds failure reporting fallback"
 
 PATH="$FAKEBIN:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$HOME_DIR" \

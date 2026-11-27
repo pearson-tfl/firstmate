@@ -233,17 +233,17 @@ home_summary_log_failure() {
 }
 
 if [ "$HOME_SUMMARY_MODE" = after-failure ]; then
-  # Report first and record the attempt next, so the bounded helper's deadline
-  # can only cost the cleanup: a failure before the worker recorded its attempt
-  # (state initialization, lock wait, worker startup) still backs off. The
-  # failed worker is gone, so its lock is reclaimable; a live holder sweeps for
-  # itself.
+  # Record the attempt before anything that can block, so a failure before
+  # the worker recorded it (lock wait, worker startup) still backs off; the
+  # bounded helper's deadline can then cost only the report and the cleanup.
+  # The failed worker is gone, so its lock is reclaimable; a live holder
+  # sweeps for itself.
+  : > "$ATTEMPT_RECORD" 2>/dev/null || true
   if [ "$BEST_EFFORT" -eq 1 ]; then
     HOME_SUMMARY_ERROR=${FM_HOME_SUMMARY_PARENT_ERROR:-"refresh worker failed"}
     HOME_SUMMARY_FAILURE_STAMP=${FM_HOME_SUMMARY_PARENT_STAMP:-}
     home_summary_log_failure
   fi
-  : > "$ATTEMPT_RECORD" 2>/dev/null || true
   if fm_lock_try_acquire "$REFRESH_LOCK"; then
     home_summary_sweep_temps
     fm_lock_release "$REFRESH_LOCK" || true
@@ -284,6 +284,9 @@ if home_summary_refresh_once; then
 else
   refresh_rc=$?
 fi
+# A best-effort worker reports success to its parent, so it records its own
+# failed attempt; one that failed before the lock had not recorded it yet.
+: > "$ATTEMPT_RECORD" 2>/dev/null || true
 if [ "$BEST_EFFORT" -eq 1 ]; then
   home_summary_log_failure
   exit 0
