@@ -514,6 +514,20 @@ grep -F 'refresh exceeded its 1-second deadline' \
   || fail "publication validation timeout was not logged"
 pass "best-effort refresh bounds validation and publication"
 
+leftover=$(find "$HOME_DIR/state" -maxdepth 1 \( -name '.home-summary.json.*' -o -name '.home-summary-error.*' \) -print)
+[ -z "$leftover" ] || fail "a timed-out refresh left its temporary files: $leftover"
+pass "a timed-out refresh removes its temporary files"
+
+: > "$HOME_DIR/state/.home-summary.json.Ab12Cd"
+: > "$HOME_DIR/state/.home-summary-error.Ef34Gh"
+printf 'kept\n' > "$HOME_DIR/state/.home-summary-refresh.log"
+run_writer "$NOW_ONE" "$EPOCH_ONE" || fail "publication over leftover temporary files failed"
+leftover=$(find "$HOME_DIR/state" -maxdepth 1 \( -name '.home-summary.json.*' -o -name '.home-summary-error.*' \) -print)
+[ -z "$leftover" ] || fail "publication left earlier refreshes' temporary files: $leftover"
+grep -Fx kept "$HOME_DIR/state/.home-summary-refresh.log" >/dev/null \
+  || fail "the temporary-file sweep touched the failure log"
+pass "publication sweeps temporary files earlier killed refreshes left"
+
 MKBIN="$TMP_ROOT/mkdir-hangbin"
 REAL_MKDIR=$(command -v mkdir)
 mkdir -p "$MKBIN"
@@ -1083,3 +1097,92 @@ case "$report_out" in
     ;;
 esac
 pass "repeated publication failure is reported at session start until it clears"
+
+# The producer folds each task's open decisions through the persisted
+# incremental cursor the wake drain keeps current, so a long-lived log costs
+# only its new appends. Folding every whole log on every publication is what
+# kept a real home's producer past its deadline indefinitely.
+FOLD_HOME="$TMP_ROOT/fold-home"
+mkdir -p "$FOLD_HOME/state" "$FOLD_HOME/data" "$FOLD_HOME/config" \
+  "$FOLD_HOME/projects/task"
+printf '# Seeded Firstmate home\n' > "$FOLD_HOME/AGENTS.md"
+printf 'fold\n' > "$FOLD_HOME/.fm-secondmate-home"
+fm_git_init_commit "$FOLD_HOME/projects/task"
+cat > "$FOLD_HOME/data/backlog.md" <<'MD'
+## In flight
+- [ ] fold-task - Publish from a folded log (repo: firstmate) (kind: ship) (since 2026-08-28)
+
+## Queued
+
+## Done
+MD
+fm_write_meta "$FOLD_HOME/state/fold-task.meta" \
+  "window=fmtest:fm-fold-task" \
+  "worktree=$FOLD_HOME/projects/task" \
+  "project=firstmate" \
+  "harness=claude" \
+  "kind=ship" \
+  "mode=no-mistakes" \
+  "spawn_gen=fm.fold123456"
+fold_busy_gen=$("$ROOT/bin/fm-busy-event.sh" arm "$FOLD_HOME/state" fold-task)
+"$ROOT/bin/fm-busy-event.sh" apply "$FOLD_HOME/state" fold-task idle \
+  --gen "$fold_busy_gen" --source claude-hook --event stop
+printf 'needs-decision [key=old-gate]: which base to rebuild from\n' \
+  > "$FOLD_HOME/state/fold-task.status"
+FM_HOME="$FOLD_HOME" bash -c '
+  . "$1/bin/fm-classify-lib.sh"
+  status_open_decisions_incremental "$2" >/dev/null
+' _ "$ROOT" "$FOLD_HOME/state/fold-task.status" \
+  || fail "could not warm the open-decision cursor"
+FOLD_APPEND='needs-decision [key=new-gate]: which release to cut'
+printf '%s\n' "$FOLD_APPEND" >> "$FOLD_HOME/state/fold-task.status"
+FOLD_PROBE="$TMP_ROOT/fold-probe"
+PATH="$FAKEBIN:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$FOLD_HOME" \
+  FM_SNAPSHOT_NOW="$NOW_ONE" FM_SNAPSHOT_NOW_EPOCH="$EPOCH_ONE" \
+  FM_OPEN_DECISIONS_READ_PROBE="$FOLD_PROBE" \
+  "$SNAPSHOT" --secondmate-home-summary > "$TMP_ROOT/fold-summary.json" \
+  || fail "the producer failed on a warm-cursor home"
+jq -e '
+  [.decisions_open[].key] | (index("old-gate") != null) and (index("new-gate") != null)
+' "$TMP_ROOT/fold-summary.json" >/dev/null \
+  || fail "the warm-cursor fold lost an open decision: $(jq -c .decisions_open "$TMP_ROOT/fold-summary.json")"
+[ "$(awk -F'\t' '{s+=$2} END {print s+0}' "$FOLD_PROBE" 2>/dev/null)" = "$(( ${#FOLD_APPEND} + 1 ))" ] \
+  || fail "the producer re-read more than the appended bytes: $(cat "$FOLD_PROBE" 2>/dev/null || echo 'no incremental fold recorded')"
+pass "producer folds open decisions through the warm incremental cursor"
+
+# A failing publication backs off for the refresh interval across watcher
+# restarts: the record of the last attempt lives in the home, not in one
+# watcher's memory, so a replacement watcher does not start another attempt
+# while the previous one is in flight or has just failed.
+BACKOFF_HOME="$TMP_ROOT/backoff-home"
+mkdir -p "$BACKOFF_HOME/state" "$BACKOFF_HOME/data" "$BACKOFF_HOME/config" \
+  "$BACKOFF_HOME/projects"
+printf '# Seeded Firstmate home\n' > "$BACKOFF_HOME/AGENTS.md"
+printf 'backoff\n' > "$BACKOFF_HOME/.fm-secondmate-home"
+printf '## In flight\n\n## Queued\n\n## Done\n' > "$BACKOFF_HOME/data/backlog.md"
+for round in one two; do
+  rm -f "$BACKOFF_HOME/state/.last-watcher-beat"
+  PATH="$HANGBIN:$FAKEBIN:$PATH" FM_TEST_REAL_JQ="$REAL_JQ" \
+    FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$BACKOFF_HOME" \
+    FM_POLL=1 FM_HOME_SUMMARY_INTERVAL=60 FM_HOME_SUMMARY_TIMEOUT=1 \
+    FM_SIGNAL_GRACE=0 FM_CHECK_INTERVAL=9999999 FM_HEARTBEAT=9999999 \
+    "$WATCH" > "$TMP_ROOT/backoff-watch-$round.out" 2> "$TMP_ROOT/backoff-watch-$round.err" &
+  WATCH_PID=$!
+  i=0
+  while [ ! -e "$BACKOFF_HOME/state/.last-watcher-beat" ] && [ "$i" -lt 100 ]; do
+    kill -0 "$WATCH_PID" 2>/dev/null || break
+    sleep 0.05
+    i=$((i + 1))
+  done
+  [ -e "$BACKOFF_HOME/state/.last-watcher-beat" ] \
+    || fail "the backoff watcher ($round) did not begin polling: $(cat "$TMP_ROOT/backoff-watch-$round.err" 2>/dev/null)"
+  sleep 5
+  kill "$WATCH_PID" >/dev/null 2>&1 || true
+  wait "$WATCH_PID" >/dev/null 2>&1 || true
+  WATCH_PID=
+done
+sleep 2
+attempts=$(grep -c 'refresh exceeded its 1-second deadline' "$BACKOFF_HOME/state/.home-summary-refresh.log" 2>/dev/null || true)
+[ "$attempts" = 1 ] \
+  || fail "a failing publication was retried $attempts times inside one refresh interval across a watcher restart"
+pass "a failing publication backs off for the refresh interval across watcher restarts"

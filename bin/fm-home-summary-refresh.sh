@@ -17,7 +17,15 @@
 # summary cannot overwrite one computed after a later status change. The shared
 # timeout owner bounds the complete refresh with FM_HOME_SUMMARY_TIMEOUT
 # (default 60 seconds). No reader can observe temporary output through the
-# ledger path.
+# ledger path. The lock holder removes temporary files earlier refreshes left
+# behind, and a failed or timed-out refresh's parent reclaims the dead
+# worker's lock to remove them at once.
+#
+# The lock holder creates state/.home-summary-attempt when it starts and
+# removes it on publication, so the file's presence and mtime record an
+# attempt in flight or one that did not publish. fm-watch.sh starts no refresh
+# while that record is younger than FM_HOME_SUMMARY_INTERVAL, so a failing
+# refresh backs off across watcher restarts.
 #
 # With --best-effort, a failure is appended to the bounded home-local
 # state/.home-summary-refresh.log when available, with stderr as the bounded
@@ -37,6 +45,7 @@ PROJECTS="${FM_PROJECTS_OVERRIDE:-$FM_HOME/projects}"
 LEDGER="$STATE/home-summary.json"
 ERROR_LOG="$STATE/.home-summary-refresh.log"
 REFRESH_LOCK="$STATE/.home-summary-refresh.lock"
+ATTEMPT_RECORD="$STATE/.home-summary-attempt"
 ERROR_LOG_MAX_BYTES=${FM_HOME_SUMMARY_ERROR_LOG_MAX_BYTES:-65536}
 HOME_SUMMARY_TIMEOUT=${FM_HOME_SUMMARY_TIMEOUT:-60}
 HOME_SUMMARY_IF_IDLE=${FM_HOME_SUMMARY_IF_IDLE:-0}
@@ -63,7 +72,10 @@ case "${1:-}" in
     HOME_SUMMARY_MODE=worker
     BEST_EFFORT=${FM_HOME_SUMMARY_WORKER_BEST_EFFORT:-0}
     ;;
-  --_log-failure) HOME_SUMMARY_MODE=log-failure ;;
+  --_after-failure)
+    HOME_SUMMARY_MODE=after-failure
+    BEST_EFFORT=${FM_HOME_SUMMARY_WORKER_BEST_EFFORT:-0}
+    ;;
   -h|--help) usage; exit 0 ;;
   *) usage >&2; exit 2 ;;
 esac
@@ -94,6 +106,14 @@ home_summary_cleanup() {
   fi
 }
 
+# Temporary files exist only while their refresh holds REFRESH_LOCK, so the
+# holder removes any it finds: a refresh killed at its deadline cannot run its
+# own cleanup trap.
+home_summary_sweep_temps() {
+  find "$STATE" -maxdepth 1 -type f \( -name '.home-summary.json.??????' \
+    -o -name '.home-summary-error.??????' \) -exec rm -f -- {} + 2>/dev/null || true
+}
+
 home_summary_fail() {
   HOME_SUMMARY_ERROR=$1
   return 1
@@ -115,6 +135,8 @@ home_summary_refresh_once() {
     fm_lock_acquire_wait "$REFRESH_LOCK"
   fi
   HOME_SUMMARY_LOCK_HELD=1
+  : > "$ATTEMPT_RECORD" 2>/dev/null || true
+  home_summary_sweep_temps
   HOME_SUMMARY_TMP=$(umask 077; mktemp "$STATE/.home-summary.json.XXXXXX") || {
     home_summary_fail "could not create an atomic publication file in $STATE"
     return 1
@@ -182,6 +204,7 @@ home_summary_refresh_once() {
     return 1
   fi
   HOME_SUMMARY_TMP=
+  rm -f -- "$ATTEMPT_RECORD" 2>/dev/null || true
   fm_lock_release "$REFRESH_LOCK"
   HOME_SUMMARY_LOCK_HELD=0
   trap - EXIT HUP INT TERM
@@ -208,10 +231,18 @@ home_summary_log_failure() {
   fi
 }
 
-if [ "$HOME_SUMMARY_MODE" = log-failure ]; then
-  HOME_SUMMARY_ERROR=${FM_HOME_SUMMARY_PARENT_ERROR:-"refresh worker failed"}
-  HOME_SUMMARY_FAILURE_STAMP=${FM_HOME_SUMMARY_PARENT_STAMP:-}
-  home_summary_log_failure
+if [ "$HOME_SUMMARY_MODE" = after-failure ]; then
+  # The failed worker is gone, so its lock is reclaimable; a live holder
+  # sweeps for itself.
+  if fm_lock_try_acquire "$REFRESH_LOCK"; then
+    home_summary_sweep_temps
+    fm_lock_release "$REFRESH_LOCK" || true
+  fi
+  [ "$BEST_EFFORT" -eq 0 ] || {
+    HOME_SUMMARY_ERROR=${FM_HOME_SUMMARY_PARENT_ERROR:-"refresh worker failed"}
+    HOME_SUMMARY_FAILURE_STAMP=${FM_HOME_SUMMARY_PARENT_STAMP:-}
+    home_summary_log_failure
+  }
   exit 0
 fi
 
@@ -225,18 +256,17 @@ if [ "$HOME_SUMMARY_MODE" = parent ]; then
   else
     refresh_rc=$?
   fi
-  if [ "$BEST_EFFORT" -eq 1 ]; then
-    if [ "$refresh_rc" -eq 124 ]; then
-      parent_error="refresh exceeded its ${HOME_SUMMARY_TIMEOUT}-second deadline"
-    else
-      parent_error="refresh worker failed with exit $refresh_rc"
-    fi
-    fm_run_timed 2 env \
-      FM_HOME_SUMMARY_PARENT_ERROR="$parent_error" \
-      FM_HOME_SUMMARY_PARENT_STAMP="$attempt_stamp" \
-      "$SCRIPT_DIR/fm-home-summary-refresh.sh" --_log-failure >/dev/null || true
-    exit 0
+  if [ "$refresh_rc" -eq 124 ]; then
+    parent_error="refresh exceeded its ${HOME_SUMMARY_TIMEOUT}-second deadline"
+  else
+    parent_error="refresh worker failed with exit $refresh_rc"
   fi
+  fm_run_timed 2 env \
+    FM_HOME_SUMMARY_WORKER_BEST_EFFORT="$BEST_EFFORT" \
+    FM_HOME_SUMMARY_PARENT_ERROR="$parent_error" \
+    FM_HOME_SUMMARY_PARENT_STAMP="$attempt_stamp" \
+    "$SCRIPT_DIR/fm-home-summary-refresh.sh" --_after-failure >/dev/null || true
+  [ "$BEST_EFFORT" -eq 0 ] || exit 0
   if [ "$refresh_rc" -eq 124 ]; then
     printf 'fm-home-summary-refresh: refresh exceeded its %s-second deadline\n' \
       "$HOME_SUMMARY_TIMEOUT" >&2

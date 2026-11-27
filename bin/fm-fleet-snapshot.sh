@@ -61,8 +61,8 @@
 #     age derived from it is published here. A future event time leaves that age
 #     unknown rather than clamped to zero.
 #     hints.open_decisions is the keyed open-decision set returned by
-#     fm-classify-lib.sh's authoritative status_open_decisions fold and reconciled
-#     against current_state; hints.pending_decision and hints.blocked_event are
+#     fm-classify-lib.sh's authoritative open-decision fold, read through its
+#     persisted incremental cursor, and reconciled against current_state; hints.pending_decision and hints.blocked_event are
 #     booleans derived from that set.
 #     endpoint.exists is the cheap local backend endpoint-presence read.
 #     endpoint.agent_alive is populated for local secondmates only, where it is
@@ -741,6 +741,29 @@ prefetch_task_current_states() {
   fi
 }
 
+# Fold a task's open decisions through the persisted incremental cursor the
+# wake drain keeps current, bounded at the captured length, so a long-lived log
+# costs only its new appends rather than a whole-file fold on every
+# publication. When the live log no longer extends the captured copy (removed
+# or replaced mid-snapshot) or the cursor read fails, fold the captured copy.
+snapshot_open_decisions() {  # <captured-status> <live-status> <kind>
+  local captured=$1 live=$2 kind=$3 end size
+  [ -f "$captured" ] || return 0
+  end=$(wc -c < "$captured") || end=
+  end=${end//[[:space:]]/}
+  size=$(_fm_status_file_size "$live") || size=
+  size=${size//[[:space:]]/}
+  case "$end:$size" in
+    *[!0-9:]*|:*|*:) ;;
+    *)
+      if [ "$end" -le "$size" ] && status_open_decisions_incremental "$live" "$end"; then
+        return 0
+      fi
+      ;;
+  esac
+  status_open_decisions "$captured" "$kind"
+}
+
 task_json_lines() {
   local meta original_meta id kind harness mode yolo project worktree home projects spawn_gen backend target status_log report_path
   local remote_host remote_root current_file endpoint_file observation_line index=0
@@ -815,7 +838,7 @@ task_json_lines() {
     # never clear another concern's keyed decision. A parked/blocked state, or a
     # non-authoritative status-log/none read on a still-live task, keeps the fold's
     # open decision surfacing.
-    open_decisions_tsv=$(status_open_decisions "$status_log" "$kind")
+    open_decisions_tsv=$(snapshot_open_decisions "$status_log" "$STATE/$id.status" "$kind")
     if [ "$kind" != secondmate ] && \
        { { { [ "$current_source" = run-step ] || [ "$current_source" = pane ]; } \
            && [ "$current_state" != parked ] && [ "$current_state" != blocked ]; } \

@@ -3690,6 +3690,13 @@ home_summary_refresh_detached() {
     wait "$HOME_SUMMARY_PID" 2>/dev/null || true
     HOME_SUMMARY_PID=
   fi
+  # An attempt in flight or one that did not publish, from this or any earlier
+  # watcher, holds off the next for HOME_SUMMARY_INTERVAL
+  # (fm-home-summary-refresh.sh owns the record).
+  if [ -e "$STATE/.home-summary-attempt" ] \
+    && [ "$(age_of "$STATE/.home-summary-attempt")" -lt "$HOME_SUMMARY_INTERVAL" ]; then
+    return 0
+  fi
   FM_HOME_SUMMARY_IF_IDLE=1 \
     "$SCRIPT_DIR/fm-home-summary-refresh.sh" --best-effort </dev/null >/dev/null 2>&1 &
   HOME_SUMMARY_PID=$!
