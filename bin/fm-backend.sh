@@ -420,14 +420,22 @@ fm_backend_required_tool_available() {  # <backend> <tool>
 # errors) if the file or key is absent. Mirrors the ad hoc `grep '^key=' |
 # tail -1 | cut -d= -f2-` snippet every fm-*.sh script used to repeat inline.
 fm_meta_get() {  # <meta-file> <key>
-  local meta=$1 key=$2 line value=''
-  [ -f "$meta" ] || return 0
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in
-      "$key="*) value=${line#*=} ;;
-    esac
-  done < "$meta" 2>/dev/null || true
+  local value
+  fm_meta_get_to value "$1" "$2"
   printf '%s' "$value"
+}
+
+# fm_meta_get_to <var> <meta-file> <key>: the same value into <var>, without a subshell.
+fm_meta_get_to() {  # <var> <meta-file> <key>
+  local _fmg_line _fmg_value=''
+  if [ -f "$2" ]; then
+    while IFS= read -r _fmg_line || [ -n "$_fmg_line" ]; do
+      case "$_fmg_line" in
+        "$3="*) _fmg_value=${_fmg_line#*=} ;;
+      esac
+    done < "$2" 2>/dev/null || true
+  fi
+  printf -v "$1" '%s' "$_fmg_value"
 }
 
 # fm_backend_of_meta: the backend recorded in <meta-file>, defaulting to
@@ -439,18 +447,34 @@ fm_backend_of_meta() {  # <meta-file>
 }
 
 fm_backend_target_of_meta() {  # <meta-file>
-  local meta=$1 backend terminal window
-  backend=$(fm_backend_of_meta "$meta")
-  if [ "$backend" = orca ]; then
-    terminal=$(fm_meta_get "$meta" terminal)
-    [ -n "$terminal" ] && { printf '%s' "$terminal"; return 0; }
-  fi
-  if [ "$backend" = t3code ]; then
-    terminal=$(fm_meta_get "$meta" t3_thread_id)
-    [ -n "$terminal" ] && { printf '%s' "$terminal"; return 0; }
-  fi
-  window=$(fm_meta_get "$meta" window)
-  [ -n "$window" ] && printf '%s' "$window"
+  local meta=$1 backend terminal thread window target
+  fm_meta_get_to backend "$meta" backend
+  fm_meta_get_to terminal "$meta" terminal
+  fm_meta_get_to thread "$meta" t3_thread_id
+  fm_meta_get_to window "$meta" window
+  fm_backend_target_select_to target "$backend" "$window" "$terminal" "$thread"
+  [ -n "$target" ] && printf '%s' "$target"
+}
+
+# fm_backend_target_select_to <var> <backend> <window> <terminal> <t3-thread>:
+# the endpoint target a meta with these recorded values names - orca's
+# terminal or t3code's thread when recorded, else the window (empty backend
+# means tmux) - into <var>. The one owner of that selection.
+fm_backend_target_select_to() {  # <var> <backend> <window> <terminal> <t3-thread>
+  local _fts=$3
+  case "${2:-tmux}" in
+    orca) [ -z "$4" ] || _fts=$4 ;;
+    t3code) [ -z "$5" ] || _fts=$5 ;;
+  esac
+  printf -v "$1" '%s' "$_fts"
+}
+
+# fm_backend_endpoint_matches <target> <window> <terminal> <t3-thread>: 0 when
+# a meta with these recorded values is the one fm_backend_meta_for_window
+# answers for <target>: its window, or its terminal (else its t3 thread).
+fm_backend_endpoint_matches() {  # <target> <window> <terminal> <t3-thread>
+  local alt=${3:-$4}
+  { [ -n "$2" ] && [ "$2" = "$1" ]; } || { [ -n "$alt" ] && [ "$alt" = "$1" ]; }
 }
 
 # fm_backend_validate_task_endpoint: validate a task cleanup record entirely
@@ -799,8 +823,7 @@ fm_backend_meta_for_window() {  # <target> <state-dir>
         esac
       done < "$meta" 2>/dev/null || true
     fi
-    [ -n "$terminal" ] || terminal=$thread
-    { [ -n "$window" ] && [ "$window" = "$target" ]; } || { [ -n "$terminal" ] && [ "$terminal" = "$target" ]; } || continue
+    fm_backend_endpoint_matches "$target" "$window" "$terminal" "$thread" || continue
     printf '%s' "$meta"
     return 0
   done

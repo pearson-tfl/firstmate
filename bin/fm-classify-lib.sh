@@ -2245,14 +2245,28 @@ window_to_task() {
           esac
         done < "$meta"
       } 2>/dev/null
-      [ "$mw" = "$w" ] || [ "$mt" = "$w" ] || [ "$t3_thread" = "$w" ] || continue
+      window_task_endpoint_matches "$w" "$mw" "$mt" "$t3_thread" || continue
       t=${meta##*/}
       t=${t%.meta}
       printf '%s' "$t"
       return 0
     done
   fi
-  t="${w##*:}"; t="${t#fm-}"; printf '%s' "$t"
+  window_task_fallback_to t "$w"
+  printf '%s' "$t"
+}
+
+# window_task_endpoint_matches <window> <meta-window> <meta-terminal> <meta-t3-thread>:
+# window_to_task's rule for whether a meta's recorded endpoint names <window>.
+window_task_endpoint_matches() {  # <window> <window> <terminal> <t3-thread>
+  [ "$2" = "$1" ] || [ "$3" = "$1" ] || [ "$4" = "$1" ]
+}
+
+# window_task_fallback_to <var> <window>: window_to_task's answer when no meta
+# names <window> - the tmux-shaped "<session>:fm-<id>" id.
+window_task_fallback_to() {  # <var> <window>
+  local _wtf=${2##*:}
+  printf -v "$1" '%s' "${_wtf#fm-}"
 }
 
 # --- home-owned status-append ledger ----------------------------------------
@@ -2291,10 +2305,20 @@ window_to_task() {
 # that touches this ledger must have sourced that library first.
 
 status_home_appends_path() {  # <status-file>
-  local f=$1 dir base
-  dir=$(dirname "$f")
-  base=$(basename "$f")
-  printf '%s/.%s.home-appends' "$dir" "${base%.status}"
+  local path
+  status_home_appends_path_to path "$1"
+  printf '%s' "$path"
+}
+
+# status_home_appends_path_to <var> <status-file>: the same path into <var>,
+# with dirname and basename's results for an ordinary state-file path.
+status_home_appends_path_to() {  # <var> <status-file>
+  local _sha_f=${2%/} _sha_dir _sha_base
+  case "$_sha_f" in
+    */*) _sha_dir=${_sha_f%/*}; _sha_base=${_sha_f##*/}; [ -n "$_sha_dir" ] || _sha_dir=/ ;;
+    *) _sha_dir=.; _sha_base=$_sha_f ;;
+  esac
+  printf -v "$1" '%s/.%s.home-appends' "$_sha_dir" "${_sha_base%.status}"
 }
 
 status_home_appends_ranges() {  # <status-file> -> start<TAB>end lines
@@ -2889,5 +2913,11 @@ signal_crew_provably_working() {  # <file> ...
 stale_is_terminal() {  # <window> <state>
   local win=$1 state=$2 last
   last=$(last_status_line "$state/$(window_to_task "$win" "$state").status")
-  [ -n "$last" ] && status_is_captain_relevant "$last"
+  status_last_is_terminal "$last"
+}
+
+# status_last_is_terminal <last-status-line>: stale_is_terminal's verdict on a
+# last_status_line result the caller already holds.
+status_last_is_terminal() {  # <last-status-line>
+  [ -n "$1" ] && status_is_captain_relevant "$1"
 }

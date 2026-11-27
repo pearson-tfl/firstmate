@@ -1035,6 +1035,29 @@ fm_busy_launch_prompt_parked() {  # <harness>
   esac
 }
 
+# fm_busy_classify_reusable <backend> <harness>: 0 when fm_busy_classify's
+# verdict for this pair reads nothing but the task's busy record and
+# generation files and the supplied <tail40>, so a caller may reuse it while
+# those inputs keep their values. The native, transcript, session-log, and
+# verification-probe arms read live state of their own and never qualify.
+fm_busy_classify_reusable() {  # <backend> <harness>
+  [ "$1" = tmux ] || return 1
+  case "$2" in
+    kimi*|codex*|cursor*|muse*) return 1 ;;
+  esac
+  return 0
+}
+
+# fm_busy_verdict_reads_screen <verdict>: 0 when that verdict came from an arm
+# that reads <tail40> (the launch-prompt backstop, the rendered-text
+# fallbacks, or their capture), so a reuse must also match the screen text.
+fm_busy_verdict_reads_screen() {  # <verdict>
+  case "${1#* }" in
+    fm-spawn|launch-prompt|*-regex|capture-failed) return 0 ;;
+  esac
+  return 1
+}
+
 # fm_busy_classify: semantic classification for a task whose endpoint the
 # caller has already established as present. Prints "<verdict> <source>":
 # busy|idle|unknown plus the producing source (see header). Never probes

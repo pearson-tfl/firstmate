@@ -379,6 +379,21 @@ fi
 # turn-ended signature, annotation staleness checks, and guarded bookkeeping writes.
 
 POLL=${FM_POLL:-15}                   # seconds between cycles
+# Idle backoff: after a poll that saw no worker change - no new status or
+# turn-end signal, no changed pane, no window added or removed - the next plain
+# wait doubles, up to FM_POLL_IDLE_MAX seconds (default four polls), and any
+# change returns it to POLL. The cap is held to 240 seconds, the guard grace's
+# 300-second floor less its 60-second margin, so a backed-off watcher's beacon
+# never reads stale (docs/turnend-guard.md "Guard grace and the poll cadence").
+# A non-integer POLL keeps the fixed cadence.
+POLL_IDLE_MAX=${FM_POLL_IDLE_MAX:-}
+case "$POLL:$POLL_IDLE_MAX" in
+  *[!0-9:]*|:*) POLL_IDLE_MAX=0 ;;
+  *:) POLL_IDLE_MAX=$((10#$POLL * 4)) ;;
+  *) POLL_IDLE_MAX=$((10#$POLL_IDLE_MAX)) ;;
+esac
+[ "$POLL_IDLE_MAX" -le 240 ] || POLL_IDLE_MAX=240
+WATCH_POLL_WAIT=$POLL WATCH_POLL_CHANGED=1 WATCH_POLL_WINDOWS=
 # The liveness beacon is touched once per cycle, immediately before the
 # terminal wait below (event_wait_or_sleep) as well as at the top of the next
 # one, so a healthy cycle's beacon can legitimately age up to POLL seconds
@@ -541,6 +556,22 @@ hash_pane() {
   if command -v md5 >/dev/null 2>&1; then md5 -q; else md5sum | cut -d' ' -f1; fi
 }
 
+# hash_pane_files <file>...: hash_pane of each file's bytes, in argument order,
+# into the HASH_PANE_FILES array from one hashing process.
+hash_pane_files() {  # <file>...
+  local out line
+  HASH_PANE_FILES=()
+  if command -v md5 >/dev/null 2>&1; then out=$(md5 -q -- "$@") || return 1
+  else out=$(md5sum -- "$@") || return 1
+  fi
+  while IFS= read -r line; do
+    HASH_PANE_FILES+=("${line%% *}")
+  done <<EOF
+$out
+EOF
+  [ "${#HASH_PANE_FILES[@]}" -eq "$#" ]
+}
+
 # window_is_busy: 0 when the semantic busy-state contract (bin/fm-busy-lib.sh)
 # reports busy. Idle, unknown, and dead return 1, so a converted
 # adapter whose semantic state is missing, malformed, stale, or unverified is
@@ -616,9 +647,16 @@ window_label() {
 # markers instead of clearing them. The helpers below take the derived key
 # rather than re-deriving it, so one poll of one window derives it once.
 window_key() {  # <window>
-  local key=${1//:/_}
-  key=${key//\//_}
-  printf '%s' "${key//./_}"
+  local key
+  window_key_to key "$1"
+  printf '%s' "$key"
+}
+
+# window_key_to <var> <window>: the same key into <var>, without a subshell.
+window_key_to() {  # <var> <window>
+  local _wk=${2//:/_}
+  _wk=${_wk//\//_}
+  printf -v "$1" '%s' "${_wk//./_}"
 }
 
 inbox_steer_escalate_unavailable() {  # <window> <task> <record>
@@ -660,6 +698,8 @@ inbox_steer_check() {  # <window> <task>
   action=$(fm_task_inbox_due_action "$STATE" "$task") || return 0
   verb=${action%% *}
   [ "$verb" != quiet ] || return 0
+  # The stale scan's batched capture predates anything this check types.
+  INBOX_STEER_ACTED=1
   if [ "$verb" = retry ] && [ -n "$(status_own_open_decisions "$STATE/$task.status")" ]; then
     return 0
   fi
@@ -1069,6 +1109,484 @@ recorded_windows() {
   done
 }
 
+# --- Per-poll window facts, batched pane capture, and cached pane derivations.
+# The stale scan used to re-derive each window's task, kind, backend, and
+# harness through $(...) helpers that each re-read every meta, and to capture,
+# hash, and dialog-match each pane in processes of its own, so one poll forked
+# dozens of times per window. watch_poll_load reads every meta once per poll
+# into the WPM_* arrays (bash 3.2 has no associative arrays), and
+# watch_window_facts answers from them in this shell through the owners'
+# own rules (fm_backend_target_select_to, fm_backend_endpoint_matches,
+# window_task_endpoint_matches, window_task_fallback_to). Every other cached
+# derivation below is keyed on the poll's one stat snapshot of the files it
+# reads, so it is recomputed exactly when one of those files changes; a
+# recomputed status fact or busy verdict that differs from the last one counts
+# as a worker change for the idle backoff (WATCH_POLL_CHANGED).
+WPM_TASK=() WPM_WINDOW=() WPM_TERMINAL=() WPM_THREAD=()
+WPM_BACKEND=() WPM_KIND=() WPM_HARNESS=() WPM_TARGET=() WPW=()
+# WPW holds recorded_windows' list: each distinct non-empty target, in meta order.
+# watch_poll_metas reads the metas with no fork; watch_poll_load also takes the
+# poll's stat snapshot (watch_poll_stat).
+watch_poll_load() {
+  watch_poll_metas
+  watch_poll_stat
+}
+watch_poll_metas() {
+  local meta line window terminal thread backend kind harness target task n=0 seen=
+  WPM_TASK=() WPM_WINDOW=() WPM_TERMINAL=() WPM_THREAD=()
+  WPM_BACKEND=() WPM_KIND=() WPM_HARNESS=() WPM_TARGET=() WPW=()
+  for meta in "$STATE"/*.meta; do
+    [ -e "$meta" ] || continue
+    window='' terminal='' thread='' backend='' kind='' harness=''
+    if [ -f "$meta" ]; then
+      {
+        while IFS= read -r line || [ -n "$line" ]; do
+          case "$line" in
+            window=*) window=${line#*=} ;;
+            terminal=*) terminal=${line#*=} ;;
+            t3_thread_id=*) thread=${line#*=} ;;
+            backend=*) backend=${line#*=} ;;
+            kind=*) kind=${line#*=} ;;
+            harness=*) harness=${line#*=} ;;
+          esac
+        done < "$meta"
+      } 2>/dev/null || true
+    fi
+    fm_backend_target_select_to target "$backend" "$window" "$terminal" "$thread"
+    task=${meta##*/}
+    WPM_TASK[n]=${task%.meta}
+    WPM_WINDOW[n]=$window WPM_TERMINAL[n]=$terminal WPM_THREAD[n]=$thread
+    WPM_BACKEND[n]=$backend WPM_KIND[n]=$kind WPM_HARNESS[n]=$harness
+    WPM_TARGET[n]=$target
+    n=$((n + 1))
+    [ -n "$target" ] || continue
+    case "$seen" in
+      *"|$target|"*) continue ;;
+    esac
+    seen="$seen|$target|"
+    WPW+=("$target")
+  done
+}
+
+# watch_poll_stat: one stat call per poll over every state file a cached
+# derivation below reads, into the WPS_PATH and WPS_KEY arrays. A key is "<mtime-epoch>\t" and the file's type, size,
+# inode, owner, mode, and change and modification times, so a rewrite, append,
+# rename, or permission change gives the file a new key. Lookups compare whole
+# paths (watch_snapshot_index): a leading-* pattern over one joined string is
+# quadratic in bash and cost most of a second per lookup on a 22-window home.
+WPS_PATH=() WPS_KEY=()
+watch_poll_stat() {
+  local f out path mtime key
+  local -a stat_files=()
+  for f in "$STATE"/*.status "$STATE"/*.turn-ended "$STATE"/.seen-* "$STATE"/.*.home-appends \
+    "$STATE"/*.busy-state "$STATE"/*.busy-gen "$STATE"/*.meta; do
+    [ -e "$f" ] && stat_files+=("$f")
+  done
+  WPS_PATH=() WPS_KEY=()
+  [ "${#stat_files[@]}" -gt 0 ] || return 0
+  if [ "$_FM_CLASSIFY_UNAME_S" = Darwin ]; then
+    out=$(LC_ALL=C /usr/bin/stat -f $'%N\t%m\t%HT:%z:%i:%u:%g:%p:%Fc:%Fm' -- "${stat_files[@]}" 2>/dev/null)
+  else
+    out=$(LC_ALL=C stat -c $'%n\t%Y\t%F:%s:%i:%u:%g:%f:%z:%y' -- "${stat_files[@]}" 2>/dev/null)
+  fi
+  while IFS=$'\t' read -r path mtime key; do
+    [ -n "$path" ] || continue
+    WPS_PATH+=("$path")
+    WPS_KEY+=("$mtime"$'\t'"$key")
+  done <<EOF
+$out
+EOF
+}
+
+# watch_snapshot_index <path>: 0 with WPS_I set to <path>'s snapshot slot.
+watch_snapshot_index() {  # <path>
+  local i
+  for ((i = 0; i < ${#WPS_PATH[@]}; i++)); do
+    if [ "${WPS_PATH[i]}" = "$1" ]; then
+      WPS_I=$i
+      return 0
+    fi
+  done
+  return 1
+}
+
+# watch_stat_key <var> <file>: the file's snapshot key into <var>; "-" when it
+# is absent (see watch_key_store_to); and empty - never cache - when it has no
+# usable key (not in the snapshot, or a symlink, whose target the key cannot
+# see).
+watch_stat_key() {  # <var> <file>
+  local _wsk=
+  if watch_snapshot_index "$2"; then
+    _wsk=${WPS_KEY[WPS_I]}
+    case "$_wsk" in *$'\t'[Ss]ymbolic*) _wsk= ;; esac
+  elif [ ! -e "$2" ] && [ ! -L "$2" ]; then
+    _wsk=-
+  fi
+  printf -v "$1" '%s' "$_wsk"
+}
+
+# watch_keys_hold <key> <file> [<key> <file>...]: 0 unless a file keyed absent
+# has appeared since the snapshot.
+watch_keys_hold() {  # <key> <file>...
+  while [ "$#" -ge 2 ]; do
+    if [ "$1" = - ] && { [ -e "$2" ] || [ -L "$2" ]; }; then
+      return 1
+    fi
+    shift 2
+  done
+}
+
+# watch_key_store_to <var> <key> <stored> <same>: the key a cache records after
+# a derivation, where <stored> is what it held and <same> is 1 when the value
+# is unchanged. A key with an absent ("-") part is recorded provisional ("?")
+# until a derivation on a later poll agrees, so a file that appeared and went
+# during one derivation (after the snapshot, gone by watch_keys_hold) cannot
+# pin that derivation's value.
+watch_key_store_to() {  # <var> <key> <stored> <same>
+  local _wks=$2
+  case "|$2|" in
+    *"|-|"*) [ "$3" = "?$2" ] && [ "$4" -eq 1 ] || _wks="?$2" ;;
+  esac
+  printf -v "$1" '%s' "$_wks"
+}
+
+# scan_signals' per-file skip: a status or turn-ended file already found
+# current is skipped while it, its .seen-* marker, and (for a status log) its
+# home-appends ledger keep the snapshot keys they had then. watch_signal_key
+# also leaves WSK_MARKER_KEY and, for a status log, WSK_LEDGER and its key for
+# the watch_keys_hold recheck before a skip is recorded.
+WSC_FILE=() WSC_KEY=()
+watch_signal_key() {  # <var> <file> <seen-marker>
+  local _k1 _k3=none
+  WSK_LEDGER=/dev/null WSK_MARKER_KEY=
+  watch_stat_key _k1 "$2"
+  watch_stat_key WSK_MARKER_KEY "$3"
+  case "$2" in
+    *.status) status_home_appends_path_to WSK_LEDGER "$2"; watch_stat_key _k3 "$WSK_LEDGER" ;;
+  esac
+  WSK_LEDGER_KEY=$_k3
+  if [ -z "$_k1" ] || [ "$_k1" = - ] || [ -z "$WSK_MARKER_KEY" ] || [ -z "$_k3" ]; then
+    printf -v "$1" '%s' ''
+  else
+    printf -v "$1" '%s|%s|%s' "$_k1" "$WSK_MARKER_KEY" "$_k3"
+  fi
+}
+watch_signal_cached() {  # <file> <key>
+  local i
+  [ -n "$2" ] || return 1
+  for ((i = 0; i < ${#WSC_FILE[@]}; i++)); do
+    [ "${WSC_FILE[i]}" = "$1" ] || continue
+    [ "${WSC_KEY[i]}" = "$2" ]
+    return
+  done
+  return 1
+}
+watch_signal_cache_put() {  # <file> <key> <seen-marker>
+  local i stored
+  [ -n "$2" ] || return 0
+  watch_keys_hold "$WSK_MARKER_KEY" "$3" "$WSK_LEDGER_KEY" "$WSK_LEDGER" || return 0
+  for ((i = 0; i < ${#WSC_FILE[@]}; i++)); do
+    [ "${WSC_FILE[i]}" = "$1" ] || continue
+    watch_key_store_to stored "$2" "${WSC_KEY[i]}" 1
+    WSC_KEY[i]=$stored
+    return 0
+  done
+  watch_key_store_to stored "$2" '' 1
+  WSC_FILE+=("$1")
+  WSC_KEY+=("$stored")
+}
+
+# watch_marker_to <var> <file>: a one-line marker's value, as $(cat) gave it.
+watch_marker_to() {  # <var> <file>
+  local _wm=
+  { IFS= read -r _wm < "$2"; } 2>/dev/null || true
+  printf -v "$1" '%s' "$_wm"
+}
+
+# watch_status_facts <status-file>: WS_WAIT (status_declared_wait_line) and
+# WS_LAST (last_status_line), recomputed only when the log's snapshot key
+# changed since this watcher last read it.
+WST_FILE=() WST_KEY=() WST_WAIT=() WST_LAST=()
+watch_status_facts() {  # <status-file>
+  local f=$1 key i slot=${#WST_FILE[@]}
+  watch_stat_key key "$f"
+  for ((i = 0; i < ${#WST_FILE[@]}; i++)); do
+    [ "${WST_FILE[i]}" = "$f" ] || continue
+    if [ -n "$key" ] && [ "${WST_KEY[i]}" = "$key" ]; then
+      WS_WAIT=${WST_WAIT[i]}
+      WS_LAST=${WST_LAST[i]}
+      return 0
+    fi
+    slot=$i
+    break
+  done
+  local same=1 stored=
+  WS_WAIT=$(status_declared_wait_line "$f")
+  WS_LAST=$(last_status_line "$f")
+  if [ "$slot" -ge "${#WST_FILE[@]}" ] || [ "${WST_WAIT[slot]}" != "$WS_WAIT" ] \
+    || [ "${WST_LAST[slot]}" != "$WS_LAST" ]; then
+    WATCH_POLL_CHANGED=1
+    same=0
+  fi
+  [ "$slot" -ge "${#WST_FILE[@]}" ] || stored=${WST_KEY[slot]}
+  watch_keys_hold "$key" "$f" || key=
+  [ -z "$key" ] || watch_key_store_to key "$key" "$stored" "$same"
+  WST_FILE[slot]=$f
+  WST_KEY[slot]=$key
+  WST_WAIT[slot]=$WS_WAIT
+  WST_LAST[slot]=$WS_LAST
+}
+
+# watch_snapshot_age_to <var> <file>: busy_turn_over_age's age of <file> from
+# this poll's snapshot, while the stale scan holds it (WATCH_POLL_LIVE=1).
+WATCH_POLL_LIVE=0
+watch_snapshot_age_to() {  # <var> <file>
+  local _wsa _now
+  [ "$WATCH_POLL_LIVE" -eq 1 ] || return 1
+  watch_snapshot_index "$2" || return 1
+  _wsa=${WPS_KEY[WPS_I]%%$'\t'*}
+  case "$_wsa" in ''|*[!0-9]*) return 1 ;; esac
+  fm_epoch_seconds_to _now
+  [ "$_wsa" -le "$_now" ] || return 1
+  printf -v "$1" '%s' "$((_now - _wsa))"
+}
+
+# watch_window_facts <window>: WF_TASK, WF_KIND, WF_BACKEND, WF_HARNESS, and
+# WF_KEY as window_to_task, window_kind, window_backend, window_harness, and
+# window_key would print them from the loaded metas.
+watch_window_facts() {  # <window>
+  local w=$1 i found=-1
+  WF_TASK='' WF_KIND=unknown WF_BACKEND=tmux WF_HARNESS=''
+  for ((i = 0; i < ${#WPM_TARGET[@]}; i++)); do
+    if fm_backend_endpoint_matches "$w" "${WPM_WINDOW[i]}" "${WPM_TERMINAL[i]}" "${WPM_THREAD[i]}"; then
+      found=$i
+      break
+    fi
+  done
+  if [ "$found" -ge 0 ]; then
+    WF_KIND=${WPM_KIND[found]:-ship}
+    WF_BACKEND=${WPM_BACKEND[found]:-tmux}
+    WF_HARNESS=${WPM_HARNESS[found]}
+  fi
+  for ((i = 0; i < ${#WPM_TARGET[@]}; i++)); do
+    if window_task_endpoint_matches "$w" "${WPM_WINDOW[i]}" "${WPM_TERMINAL[i]}" "${WPM_THREAD[i]}"; then
+      WF_TASK=${WPM_TASK[i]}
+      break
+    fi
+  done
+  [ -n "$WF_TASK" ] || window_task_fallback_to WF_TASK "$w"
+  window_key_to WF_KEY "$w"
+}
+
+# watch_window_is_busy <window> <tail40>: window_is_busy on the loaded facts,
+# classifying the task's own meta exactly as fm_busy_classify_meta does. A
+# verdict fm_busy_classify_reusable allows is reused while the task's busy
+# record and generation files keep their snapshot keys, and, for a verdict
+# that read the screen (fm_busy_verdict_reads_screen), while the pane text is
+# unchanged too.
+WBC_TASK=() WBC_KEY=() WBC_SCREEN=() WBC_VERDICT=()
+watch_window_is_busy() {  # <window> <tail40>
+  local w=$1 tail40=$2 i j slot verdict='' k1 k2 ck='' rec gen same stored
+  if [ -n "$WF_TASK" ] && [ -f "$STATE/$WF_TASK.meta" ]; then
+    for ((i = 0; i < ${#WPM_TASK[@]}; i++)); do
+      [ "${WPM_TASK[i]}" = "$WF_TASK" ] || continue
+      if [ -z "${WPM_TARGET[i]}" ]; then
+        verdict='unknown no-target'
+      else
+        slot=${#WBC_TASK[@]}
+        for ((j = 0; j < ${#WBC_TASK[@]}; j++)); do
+          [ "${WBC_TASK[j]}" = "$WF_TASK" ] && { slot=$j; break; }
+        done
+        if fm_busy_classify_reusable "${WPM_BACKEND[i]:-tmux}" "${WPM_HARNESS[i]}"; then
+          rec="$STATE/$WF_TASK.busy-state" gen="$STATE/$WF_TASK.busy-gen"
+          watch_stat_key k1 "$rec"
+          watch_stat_key k2 "$gen"
+          # An empty pane text makes the rendered-text arms capture live.
+          [ -z "$k1" ] || [ -z "$k2" ] || [ -z "$tail40" ] \
+            || ck="${WPM_HARNESS[i]}|${WPM_TARGET[i]}|$k1|$k2"
+        fi
+        if [ -n "$ck" ] && [ "$slot" -lt "${#WBC_TASK[@]}" ] && [ "${WBC_KEY[slot]}" = "$ck" ] \
+          && { [ "${WBC_SCREEN[slot]}" = - ] || [ "${WBC_SCREEN[slot]}" = "=$tail40" ]; }; then
+          verdict=${WBC_VERDICT[slot]}
+        else
+          verdict=$(fm_busy_classify "${WPM_BACKEND[i]:-tmux}" "${WPM_TARGET[i]}" \
+            "${WPM_HARNESS[i]}" "$WF_TASK" "$STATE" "$tail40")
+          same=1 stored=
+          if [ "$slot" -ge "${#WBC_TASK[@]}" ] || [ "${WBC_VERDICT[slot]}" != "$verdict" ]; then
+            WATCH_POLL_CHANGED=1
+            same=0
+          fi
+          [ "$slot" -ge "${#WBC_TASK[@]}" ] || stored=${WBC_KEY[slot]}
+          [ -z "$ck" ] || watch_keys_hold "$k1" "$rec" "$k2" "$gen" || ck=
+          [ -z "$ck" ] || watch_key_store_to ck "$ck" "$stored" "$same"
+          WBC_TASK[slot]=$WF_TASK
+          WBC_KEY[slot]=$ck
+          WBC_VERDICT[slot]=$verdict
+          if fm_busy_verdict_reads_screen "$verdict"; then
+            WBC_SCREEN[slot]="=$tail40"
+          else
+            WBC_SCREEN[slot]=-
+          fi
+        fi
+      fi
+      case "$verdict" in
+        busy\ *) return 0 ;;
+        *) return 1 ;;
+      esac
+    done
+    # A meta written after this poll loaded: read it directly.
+    window_is_busy "$w" "$tail40"
+    return
+  fi
+  verdict=$(fm_busy_classify "$WF_BACKEND" "$w" "$WF_HARNESS" \
+    "${WF_TASK:-unknown}" "$STATE" "$tail40")
+  case "$verdict" in
+    busy\ *) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# watch_poll_capture: capture every recorded tmux window of this poll through
+# one fm_backend_tmux_capture_batch client call into WPB_TARGET, WPB_TEXT,
+# WPB_OK (0 captured, 1 failed), and WPB_HASH (hash_pane of each new text,
+# hashed together in one hash_pane_files call). The batch is the same bounded
+# capture each window took alone, waited like watcher_capture. A failed
+# capture ends tmux's output early, so that window is recorded failed and the
+# batch resumes after it; output with no marker at all leaves the remaining
+# windows to the per-window capture.
+WPB_TARGET=() WPB_TEXT=() WPB_OK=() WPB_HASH=()
+WATCH_HASH_DIR=
+watch_poll_capture() {
+  local w start=0 k n rc token rest head next item i
+  local -a targets=() new=()
+  WPB_TARGET=() WPB_TEXT=() WPB_OK=() WPB_HASH=()
+  for w in ${WPW[@]+"${WPW[@]}"}; do
+    watch_window_facts "$w"
+    [ "$WF_BACKEND" = tmux ] || continue
+    targets+=("$w")
+  done
+  n=${#targets[@]}
+  [ "$n" -gt 0 ] || return 0
+  fm_backend_source tmux || return 0
+  token="fm-watch-capture:$$:$RANDOM$RANDOM:"
+  while [ "$start" -lt "$n" ]; do
+    watcher_waited fm_backend_tmux_capture_batch 40 "$token" "${targets[@]:start}"
+    rc=$?
+    [ "$rc" -ne 2 ] || [ -n "$WATCHER_CAPTURE" ] || break
+    rest=$WATCHER_CAPTURE
+    k=$start
+    while [ "$k" -lt "$n" ]; do
+      head="$token$((k - start))"
+      case "$rest" in
+        "$head"|"$head"$'\n'*) ;;
+        *) break 2 ;;
+      esac
+      rest=${rest#"$head"}
+      rest=${rest#$'\n'}
+      next="$token$((k + 1 - start))"
+      [ "$((k + 1))" -lt "$n" ] || next="${token}end"
+      case "$rest" in
+        "$next"|"$next"$'\n'*) item='' ;;
+        *$'\n'"$next"|*$'\n'"$next"$'\n'*)
+          item=${rest%%$'\n'"$next"*}
+          rest=${rest#"$item"$'\n'}
+          ;;
+        *) break ;;
+      esac
+      # The single capture's $(...) dropped trailing newlines.
+      while [ "${item%$'\n'}" != "$item" ]; do item=${item%$'\n'}; done
+      WPB_TARGET+=("${targets[k]}")
+      WPB_TEXT+=("$item")
+      WPB_OK+=(0)
+      WPB_HASH+=('')
+      k=$((k + 1))
+    done
+    [ "$k" -lt "$n" ] || break
+    # targets[k]'s marker printed but the next one did not: its capture failed.
+    WPB_TARGET+=("${targets[k]}")
+    WPB_TEXT+=('')
+    WPB_OK+=(1)
+    WPB_HASH+=('')
+    start=$((k + 1))
+  done
+  # Hash every text this watcher has not already hashed for its window.
+  for ((i = 0; i < ${#WPB_TARGET[@]}; i++)); do
+    [ "${WPB_OK[i]}" -eq 0 ] || continue
+    window_key_to k "${WPB_TARGET[i]}"
+    watch_pane_cached "$k" "${WPB_TEXT[i]}" || new+=("$i")
+  done
+  [ "${#new[@]}" -gt 0 ] || return 0
+  if [ -z "$WATCH_HASH_DIR" ] || [ ! -d "$WATCH_HASH_DIR" ]; then
+    WATCH_HASH_DIR=$(mktemp -d "${TMPDIR:-/tmp}/fm-watch-hash.XXXXXX") || { WATCH_HASH_DIR=; return 0; }
+  fi
+  local -a hash_files=()
+  for i in "${new[@]}"; do
+    printf '%s' "${WPB_TEXT[i]}" > "$WATCH_HASH_DIR/$i" || return 0
+    hash_files+=("$WATCH_HASH_DIR/$i")
+  done
+  hash_pane_files "${hash_files[@]}" || return 0
+  for ((k = 0; k < ${#new[@]}; k++)); do
+    WPB_HASH[new[k]]=${HASH_PANE_FILES[k]}
+  done
+}
+
+watch_hash_dir_cleanup() {
+  [ -z "$WATCH_HASH_DIR" ] || rm -rf -- "$WATCH_HASH_DIR"
+  WATCH_HASH_DIR=
+}
+
+# watch_poll_captured <window>: 0 with WATCHER_CAPTURE (and WATCH_BATCH_HASH,
+# empty when not precomputed) set from this poll's batch, 1 when the batch
+# capture failed, 2 when the window is not in it.
+watch_poll_captured() {  # <window>
+  local i
+  for ((i = 0; i < ${#WPB_TARGET[@]}; i++)); do
+    [ "${WPB_TARGET[i]}" = "$1" ] || continue
+    WATCHER_CAPTURE=${WPB_TEXT[i]}
+    WATCH_BATCH_HASH=${WPB_HASH[i]}
+    return "${WPB_OK[i]}"
+  done
+  return 2
+}
+
+# watch_pane_derive <window-key> <text> [hash]: WATCH_PANE_HASH (hash_pane of
+# the text, or the batch's precomputed [hash]) and WATCH_PANE_DIALOG
+# (fm_composer_blocking_dialog's name, or empty), recomputed only when the
+# text differs from this key's previous poll.
+WPH_KEY=() WPH_TEXT=() WPH_HASH=() WPH_DIALOG=()
+watch_pane_cached() {  # <window-key> <text>
+  local i
+  for ((i = 0; i < ${#WPH_KEY[@]}; i++)); do
+    [ "${WPH_KEY[i]}" = "$1" ] || continue
+    [ "${WPH_TEXT[i]}" = "$2" ]
+    return
+  done
+  return 1
+}
+watch_pane_derive() {  # <window-key> <text> [hash]
+  local key=$1 text=$2 i slot=${#WPH_KEY[@]}
+  for ((i = 0; i < ${#WPH_KEY[@]}; i++)); do
+    [ "${WPH_KEY[i]}" = "$key" ] || continue
+    if [ "${WPH_TEXT[i]}" = "$text" ]; then
+      WATCH_PANE_HASH=${WPH_HASH[i]}
+      WATCH_PANE_DIALOG=${WPH_DIALOG[i]}
+      return 0
+    fi
+    slot=$i
+    break
+  done
+  WATCH_PANE_HASH=${3:-}
+  [ -n "$WATCH_PANE_HASH" ] || WATCH_PANE_HASH=$(printf '%s' "$text" | hash_pane)
+  WATCH_PANE_DIALOG=
+  if fm_composer_blocking_dialog_possible "$text"; then
+    WATCH_PANE_DIALOG=$(fm_composer_blocking_dialog "$text") || WATCH_PANE_DIALOG=
+  fi
+  WPH_KEY[slot]=$key
+  WPH_TEXT[slot]=$text
+  WPH_HASH[slot]=$WATCH_PANE_HASH
+  WPH_DIALOG[slot]=$WATCH_PANE_DIALOG
+}
+
 # Print the oldest structurally valid ACTIONABLE row in a local secondmate's
 # foreign queue. A stale recheck that explicitly identifies itself as a declared
 # external-wait pause is not evidence that the mate's wake loop is stuck: the
@@ -1199,7 +1717,7 @@ secondmate_wake_stall_tick() {
   # Endpoint metadata admits this queue-loop check; secondmate-liveness owns registered mates whose endpoint is missing or dead.
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || continue
-    kind=$(fm_meta_get "$meta" kind)
+    fm_meta_get_to kind "$meta" kind
     [ "$kind" = secondmate ] || continue
     remote_host=$(fm_meta_get "$meta" remote_host)
     [ -z "$remote_host" ] || continue
@@ -1496,9 +2014,20 @@ _wedge_cap_int FM_ROLLBACK_SENTINEL_TTL_SECS "$FM_ROLLBACK_SENTINEL_TTL_SECS" 36
 # leave them standing. The away-posture first sight is the one caller that
 # releases them WITHOUT ending an episode, and says so at its own call site.
 # _wedge_cap_markers_clear <window-key>
+# rm_present <file>...: rm -f, without forking rm when none of the files exists.
+rm_present() {
+  local f
+  for f in "$@"; do
+    if [ -e "$f" ] || [ -L "$f" ]; then
+      rm -f -- "$@"
+      return
+    fi
+  done
+}
+
 _wedge_cap_markers_clear() {
   local key=$1
-  rm -f "$STATE/.wedge-permanent-$key" \
+  rm_present "$STATE/.wedge-permanent-$key" \
     "$STATE/.wedge-terminal-queued-$key" \
     "$STATE/.wedge-rollback-failed-$key"
 }
@@ -1554,12 +2083,12 @@ _wedge_cap_markers_clear() {
 wedge_episode_end() {
   local key=$1 keep_cap=${2:-0} keep_count=${3:-0} status=0
   if [ "$keep_cap" = 1 ]; then
-    rm -f "$STATE/.stale-since-$key" || status=1
+    rm_present "$STATE/.stale-since-$key" || status=1
   else
     if [ "$keep_count" = 1 ] && [ "$FM_WEDGE_MAX_ESCALATIONS" -eq 0 ]; then
-      rm -f "$STATE/.stale-since-$key" || status=1
+      rm_present "$STATE/.stale-since-$key" || status=1
     else
-      rm -f "$STATE/.stale-since-$key" "$STATE/.wedge-escalations-$key" || status=1
+      rm_present "$STATE/.stale-since-$key" "$STATE/.wedge-escalations-$key" || status=1
     fi
     _wedge_cap_markers_clear "$key" || status=1
   fi
@@ -1978,7 +2507,7 @@ EOF
 # unbroken quiet stretch.
 clear_write_tracking() {  # <window-key>
   local key=$1
-  rm -f "$STATE/.writing-since-$key" "$STATE/.writing-resurfaced-$key" "$STATE/.guard-deferrals-$key" \
+  rm_present "$STATE/.writing-since-$key" "$STATE/.writing-resurfaced-$key" "$STATE/.guard-deferrals-$key" \
     "$STATE/.validating-since-$key" "$STATE/.validating-resurfaced-$key"
 }
 
@@ -2494,6 +3023,11 @@ busy_turn_over_age() {  # <task>
   [ -e "$f" ] || f="$STATE/$task.meta"
   progress="$STATE/$task.progress"
   if [ -f "$progress" ] && [ "$progress" -nt "$f" ]; then f="$progress"; fi
+  local age
+  if watch_snapshot_age_to age "$f" && [ "$age" -lt "$BUSY_TURN_MAX_SECS" ]; then
+    return 1
+  fi
+  # Over age by the snapshot: a refresh since then resets it, so read it live.
   [ "$(age_of "$f")" -ge "$BUSY_TURN_MAX_SECS" ]
 }
 
@@ -3084,8 +3618,18 @@ age_of() {  # seconds since file mtime; "due immediately" if missing
 # Pure read: prints one "<seen-file>\t<sig>\t<file>" line per changed file.
 # The caller records reported state only after surfacing or intentional absorption,
 # and commits a status classification position only after a successful span read.
+# scan_signals_to runs in this shell, not $(...), so the per-file skip
+# (watch_signal_cached) it learns survives into the next poll; its lines go to
+# SCAN_SIGNALS_OUT, and scan_signals prints them.
 scan_signals() {
-  local f sig sf exclude
+  scan_signals_to
+  printf '%s' "$SCAN_SIGNALS_OUT"
+}
+scan_signals_to() {
+  local f sig sf exclude ck seen
+  SCAN_SIGNALS_OUT=
+  # The poll's stat snapshot is the skip's evidence, so take it fresh here.
+  watch_poll_stat
   # A remote mate's own parent channel is not a self-home task status log; the
   # home-shape-aware exclusion and its precedent live in
   # status_scan_parent_channel_exclude (fm-classify-lib.sh).
@@ -3095,14 +3639,31 @@ scan_signals() {
     if [ ! -e "$f" ]; then
       case "$f" in *.status) [ -L "$f" ] || continue ;; *) continue ;; esac
     fi
+    fm_wake_signal_seen_path_to sf "$STATE" "$f"
+    watch_signal_key ck "$f" "$sf"
+    ! watch_signal_cached "$f" "$ck" || continue
     sig=$(fm_wake_signal_sig "$f") || continue
-    [ -n "$sig" ] || continue
-    sf=$(fm_wake_signal_seen_path "$STATE" "$f")
+    if [ -z "$sig" ]; then
+      watch_signal_cache_put "$f" "$ck" "$sf"
+      continue
+    fi
     case "$f" in
-      *.status) fm_wake_signal_seen_current "$STATE" "$f" && continue ;;
-      *) [ "$sig" = "$(cat "$sf" 2>/dev/null)" ] && continue ;;
+      *.status)
+        if fm_wake_signal_seen_current "$STATE" "$f"; then
+          watch_signal_cache_put "$f" "$ck" "$sf"
+          continue
+        fi
+        ;;
+      *)
+        seen=
+        { IFS= read -r seen < "$sf"; } 2>/dev/null || true
+        if [ "$sig" = "$seen" ]; then
+          watch_signal_cache_put "$f" "$ck" "$sf"
+          continue
+        fi
+        ;;
     esac
-    printf '%s\t%s\t%s\n' "$sf" "$sig" "$f"
+    SCAN_SIGNALS_OUT="$SCAN_SIGNALS_OUT$sf"$'\t'"$sig"$'\t'"$f"$'\n'
   done
   return 0
 }
@@ -3346,6 +3907,16 @@ watcher_capture() {  # <backend> <target> <lines> [expected-label]
   watcher_waited fm_backend_capture "$@"
 }
 
+# watch_poll_wait_next: the plain wait after this poll (POLL_IDLE_MAX above).
+watch_poll_wait_next() {
+  if [ "$WATCH_POLL_CHANGED" -ne 0 ] || [ "$POLL_IDLE_MAX" -eq 0 ] || [ "$POLL_IDLE_MAX" -le "$POLL" ]; then
+    WATCH_POLL_WAIT=$POLL
+  else
+    WATCH_POLL_WAIT=$((WATCH_POLL_WAIT * 2))
+    [ "$WATCH_POLL_WAIT" -le "$POLL_IDLE_MAX" ] || WATCH_POLL_WAIT=$POLL_IDLE_MAX
+  fi
+}
+
 # The event wait's scratch directory, given to it as TMPDIR. A stop kills the
 # wait before its own cleanup removes its reader FIFO, so the watcher owns the
 # directory and removes it after each wait and in watcher_cleanup.
@@ -3479,14 +4050,17 @@ heartbeat_scan_finds_actionable() {
 event_wait_or_sleep() {
   local w b session first_backend="" first_session="" rec rc
   local windows=() t3_windows=()
-  while IFS= read -r w; do
-    b=$(window_backend "$w")
+  # Freshly read metas answer recorded_windows, window_backend, and window_kind.
+  watch_poll_metas
+  for w in ${WPW[@]+"${WPW[@]}"}; do
+    watch_window_facts "$w"
+    b=$WF_BACKEND
     fm_backend_has_push "$b" || continue
     # Secondmate endpoints are supervised via status writes, not pane/agent
     # state (an idle or blocked secondmate agent pane is healthy by design), so
     # they are excluded from the fast escalation exactly as the stale loop skips
     # them.
-    [ "$(window_kind "$w")" = secondmate ] && continue
+    [ "$WF_KIND" = secondmate ] && continue
     # T3 Code's bounded wait runs only when no other push backend is recorded,
     # so adding a T3 task to a herdr home never takes herdr's fast path away.
     if [ "$b" = t3code ]; then
@@ -3502,7 +4076,7 @@ event_wait_or_sleep() {
       continue
     fi
     windows+=("$w")
-  done < <(recorded_windows)
+  done
   if [ "${#windows[@]}" -eq 0 ] && [ "${#t3_windows[@]}" -gt 0 ]; then
     first_backend=t3code
     first_session=$(fm_backend_event_session t3code "${t3_windows[0]}")
@@ -3510,7 +4084,8 @@ event_wait_or_sleep() {
   fi
 
   if [ "${#windows[@]}" -eq 0 ]; then
-    sleep "$POLL"
+    watch_poll_wait_next
+    sleep "$WATCH_POLL_WAIT"
     return
   fi
 
@@ -3776,6 +4351,7 @@ watcher_cleanup() {
   fm_check_output_cleanup
   fm_capture_output_cleanup
   fm_wait_tmp_cleanup
+  watch_hash_dir_cleanup
   fm_custom_check_snapshot_cleanup
   if [ "$owns_lock" -eq 1 ] \
     && ! fm_recovery_transition "$WATCHER_DOWNTIME_MARKER" "$transition" "$WATCH_LOCK" \
@@ -3888,6 +4464,7 @@ while :; do
   # Liveness beacon for fm-guard.sh: a fresh mtime here means a watcher is
   # alive. Supervision scripts warn when this goes stale with tasks in flight.
   touch "$STATE/.last-watcher-beat" || watcher_exit_if_ground_gone
+  WATCH_POLL_CHANGED=0
 
   # Opt-in fleet activity ledger (docs/fleet-ledger.md): pick up newly appended
   # status lines before this cycle can exit on a wake. Off costs one file test.
@@ -4142,10 +4719,13 @@ EOF
   # hook land seconds apart, and reporting them as separate actionable wakes
   # costs a full firstmate turn each. The re-scan also picks up a newer
   # signature for an already-pending file (last write wins below).
-  pending=$(scan_signals)
+  scan_signals_to
+  pending=${SCAN_SIGNALS_OUT%$'\n'}
   if [ -n "$pending" ]; then
+    WATCH_POLL_CHANGED=1
     sleep "$SIGNAL_GRACE"
-    pending=$(printf '%s\n%s' "$pending" "$(scan_signals)")
+    scan_signals_to
+    [ -z "$SCAN_SIGNALS_OUT" ] || pending=$pending$'\n'${SCAN_SIGNALS_OUT%$'\n'}
     # The final coalesced signal set is the watcher-carried status-change
     # trigger for this home's published summary. Start it before either
     # surfacing or absorbing the signal, but never wait on it: see
@@ -4275,14 +4855,25 @@ EOF
   # stale hash is surfaced, absorbed, or timed toward escalation once (.stale-*
   # remembers the hash already classified, or the declaration a busy pane's
   # crossed turn bound already handed to the away-mode daemon).
-  while IFS= read -r w; do
-    kind=$(window_kind "$w")
-    task=$(window_to_task "$w" "$STATE")
+  # One meta read and one tmux capture call per poll (watch_poll_load).
+  watch_poll_load
+  watch_poll_capture
+  WATCH_POLL_LIVE=1
+  for w in ${WPW[@]+"${WPW[@]}"}; do
+    watch_window_facts "$w"
+    kind=$WF_KIND
+    task=$WF_TASK
+    INBOX_STEER_ACTED=0
     # Steering-inbox loss detection runs before the secondmate stale
     # exemption below, because a mate's steers land in an inbox too.
-    [ -z "$task" ] || inbox_steer_check "$w" "$task"
-    key=$(window_key "$w")
-    last=$(status_declared_wait_line "$STATE/$task.status")
+    if [ -n "$task" ] && ! fm_task_inbox_idle "$STATE" "$task"; then
+      WATCH_POLL_CHANGED=1
+      inbox_steer_check "$w" "$task"
+    fi
+    key=$WF_KEY
+    # The status log is read once per window per poll, here (watch_status_facts).
+    watch_status_facts "$STATE/$task.status"
+    last=$WS_WAIT
     if ! status_is_paused_or_captain_held "$last" && [ -e "$STATE/.paused-$key" ]; then
       clear_pause_tracking "$key"
     fi
@@ -4296,28 +4887,39 @@ EOF
     if [ "$kind" = secondmate ] && ! status_is_paused_or_captain_held "$last"; then
       continue
     fi
-    watcher_capture "$(window_backend "$w")" "$w" 40 "$(window_label "$w")" || continue
+    capture_rc=2
+    WATCH_BATCH_HASH=
+    [ "$INBOX_STEER_ACTED" -ne 0 ] || { watch_poll_captured "$w"; capture_rc=$?; }
+    case "$capture_rc" in
+      0) ;;
+      1) continue ;;
+      *) WATCH_BATCH_HASH=; watcher_capture "$WF_BACKEND" "$w" 40 "${task:+fm-$task}" || continue ;;
+    esac
     tail40=$WATCHER_CAPTURE
     # The matcher is already defined in this shell. It reads the capture this
     # poll already takes, and a miss drops a name the away daemon saved.
-    dialog=$(fm_composer_blocking_dialog "$tail40") || dialog=
+    watch_pane_derive "$key" "$tail40" "$WATCH_BATCH_HASH"
+    dialog=$WATCH_PANE_DIALOG
     [ -n "$dialog" ] || clear_dialog_suffix "$task"
-    h=$(printf '%s' "$tail40" | hash_pane)
+    h=$WATCH_PANE_HASH
     hf="$STATE/.hash-$key"
     cf="$STATE/.count-$key"
     sf="$STATE/.stale-$key"
     ssf="$STATE/.stale-since-$key"
     ewf="$STATE/.wedge-escalations-$key"
     pf="$STATE/.paused-$key"   # flag: this key's stale is using the bounded pause cadence
-    prev=$(cat "$hf" 2>/dev/null || true)
+    watch_marker_to prev "$hf"
+    sfv=
     # Busy match: a backend's native semantic state when available (herdr, rex), else
     # the last 6 non-blank lines only (the TUI footer area, where every verified
     # harness renders its busy indicator) so busy-looking strings in displayed
     # content cannot suppress stale detection. Read once per window per poll and
     # reused below so a busy verdict is consistent within one cycle.
-    if window_is_busy "$w" "$tail40"; then busy_now=0; else busy_now=1; fi
+    if watch_window_is_busy "$w" "$tail40"; then busy_now=0; else busy_now=1; fi
     if [ "$h" = "$prev" ]; then
-      n=$(( $(cat "$cf" 2>/dev/null || echo 0) + 1 ))
+      watch_marker_to n "$cf"
+      case "$n" in ''|*[!0-9]*) n=0 ;; esac
+      n=$((n + 1))
       echo "$n" > "$cf"
       if [ "$n" -ge 2 ] && [ "$busy_now" -ne 0 ]; then
         # The pane is idle/stale at hash $h. Triage decides whether this wakes
@@ -4334,14 +4936,14 @@ EOF
           if captain_held_silenced "$last"; then
             printf '%s' "$h" > "$sf"
             triage_log "absorbed stale (captain-held, never rechecked while the away-posture record exists): $w"
-          elif [ "$(cat "$sf" 2>/dev/null || true)" != "$h" ]; then
+          elif watch_marker_to sfv "$sf"; [ "$sfv" != "$h" ]; then
             stale_reason=$(stale_reason_naming_dialog "stale: $w" "$dialog")
             watcher_wake_append stale "$w" "$stale_reason"
             printf '%s' "$h" > "$sf"
             _wedge_cap_markers_clear "$key"
             wake "$stale_reason"
           fi
-        elif stale_is_terminal "$w" "$STATE"; then
+        elif status_last_is_terminal "$WS_LAST"; then
           # The log's latest status event is captain-relevant - but that alone is not
           # proof the crew is actually done: a crew's own status log gets no
           # new entry once firstmate hands it to a no-mistakes validation
@@ -4356,8 +4958,8 @@ EOF
           # line. On a NEW hash, give an active run/busy pane (the same
           # authoritative source fm-crew-state.sh itself already prioritizes
           # over the log) a chance to override before trusting the log.
-          if [ "$(cat "$sf" 2>/dev/null || true)" != "$h" ]; then
-            if crew_is_provably_working "$(window_to_task "$w" "$STATE")"; then
+          if watch_marker_to sfv "$sf"; [ "$sfv" != "$h" ]; then
+            if crew_is_provably_working "$task"; then
               printf '%s' "$h" > "$sf"
               # Pre-cap shape kept the count here (keep-count contract).
               wedge_episode_end "$key" 0 1
@@ -4385,7 +4987,7 @@ EOF
               # Pre-cap shape kept the count here (keep-count contract).
               wedge_episode_end "$key" 0 1
               clear_write_tracking "$key"
-              stale_status="$STATE/$(window_to_task "$w" "$STATE").status"
+              stale_status="$STATE/$task.status"
               stale_record=$(status_span_first_actionable_record "$stale_status" 0)
               case $? in
                 0|1) stale_end=${stale_record%%$'\t'*}; stale_rest=${stale_record#*$'\t'}; stale_ident=${stale_rest%%$'\t'*} ;;
@@ -4431,8 +5033,7 @@ EOF
           #     (it may be done via an interactive menu that wrote no done: status,
           #     waiting on a decision, or wedged) instead of leaving the finish to
           #     wait out the timer.
-          if [ "$(cat "$sf" 2>/dev/null || true)" != "$h" ]; then
-            task=$(window_to_task "$w" "$STATE")
+          if watch_marker_to sfv "$sf"; [ "$sfv" != "$h" ]; then
             case "$(pause_state_class "$w" "$task")" in
               working)
                 clear_pause_tracking "$key"
@@ -4451,8 +5052,7 @@ EOF
                 ;;
             esac
           else
-            task=$(window_to_task "$w" "$STATE")
-            if [ -e "$pf" ] || status_is_paused_or_captain_held "$(status_declared_wait_line "$STATE/$task.status")"; then
+            if [ -e "$pf" ] || status_is_paused_or_captain_held "$last"; then
               case "$(pause_state_class "$w" "$task")" in
                 paused)  handle_paused_stale "$w" "$task" "$h" ;;
                 working) clear_pause_state "$key"
@@ -4484,11 +5084,12 @@ EOF
         # is cleared - but not in the same poll the declared-pause cadence just
         # recorded it, or the re-surface throttle it depends on would be erased and
         # the pause would re-surface every poll instead of once per long cadence.
-        if [ "$paused_bound" -ne 0 ] && [ -e "$pf" ] && { [ "$n" -ge 2 ] || ! status_is_paused_or_captain_held "$(status_declared_wait_line "$STATE/$(window_to_task "$w" "$STATE").status")"; }; then
+        if [ "$paused_bound" -ne 0 ] && [ -e "$pf" ] && { [ "$n" -ge 2 ] || ! status_is_paused_or_captain_held "$last"; }; then
           clear_pause_tracking "$key"
         fi
       fi
     else
+      WATCH_POLL_CHANGED=1
       printf '%s' "$h" > "$hf"
       echo 0 > "$cf"
       paused_bound=1
@@ -4498,8 +5099,7 @@ EOF
         wedge_episode_end "$key"
         clear_write_tracking "$key"
       fi
-      task=$(window_to_task "$w" "$STATE")
-      if ! afk_present && status_is_paused_or_captain_held "$(status_declared_wait_line "$STATE/$task.status")" && [ "$busy_now" -ne 0 ]; then
+      if ! afk_present && status_is_paused_or_captain_held "$last" && [ "$busy_now" -ne 0 ]; then
         case "$(pause_state_class "$w" "$task")" in
           paused) handle_paused_stale "$w" "$task" "$h" ;;
           # Inconclusive, but the declared wait itself still stands, so only the
@@ -4519,7 +5119,12 @@ EOF
         clear_pause_tracking "$key"
       fi
     fi
-  done < <(recorded_windows)
+  done
+  WATCH_POLL_LIVE=0
+  if [ "${WPW[*]-}" != "$WATCH_POLL_WINDOWS" ]; then
+    WATCH_POLL_CHANGED=1
+    WATCH_POLL_WINDOWS=${WPW[*]-}
+  fi
 
   # Heartbeat: the watcher runs a cheap fleet-scan at a regular cadence no matter
   # what. Time-based via .last-heartbeat mtime; interval doubles per consecutive

@@ -1770,6 +1770,29 @@ test_dialog_heading_and_footer_must_be_the_recorded_lines() {
   pass "a buried heading or a different last line is not the exit picker"
 }
 
+# The prefilter may pass a screen the full check rejects, but must never
+# reject a screen the full check names, including one with escapes in it.
+test_dialog_prefilter_never_rejects_the_dialog() {
+  local screen
+  screen=$(exit_picker_screen)
+  fm_composer_blocking_dialog_possible "$screen" || fail "the prefilter rejected the recorded picker"
+  local esc=$'\033'
+  screen=${screen//Background work/${esc}[1mBackground${esc}[0m work}
+  fm_composer_blocking_dialog "$screen" >/dev/null || fail "the styled picker should still match the full check"
+  fm_composer_blocking_dialog_possible "$screen" || fail "the prefilter rejected the styled picker"
+  screen=$(exit_picker_screen)
+  screen=${screen//Background/Back${esc}[1mground}
+  fm_composer_blocking_dialog "$screen" >/dev/null || fail "an escape inside a heading word should still match the full check"
+  fm_composer_blocking_dialog_possible "$screen" || fail "the prefilter rejected an escape inside a heading word"
+  quoted_exit_picker_screen | { screen=$(cat); fm_composer_blocking_dialog_possible "$screen"; } \
+    || fail "a quoted picker should pass to the full check"
+  if fm_composer_blocking_dialog_possible "$(printf '%s\n' '● Done.' '╭───╮' '│ > │' '╰───╯')"; then
+    fail "a screen without the heading words should be rejected"
+  fi
+  if fm_composer_blocking_dialog_possible ''; then fail "an empty screen should be rejected"; fi
+  pass "the dialog prefilter rejects only screens the full check cannot name"
+}
+
 test_dialog_note_skips_the_match_when_no_sink_is_set() {
   local screen out rc before after
   screen=$(exit_picker_screen)
@@ -1824,6 +1847,7 @@ test_quoted_exit_picker_text_is_not_a_dialog() {
 
 test_background_exit_picker_stays_pending_and_blocks_retry
 test_dialog_heading_and_footer_must_be_the_recorded_lines
+test_dialog_prefilter_never_rejects_the_dialog
 test_dialog_note_skips_the_match_when_no_sink_is_set
 test_quoted_exit_picker_text_is_not_a_dialog
 test_kiro_near_gray_ghost_is_stripped_and_real_text_survives

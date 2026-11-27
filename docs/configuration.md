@@ -3373,6 +3373,7 @@ FM_TASKS_AXI_CHECK_REASON=   # internal one-hop handoff of the reason behind tha
 FM_GUARD_READ_ONLY=0    # internal/read-only guard mode: keep alarms but suppress drain, supervision repair, and checkout repair commands
 FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the guarded operation WILL still run.'   # banner continuation line; fm-send.sh overrides it to name the requested message specifically
 FM_POLL=15              # seconds between watcher poll cycles
+FM_POLL_IDLE_MAX=       # longest idle wait in seconds: after a poll with no worker change the watcher's wait doubles up to this, and any change restores FM_POLL; default four polls, capped at 240, 0 keeps the fixed cadence (bin/fm-watch.sh)
 FM_HOME_SUMMARY_INTERVAL=300   # seconds before a live watcher refreshes this home's state/home-summary.json even without a status signal, and the wait after an attempt that did not publish before any watcher starts another; invalid or zero values use 300
 FM_HOME_SUMMARY_TIMEOUT=60     # seconds bounding the complete best-effort home-summary refresh, including lock acquisition, validation, atomic publication, and worker-side failure logging; invalid or zero values use 60
 FM_HOME_SUMMARY_ERROR_LOG_MAX_BYTES=65536   # approximate size cap for state/.home-summary-refresh.log before it is trimmed to the newest 200 lines; invalid or zero values use 65536

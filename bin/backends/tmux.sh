@@ -44,6 +44,24 @@ fm_backend_tmux_capture() {  # <target> <lines>
   tmux capture-pane -p -t "$1" -S -"$2"
 }
 
+# fm_backend_tmux_capture_batch: the capture above for several targets in one
+# tmux client call, so a watcher poll of N windows forks one client, not N.
+# Each capture is preceded by a `<token><index>` line and the batch ends with
+# `<token>end`; the token is caller-chosen, so the reader splits the output on
+# lines no pane can forge. tmux abandons the rest of a command sequence at its
+# first failing command, so a missing target ends the output after its own
+# marker; the caller reads that item as a failed capture and resumes after it.
+fm_backend_tmux_capture_batch() {  # <lines> <token> <target>...
+  local lines=$1 token=$2 i=0 t
+  local -a args=()
+  shift 2
+  for t in "$@"; do
+    args+=(display-message -p "$token$i" ';' capture-pane -p -t "$t" -S -"$lines" ';')
+    i=$((i + 1))
+  done
+  tmux ${args[@]+"${args[@]}"} display-message -p "${token}end"
+}
+
 # fm_backend_tmux_visible_capture: the visible viewport only. `-S -0` starts at
 # the first line of the pane rather than in its history, so nothing scrolled out
 # of view can appear in the result - the guarantee a trust-dialog predicate

@@ -156,6 +156,36 @@ case "$large" in
 esac
 pass "real tmux: fm_backend_tmux_capture's -S -N bound trims old history for a small window and reaches it for a large one"
 
+# --- capture_batch ------------------------------------------------------------
+# One client call returns each target's capture, byte-identical to its single
+# capture, between caller-token markers; a missing target ends the output
+# right after its own marker, so the reader can tell exactly which one failed.
+fm_backend_tmux_create_task "$SESSION" batch-two "$PWD" >/dev/null || fail "could not create the second batch window"
+fm_backend_tmux_send_text_line "$SESSION:batch-two" "echo batch-two-ready"
+wait_for_capture_text "$SESSION:batch-two" "batch-two-ready" || fail "the second batch window never printed"
+one=$(fm_backend_tmux_capture "$TARGET" 40) || fail "single capture of the first window failed"
+two=$(fm_backend_tmux_capture "$SESSION:batch-two" 40) || fail "single capture of the second window failed"
+batch=$(fm_backend_tmux_capture_batch 40 "TOK:" "$TARGET" "$SESSION:batch-two") \
+  || fail "fm_backend_tmux_capture_batch failed for two live windows"
+first=$(printf '%s\n' "$batch" | sed -n '/^TOK:0$/,/^TOK:1$/p' | sed '1d;$d')
+second=$(printf '%s\n' "$batch" | sed -n '/^TOK:1$/,/^TOK:end$/p' | sed '1d;$d')
+[ "$first" = "$one" ] || fail "the batch's first capture differs from its single capture"$'\n'"$first"$'\n---\n'"$one"
+[ "$second" = "$two" ] || fail "the batch's second capture differs from its single capture"$'\n'"$second"$'\n---\n'"$two"
+[ "$(printf '%s\n' "$batch" | tail -n 1)" = "TOK:end" ] || fail "the batch did not end with its end marker"
+pass "real tmux: fm_backend_tmux_capture_batch returns each window's single capture between token markers"
+
+rc=0
+batch=$(fm_backend_tmux_capture_batch 40 "TOK:" "$TARGET" "$SESSION:no-such-batch-window" "$SESSION:batch-two" 2>/dev/null) || rc=$?
+[ "$rc" -ne 0 ] || fail "a batch with a missing target should fail"
+case "$batch" in
+  *TOK:1*) ;;
+  *) fail "the missing target's own marker should print before tmux stops"$'\n'"$batch" ;;
+esac
+case "$batch" in
+  *TOK:2*|*TOK:end*|*batch-two-ready*) fail "tmux should stop at the missing target"$'\n'"$batch" ;;
+esac
+pass "real tmux: a missing target ends the batch right after its own marker"
+
 # --- resolve_bare_selector (live-window-listing) -----------------------------
 
 resolved=$(fm_backend_tmux_resolve_bare_selector "$WINDOW") \

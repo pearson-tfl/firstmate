@@ -2937,9 +2937,16 @@ fm_wake_signal_sig() {  # <file> -> reported-state signature
 }
 
 fm_wake_signal_seen_path() {  # <state> <file>
-  local task
-  fm_basename_to task "$2"
-  printf '%s/.seen-%s' "$1" "${task//./_}"
+  local path
+  fm_wake_signal_seen_path_to path "$1" "$2"
+  printf '%s' "$path"
+}
+
+# fm_wake_signal_seen_path_to <var> <state> <file>: the same path into <var>.
+fm_wake_signal_seen_path_to() {  # <var> <state> <file>
+  local _fws_task
+  fm_basename_to _fws_task "$3"
+  printf -v "$1" '%s/.seen-%s' "$2" "${_fws_task//./_}"
 }
 
 # The byte size recorded in <file>'s seen marker, or 0 when no marker exists, it

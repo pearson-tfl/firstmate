@@ -165,6 +165,35 @@ zsh
 A persistent parent shell waiting for a child remained reported as the parent process, while a shell that directly execed a simple command changed identity with the process itself.
 Pi and pi-signed 0.82.0 were reverified on 2026-07-27 through real isolated `fm-spawn.sh` launches.
 
+### Batched pane capture
+
+Verified on 2026-11-27 with tmux 3.7c on Linux 7.2.5, on a private socket with scratch windows `v:a` and `v:c` and no window `v:gone`.
+`fm_backend_tmux_capture_batch` in `bin/backends/tmux.sh` relies on one client call running `;`-separated commands in order and stopping at the first failing command with a nonzero exit, so the last marker printed names the failed target.
+
+```sh
+tmux -S "$S" display-message -p tok0 \; capture-pane -p -t v:a -S -2 \; display-message -p tok1 \; capture-pane -p -t v:c -S -2 \; display-message -p tokend
+tmux -S "$S" display-message -p tok0 \; capture-pane -p -t v:a -S -2 \; display-message -p tok1 \; capture-pane -p -t v:gone -S -2 \; display-message -p tok2 \; capture-pane -p -t v:c -S -2 \; display-message -p tokend
+```
+
+Observed output, blank pane rows removed (exit 0, then exit 1):
+
+```text
+tok0
+pane-a
+tok1
+pane-c
+tokend
+```
+
+```text
+tok0
+pane-a
+tok1
+can't find window: gone
+```
+
+The regressions are `tests/fm-backend-tmux-smoke.test.sh` and `tests/fm-watch-poll-batch.test.sh`, both against a real tmux server on a private socket.
+
 ### Lane pane titles
 
 Verified on macOS on 2026-11-06 with tmux 3.7b, Claude Code 2.1.319, and Pi 1.2.0.

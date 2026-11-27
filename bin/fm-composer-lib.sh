@@ -2275,6 +2275,17 @@ fm_composer_blocking_dialog() {  # <screen> -> dialog name
   return 1
 }
 
+# fm_composer_blocking_dialog_possible: a fork-free prefilter for a caller that
+# checks many screens per poll. Returns 1 only when the screen cannot be the
+# dialog fm_composer_blocking_dialog names: it has no escape sequence (which
+# the full check strips) and lacks the heading words; 0 means run the full check.
+fm_composer_blocking_dialog_possible() {  # <screen>
+  case ${1-} in
+    *$'\033'*|*Background*work*is*running*) return 0 ;;
+  esac
+  return 1
+}
+
 # A command substitution drops a shell variable, and every composer read runs
 # inside one. The name is therefore written to FM_COMPOSER_DIALOG_SINK when
 # that path is set. The classifier verdict is unchanged. When the sink is

@@ -162,7 +162,14 @@ fm_task_inbox_clear_busy() {  # <state-dir> <task-id>
 }
 
 fm_task_inbox_dir() {  # <state-dir> <task-id>
-  printf '%s/%s.inbox' "$1" "$2"
+  local dir
+  fm_task_inbox_dir_to dir "$1" "$2"
+  printf '%s' "$dir"
+}
+
+# fm_task_inbox_dir_to <var> <state-dir> <task-id>: the same path into <var>.
+fm_task_inbox_dir_to() {  # <var> <state-dir> <task-id>
+  printf -v "$1" '%s/%s.inbox' "$2" "$3"
 }
 
 fm_task_inbox_handled_dir() {  # <state-dir> <task-id>
@@ -602,6 +609,19 @@ fm_task_inbox_clear_retry() {  # <state-dir> <task-id> <record-path>
 #   retry <record-path>       a fire-and-forget record's one retry ring is due
 # An empty inbox also resets the ladder bookkeeping so the next message starts
 # a fresh ladder.
+# fm_task_inbox_idle <state-dir> <task-id>: 0 only when fm_task_inbox_due_action
+# would print quiet and change nothing - no record at all, no start-proof index,
+# no ladder bookkeeping to reset, and no retry ring armed - decided with shell
+# tests alone, so a poll of an empty inbox forks nothing.
+fm_task_inbox_idle() {  # <state-dir> <task-id>
+  local dir
+  fm_task_inbox_dir_to dir "$1" "$2"
+  [ ! -e "${FM_CONFIG_OVERRIDE:-${FM_HOME:-}/config}/wait-no-turns" ] || return 1
+  [ ! -s "$dir/.proof-pending" ] || return 1
+  [ ! -e "$dir/.ring-state" ] && [ ! -e "$dir/.escalated" ] && [ ! -e "$dir/.busy-state" ] || return 1
+  ! compgen -G "$dir/*.msg" >/dev/null
+}
+
 fm_task_inbox_due_action() {  # <state-dir> <task-id>
   local dir oldest base now grace max ladder rec_base count last result
   dir=$(fm_task_inbox_dir "$1" "$2")
