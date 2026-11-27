@@ -149,10 +149,10 @@
 #   - `done` rows are never listed. Retained completion history belongs to the
 #     reporting surfaces (bin/fm-bearings-snapshot.sh, /ahoy), and at startup it
 #     is pure weight - 10 done rows cost 3.3KB in an observed main-home digest.
-#   - Every in-flight and blocked row is listed IN FULL, with its
-#     hold_kind/hold_reason and blocked_by. Those are the rows AGENTS.md
-#     sections 7 and 10 make actionable at startup, so they are never bounded
-#     away.
+#   - Every in-flight and blocked row is listed (never bounded away), carrying
+#     blocked_by, hold_kind, and hold_until on tasks-axi (hold_reason is
+#     omitted and recoverable via bin/fm-tasks-axi.sh show <id> --full). Those
+#     are the rows AGENTS.md sections 7 and 10 make actionable at startup.
 #   - The held (captain- or time-gated) group is a standing one-line-per-item
 #     listing that grew to hundreds of rows, so it is bounded by
 #     FM_SESSION_START_HELD_LIMIT, default 20, with the same exact remainder
@@ -166,25 +166,28 @@
 # When compatible tasks-axi is selected and available, the shared tasks-axi
 # backend probe remains the compatibility owner and this script asks
 # `tasks-axi list` for the compact identity fields plus blocked_by, hold_kind,
-# and hold_reason, never body. The groups are the tool's own filters
-# (`--state in_flight`, `--state held`, `--state queued --blocked`, and
-# `tasks-axi ready`), so this script never reimplements task state; the groups
-# can overlap, because an in-flight item that is also held appears under both.
+# and hold_until, never hold_reason or body. The groups are the tool's own
+# filters (`--state in_flight`, `--state held`, `--state queued --blocked`, and
+# `tasks-axi ready`), so this script never reimplements task state; overlapping
+# in-flight/held rows are deduplicated so an in-flight item that is also held
+# prints once under `in flight:` while the tool's held count header stays
+# labeled as pre-deduplication.
 # When manual mode is selected, or tasks-axi is unavailable or incompatible,
 # this script prints only backlog section headings and item title lines, so
 # title-line hold and blocked-by metadata remain visible while indented bodies
 # stay out of the startup digest; the same rules apply - blocked rows never
 # bounded, held rows under the held cap - recognized there from the title
 # line's own hold/blocked-by markers.
-# Full bodies are targeted follow-up only: `bin/fm-tasks-axi.sh show <id> --full` when
-# compatible tasks-axi is available, or `data/backlog.md` when the file body is
-# truly needed.
+# Full bodies and hold reasons are targeted follow-up only:
+# `bin/fm-tasks-axi.sh show <id> --full` when compatible tasks-axi is
+# available, or `data/backlog.md` when the file body is truly needed.
 #
-# STATUS TAILS: FM_SESSION_START_STATUS_TAIL bounds how many lines each task's
-# tail prints, and bin/fm-line-cap-lib.sh bounds how long each of those lines
-# may be. Both bounds are safe because the section prints every task's full
-# status log path, and AGENTS.md section 8 treats a status line as a wake EVENT
-# rather than current state - bin/fm-crew-state.sh owns current state.
+# STATUS TAILS: declared paused/held lanes compact to their latest status event
+# (capped) plus the full log path, while active lanes and orphan logs print up
+# to FM_SESSION_START_STATUS_TAIL lines, each capped by bin/fm-line-cap-lib.sh.
+# Both bounds are safe because the section prints every task's full status log
+# path, and AGENTS.md section 8 treats a status line as a wake EVENT rather
+# than current state - bin/fm-crew-state.sh owns current state.
 #
 # RUNTIME BOUND: the digest is now executed through a native session-open
 # adapter (see bin/fm-sessionstart-run.sh), which blocks either hook-driven

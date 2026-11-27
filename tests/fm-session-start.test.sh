@@ -835,8 +835,21 @@ EOF
   pass "context digest distinguishes ABSENT, empty-but-present, and populated files"
 }
 
+secondmates_section() {
+  printf '%s\n' "$1" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag'
+}
+
+run_claude_start_mode() {  # <startup|re-emit> <home> <root> <path>
+  local mode=$1 home=$2 root=$3 path_env=$4
+  if [ "$mode" = startup ]; then
+    run_named_harness_session_start claude "$home" "$root" "$path_env"
+  else
+    run_named_harness_session_start claude "$home" "$root" "$path_env" --reemit
+  fi
+}
+
 test_secondmates_digest_lists_path_and_count() {
-  local rec root home fakebin out sm_sec mode flag
+  local rec root home fakebin out sm_sec mode
   rec=$(new_world secondmates-summary)
   IFS='|' read -r root home fakebin <<EOF
 $rec
@@ -851,8 +864,8 @@ EOF
 
   # Empty file keeps the (present, empty) distinction with path and 0 entries.
   : > "$home/data/secondmates.md"
-  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
-  sm_sec=$(printf '%s\n' "$out" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag')
+  out=$(FM_LOCK_HOLDER=test-main run_claude_start_mode startup "$home" "$root" "$fakebin:$BASE_PATH")
+  sm_sec=$(secondmates_section "$out")
   assert_contains "$sm_sec" "(present, empty) - $home/data/secondmates.md (0 entries)" \
     "empty secondmates.md did not report (present, empty) with path and 0 entries"
   assert_not_contains "$sm_sec" "ABSENT" "empty secondmates.md printed ABSENT"
@@ -861,8 +874,8 @@ EOF
   printf '%s\n' \
     '- alpha - ONE_ROUTE_SECRET_SUMMARY (home: /homes/alpha; scope: alpha work; projects: proj-a; added 2026-10-01)' \
     > "$home/data/secondmates.md"
-  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
-  sm_sec=$(printf '%s\n' "$out" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag')
+  out=$(FM_LOCK_HOLDER=test-main run_claude_start_mode startup "$home" "$root" "$fakebin:$BASE_PATH")
+  sm_sec=$(secondmates_section "$out")
   assert_contains "$sm_sec" "$home/data/secondmates.md (1 entry;" \
     "single-entry secondmates.md did not report path and singular count"
   assert_not_contains "$out" "ONE_ROUTE_SECRET_SUMMARY" \
@@ -878,10 +891,8 @@ Routing notes are not entries.
 - gamma - Gamma seat (home: /homes/gamma; scope: LOCAL_GAMMA_SCOPE; projects: proj-c; added 2026-10-03)
 EOF
   for mode in startup re-emit; do
-    flag=
-    [ "$mode" = startup ] || flag=--reemit
-    out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" ${flag:+"$flag"})
-    sm_sec=$(printf '%s\n' "$out" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag')
+    out=$(FM_LOCK_HOLDER=test-main run_claude_start_mode "$mode" "$home" "$root" "$fakebin:$BASE_PATH")
+    sm_sec=$(secondmates_section "$out")
     assert_contains "$sm_sec" "$home/data/secondmates.md (3 entries;" \
       "$mode did not list secondmates.md path and exact count (3 entries)"
     assert_not_contains "$out" "LOCAL_ALPHA_SCOPE" "$mode leaked local secondmate route text"
@@ -899,24 +910,24 @@ EOF
     '- malformed-entry without required suffix UNRECOGNIZED_LEAK' \
     '- beta - Beta seat (home: /homes/beta; scope: b; projects: q; added 2026-10-02)' \
     > "$home/data/secondmates.md"
-  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
-  sm_sec=$(printf '%s\n' "$out" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag')
+  out=$(FM_LOCK_HOLDER=test-main run_claude_start_mode startup "$home" "$root" "$fakebin:$BASE_PATH")
+  sm_sec=$(secondmates_section "$out")
   assert_contains "$sm_sec" "$home/data/secondmates.md (2 entries, 1 unrecognized bullet line;" \
     "secondmates.md summary did not disclose an unrecognized bullet line alongside valid entries"
   assert_not_contains "$out" "UNRECOGNIZED_LEAK" "secondmates.md summary leaked an unrecognized bullet line"
 
   # Heading/prose-only file reports 0 entries with its path.
   printf '# Secondmates\n\nNo routes yet.\n' > "$home/data/secondmates.md"
-  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
-  sm_sec=$(printf '%s\n' "$out" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag')
+  out=$(FM_LOCK_HOLDER=test-main run_claude_start_mode startup "$home" "$root" "$fakebin:$BASE_PATH")
+  sm_sec=$(secondmates_section "$out")
   assert_contains "$sm_sec" "$home/data/secondmates.md (0 entries;" \
     "heading-only secondmates.md did not report 0 entries with its path"
 
   # Unreadable file reports unreadable rather than silently claiming 0 entries.
   chmod 000 "$home/data/secondmates.md"
   if [ ! -r "$home/data/secondmates.md" ]; then
-    out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
-    sm_sec=$(printf '%s\n' "$out" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag')
+    out=$(FM_LOCK_HOLDER=test-main run_claude_start_mode startup "$home" "$root" "$fakebin:$BASE_PATH")
+    sm_sec=$(secondmates_section "$out")
     assert_contains "$sm_sec" "$home/data/secondmates.md (unreadable;" \
       "unreadable secondmates.md did not disclose unreadable status"
   fi
@@ -2183,7 +2194,7 @@ EOF
 # A standing one-line-per-item listing is capped in its own script: the held
 # group stops at FM_SESSION_START_HELD_LIMIT and discloses the exact remainder.
 test_backlog_held_bound_discloses_its_remainder() {
-  local rec root home fakebin out rows mode flag
+  local rec root home fakebin out rows mode
   rec=$(new_world backlog-held-bound)
   IFS='|' read -r root home fakebin <<EOF
 $rec
@@ -2194,11 +2205,9 @@ EOF
   write_long_body_backlog "$home/data/backlog.md"
   rows=$(for i in 1 2 3 4; do printf '  extra-held-%s,queued,ship,firstmate,Extra held %s,none,captain,later\n' "$i" "$i"; done)
 
-  for mode in startup reemit; do
-    flag=
-    [ "$mode" = startup ] || flag=--reemit
+  for mode in startup re-emit; do
     out=$(FM_FAKE_TASKS_AXI_EXTRA_HELD=$rows FM_SESSION_START_HELD_LIMIT=2 \
-      run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" ${flag:+"$flag"})
+      run_claude_start_mode "$mode" "$home" "$root" "$fakebin:$BASE_PATH")
     assert_contains "$out" "Held queued work" "$mode: the held bound dropped a row inside its own limit"
     assert_contains "$out" "Extra held 1" "$mode: the held bound dropped a row inside its own limit"
     assert_not_contains "$out" "Extra held 2" "$mode: the held bound did not bound the held listing"
@@ -2467,14 +2476,14 @@ EOF
   printf '%s\n' "$out"
 }
 
-test_ordinary_startup_bytes_unchanged() {
+test_ordinary_startup_matches_public_output_fixture() {
   startup_byte_fixture > "$TMP_ROOT/startup-digest.txt"
   cmp -s "$ROOT/tests/fixtures/session-start-ordinary.digest" "$TMP_ROOT/startup-digest.txt" \
     || fail "ordinary startup output changed from the public-output fixture: $(diff -u "$ROOT/tests/fixtures/session-start-ordinary.digest" "$TMP_ROOT/startup-digest.txt")"
   pass "ordinary startup digest remains byte-identical to the public-output fixture"
 }
 
-test_reemit_compacts_only_waiting_lane_history() {
+test_startup_and_reemit_compact_only_waiting_lane_history() {
   local rec root home fakebin out startup_out reemit_out active reemit_active id mode
   rec=$(new_world reemit-compaction)
   IFS='|' read -r root home fakebin <<EOF
@@ -2527,8 +2536,8 @@ EOF
   pass "startup and re-emit summarize metadata and declared waits, retaining active/orphan history and recovery pointers"
 }
 
-test_reemit_backlog_projection_and_overlap() {
-  local rec root home fakebin out log mode flag
+test_startup_and_reemit_backlog_projection_and_overlap() {
+  local rec root home fakebin out log mode
   rec=$(new_world reemit-backlog)
   IFS='|' read -r root home fakebin <<EOF
 $rec
@@ -2541,10 +2550,8 @@ EOF
   log="$home/tasks.log"
   for mode in startup re-emit; do
     : > "$log"
-    flag=
-    [ "$mode" = startup ] || flag=--reemit
     out=$(FM_FAKE_TASKS_AXI_OVERLAP=1 FM_FAKE_TASKS_AXI_LOG="$log" FM_LOCK_HOLDER=test-main \
-      run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" ${flag:+"$flag"})
+      run_claude_start_mode "$mode" "$home" "$root" "$fakebin:$BASE_PATH")
     [ "$(printf '%s\n' "$out" | grep -c 'Compact startup digest')" -eq 1 ] || fail "$mode duplicated an overlapping held in-flight row"
     assert_contains "$out" "Held queued work" "$mode dropped a non-overlapping held item"
     assert_contains "$out" "2026-11-10" "$mode dropped hold-until"
@@ -2558,9 +2565,7 @@ EOF
   printf 'manual\n' > "$home/config/backlog-backend"
   printf '## In flight\n- [ship] manual-row (hold: preserve title reason)\n  private body\n' > "$home/data/backlog.md"
   for mode in startup re-emit; do
-    flag=
-    [ "$mode" = startup ] || flag=--reemit
-    out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" ${flag:+"$flag"})
+    out=$(FM_LOCK_HOLDER=test-main run_claude_start_mode "$mode" "$home" "$root" "$fakebin:$BASE_PATH")
     assert_contains "$out" "preserve title reason" "manual $mode dropped title-line hold metadata"
     assert_not_contains "$out" "private body" "manual $mode printed task bodies"
   done
@@ -3352,10 +3357,10 @@ EOF
   pass "session start rejects Pi loaded markers from previous sessions"
 }
 
-test_ordinary_startup_bytes_unchanged
+test_ordinary_startup_matches_public_output_fixture
 test_captain_board_leaves_out_only_proven_items
-test_reemit_compacts_only_waiting_lane_history
-test_reemit_backlog_projection_and_overlap
+test_startup_and_reemit_compact_only_waiting_lane_history
+test_startup_and_reemit_backlog_projection_and_overlap
 test_context_digest_absent_empty_present
 test_secondmates_digest_lists_path_and_count
 test_lock_refusal_read_only_path
