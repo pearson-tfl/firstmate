@@ -4830,13 +4830,21 @@ SH
     start=$(PATH="$home/fakebin:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" FM_HOME="$home" \
       FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" \
       FM_BOOTSTRAP_NETWORK=skip "$ROOT/bin/fm-session-start.sh" 2>&1 || true)
-    assert_contains "$start" "$quoted_reason" "startup $mode changed the encoded reason"
     assert_contains "$start" 'Investigate literal %28' "startup $mode changed the title"
-    assert_contains "$start" "$legacy" "startup $mode changed the legacy reason"
-    assert_contains "$start" '"fm-hold-v1:bm9ydGg="' "startup $mode decoded a reason twice"
-    for malformed in "${malformed_reasons[@]}"; do
-      assert_contains "$start" "$malformed" "startup $mode changed historical literal $malformed"
-    done
+    if [ "$mode" = tool ]; then
+      assert_contains "$start" 'hold reasons omitted' "startup $mode failed to disclose omitted hold reasons"
+      assert_contains "$start" '2099-01-01' "startup $mode dropped hold_until"
+      assert_contains "$start" 'fm-hold-v1:bm9ydGg=' "startup $mode altered the literal marker in the title"
+      assert_not_contains "$start" "$quoted_reason" "startup $mode printed an omitted hold reason"
+      assert_not_contains "$start" "$legacy" "startup $mode printed an omitted legacy hold reason"
+    else
+      assert_contains "$start" "$quoted_reason" "startup $mode changed the encoded reason"
+      assert_contains "$start" "$legacy" "startup $mode changed the legacy reason"
+      assert_contains "$start" '"fm-hold-v1:bm9ydGg="' "startup $mode decoded a reason twice"
+      for malformed in "${malformed_reasons[@]}"; do
+        assert_contains "$start" "$malformed" "startup $mode changed historical literal $malformed"
+      done
+    fi
     if [ "$mode" = fallback ]; then
       assert_contains "$start" 'read failed: literal %28 and fm-hold-v1:bm9ydGg=' \
         "startup changed unrelated error text"

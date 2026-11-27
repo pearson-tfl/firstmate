@@ -15,9 +15,11 @@
 #     watcher ownership
 #   - status-tail bounding, default and FM_SESSION_START_STATUS_TAIL override
 #   - the per-line status-tail cap and its truncation marker
-#   - startup backlog composition: done rows dropped, every in-flight/held/
-#     blocked row kept whole, the dispatchable queued listing bounded with an
-#     exact disclosed remainder
+#   - startup fleet and backlog compaction: one-line meta summaries, compacted
+#     paused/held status history, tasks-axi hold reasons omitted and overlapping
+#     in-flight/held rows deduplicated, held and ready queued listings bounded
+#     with exact disclosed remainders, and data/secondmates.md listed as path
+#     with entry count
 #   - orphan status logs whose task meta has already disappeared
 #   - per-task endpoint-liveness lines for a live and a dead recorded target,
 #     tmux and herdr both
@@ -833,6 +835,96 @@ EOF
   pass "context digest distinguishes ABSENT, empty-but-present, and populated files"
 }
 
+test_secondmates_digest_lists_path_and_count() {
+  local rec root home fakebin out sm_sec mode flag
+  rec=$(new_world secondmates-summary)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+  printf 'holder:other-main\n' > "$home/state/.lock"
+  printf '%s\n' '- demo [direct-PR] - demo repo (added 2026-10-01)' > "$home/data/projects.md"
+  printf '%s\n' 'Captain preference stays verbatim.' > "$home/data/captain.md"
+  printf '%s\n' 'Shared captain preference stays verbatim.' > "$home/data/captain-shared.md"
+  printf '%s\n' 'Learning stays verbatim.' > "$home/data/learnings.md"
+
+  # Empty file keeps the (present, empty) distinction with path and 0 entries.
+  : > "$home/data/secondmates.md"
+  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
+  sm_sec=$(printf '%s\n' "$out" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag')
+  assert_contains "$sm_sec" "(present, empty) - $home/data/secondmates.md (0 entries)" \
+    "empty secondmates.md did not report (present, empty) with path and 0 entries"
+  assert_not_contains "$sm_sec" "ABSENT" "empty secondmates.md printed ABSENT"
+
+  # Singular count: one canonical local route, without dumping its text.
+  printf '%s\n' \
+    '- alpha - ONE_ROUTE_SECRET_SUMMARY (home: /homes/alpha; scope: alpha work; projects: proj-a; added 2026-10-01)' \
+    > "$home/data/secondmates.md"
+  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
+  sm_sec=$(printf '%s\n' "$out" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag')
+  assert_contains "$sm_sec" "$home/data/secondmates.md (1 entry;" \
+    "single-entry secondmates.md did not report path and singular count"
+  assert_not_contains "$out" "ONE_ROUTE_SECRET_SUMMARY" \
+    "digest leaked full text of secondmates.md"
+
+  # Multiple canonical local + remote routes alongside heading and prose, on both startup and re-emit.
+  cat > "$home/data/secondmates.md" <<'EOF'
+# Secondmates
+
+Routing notes are not entries.
+- alpha - Alpha seat (home: /homes/alpha; scope: LOCAL_ALPHA_SCOPE; projects: proj-a; added 2026-10-01)
+- beta - Beta remote seat (host: dell.tailnet; root: /root/fm; home: /homes/beta; scope: REMOTE_BETA_SCOPE; projects: proj-b; added 2026-10-02)
+- gamma - Gamma seat (home: /homes/gamma; scope: LOCAL_GAMMA_SCOPE; projects: proj-c; added 2026-10-03)
+EOF
+  for mode in startup re-emit; do
+    flag=
+    [ "$mode" = startup ] || flag=--reemit
+    out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" ${flag:+"$flag"})
+    sm_sec=$(printf '%s\n' "$out" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag')
+    assert_contains "$sm_sec" "$home/data/secondmates.md (3 entries;" \
+      "$mode did not list secondmates.md path and exact count (3 entries)"
+    assert_not_contains "$out" "LOCAL_ALPHA_SCOPE" "$mode leaked local secondmate route text"
+    assert_not_contains "$out" "REMOTE_BETA_SCOPE" "$mode leaked remote secondmate route text"
+    assert_not_contains "$out" "LOCAL_GAMMA_SCOPE" "$mode leaked third secondmate route text"
+    assert_contains "$out" "demo repo" "$mode dropped projects.md full text"
+    assert_contains "$out" "Captain preference stays verbatim." "$mode dropped captain.md full text"
+    assert_contains "$out" "Shared captain preference stays verbatim." "$mode dropped captain-shared.md full text"
+    assert_contains "$out" "Learning stays verbatim." "$mode dropped learnings.md full text"
+  done
+
+  # Unrecognized bullet lines are disclosed alongside canonical count without dumping text.
+  printf '%s\n' \
+    '- alpha - Alpha seat (home: /homes/alpha; scope: a; projects: p; added 2026-10-01)' \
+    '- malformed-entry without required suffix UNRECOGNIZED_LEAK' \
+    '- beta - Beta seat (home: /homes/beta; scope: b; projects: q; added 2026-10-02)' \
+    > "$home/data/secondmates.md"
+  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
+  sm_sec=$(printf '%s\n' "$out" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag')
+  assert_contains "$sm_sec" "$home/data/secondmates.md (2 entries, 1 unrecognized bullet line;" \
+    "secondmates.md summary did not disclose an unrecognized bullet line alongside valid entries"
+  assert_not_contains "$out" "UNRECOGNIZED_LEAK" "secondmates.md summary leaked an unrecognized bullet line"
+
+  # Heading/prose-only file reports 0 entries with its path.
+  printf '# Secondmates\n\nNo routes yet.\n' > "$home/data/secondmates.md"
+  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
+  sm_sec=$(printf '%s\n' "$out" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag')
+  assert_contains "$sm_sec" "$home/data/secondmates.md (0 entries;" \
+    "heading-only secondmates.md did not report 0 entries with its path"
+
+  # Unreadable file reports unreadable rather than silently claiming 0 entries.
+  chmod 000 "$home/data/secondmates.md"
+  if [ ! -r "$home/data/secondmates.md" ]; then
+    out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
+    sm_sec=$(printf '%s\n' "$out" | awk '/^data\/secondmates\.md$/{flag=1;next}/^data\//{flag=0}flag')
+    assert_contains "$sm_sec" "$home/data/secondmates.md (unreadable;" \
+      "unreadable secondmates.md did not disclose unreadable status"
+  fi
+  chmod 644 "$home/data/secondmates.md"
+
+  pass "data/secondmates.md prints its path and entry count without dumping full route text"
+}
+
 # --- lock refusal: read-only path --------------------------------------------
 
 test_lock_refusal_read_only_path() {
@@ -1153,7 +1245,7 @@ EOF
   assert_contains "$out" "working: step 3" "default status tail (5 lines) missing an expected recent line"
   assert_not_contains "$out" "working: step 1" "default status tail (5 lines) leaked an older line"
   assert_contains "$out" "$home/state/task-a.status" "digest did not print the full status log path for a deeper read"
-  assert_contains "$out" "a bounded tail of every state/*.status" "read-once contract does not distinguish bounded status tails"
+  assert_contains "$out" "active lanes and orphan logs keep bounded recent status tails" "read-once contract does not distinguish bounded status tails"
 
   out=$(FM_SESSION_START_STATUS_TAIL=2 run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
   assert_contains "$out" "working: step 7" "FM_SESSION_START_STATUS_TAIL=2 tail missing the most recent line"
@@ -2013,13 +2105,13 @@ EOF
   out=$(FM_FAKE_TASKS_AXI_LOG="$log" FM_FAKE_TASKS_AXI_READY=3 \
     run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
 
-  assert_contains "$out" "compact backlog listing (tasks-axi; done rows omitted; every in-flight and blocked row shown in full; held bounded to 20; ready queued bounded to 20; task bodies omitted)" \
+  assert_contains "$out" "compact backlog listing (tasks-axi; done rows omitted; hold reasons omitted, use bin/fm-tasks-axi.sh show <id> --full; overlapping in-flight/held rows shown once; held bounded to 20; ready queued bounded to 20; task bodies omitted)" \
     "compatible tasks-axi backend did not render the compact backlog listing"
-  assert_contains "$out" "tasks[1]{id,state,kind,repo,title,blocked_by,hold_kind,hold_reason}:" \
+  assert_contains "$out" "tasks[1]{id,state,kind,repo,title,blocked_by,hold_kind,hold_until}:" \
     "tasks-axi compact listing omitted the expected structured field header"
-  assert_contains "$out" "compact-startup,in_flight,ship,firstmate,Compact startup digest,none,captain,captain choice pending" \
+  assert_contains "$out" "compact-startup,in_flight,ship,firstmate,Compact startup digest,none,captain,2026-11-10" \
     "tasks-axi compact listing omitted in-flight identity, state, or hold metadata"
-  assert_contains "$out" "held-queued,queued,ship,firstmate,Held queued work,none,captain,captain choice pending" \
+  assert_contains "$out" "held-queued,queued,ship,firstmate,Held queued work,none,captain,2026-11-10" \
     "tasks-axi compact listing omitted a held row or its hold metadata"
   assert_contains "$out" 'blocked-followup,queued,scout,firstmate,Follow compact startup,compact-startup,"-","-"' \
     "tasks-axi compact listing omitted blocked-by metadata"
@@ -2041,11 +2133,11 @@ EOF
   # The fake refuses a body field, an unfiltered listing, and a done listing, so
   # a clean render already proves those were never asked for; pin the group
   # filters the listing is built from.
-  assert_grep "--state in_flight --fields blocked_by,hold_kind,hold_reason" "$log" \
+  assert_grep "--state in_flight --fields blocked_by,hold_kind,hold_until" "$log" \
     "session start did not ask tasks-axi for the in-flight group"
-  assert_grep "--state held --fields blocked_by,hold_kind,hold_reason" "$log" \
+  assert_grep "--state held --fields blocked_by,hold_kind,hold_until" "$log" \
     "session start did not ask tasks-axi for the held group"
-  assert_grep "--state queued --blocked --fields blocked_by,hold_kind,hold_reason" "$log" \
+  assert_grep "--state queued --blocked --fields blocked_by,hold_kind,hold_until" "$log" \
     "session start did not ask tasks-axi for the blocked queued group"
   assert_grep "ready --file $home/data/backlog.md" "$log" \
     "session start did not ask tasks-axi for the dispatchable queued set"
@@ -2078,11 +2170,11 @@ EOF
     "the bounded queued listing did not disclose an exact remainder and how to see it"
 
   # The bound is for dispatchable work only: held and blocked rows stay whole.
-  assert_contains "$out" "held-queued,queued,ship,firstmate,Held queued work,none,captain,captain choice pending" \
+  assert_contains "$out" "held-queued,queued,ship,firstmate,Held queued work,none,captain,2026-11-10" \
     "the queued bound swallowed a held row"
   assert_contains "$out" 'blocked-followup,queued,scout,firstmate,Follow compact startup,compact-startup,"-","-"' \
     "the queued bound swallowed a blocked row"
-  assert_contains "$out" "compact-startup,in_flight,ship,firstmate,Compact startup digest,none,captain,captain choice pending" \
+  assert_contains "$out" "compact-startup,in_flight,ship,firstmate,Compact startup digest,none,captain,2026-11-10" \
     "the queued bound swallowed an in-flight row"
 
   pass "the startup backlog bound cuts only dispatchable queued rows and discloses the remainder exactly"
@@ -2106,7 +2198,7 @@ EOF
     flag=
     [ "$mode" = startup ] || flag=--reemit
     out=$(FM_FAKE_TASKS_AXI_EXTRA_HELD=$rows FM_SESSION_START_HELD_LIMIT=2 \
-      run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" $flag)
+      run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" ${flag:+"$flag"})
     assert_contains "$out" "Held queued work" "$mode: the held bound dropped a row inside its own limit"
     assert_contains "$out" "Extra held 1" "$mode: the held bound dropped a row inside its own limit"
     assert_not_contains "$out" "Extra held 2" "$mode: the held bound did not bound the held listing"
@@ -2352,9 +2444,9 @@ EOF
 
 # --- context re-emit (--reemit) ----------------------------------------------
 
-# Public output captured on 2e771922813bcc2bc25e5f82e1f1dd0f3d647ace,
-# before re-emit trimming. Only fixture locations are normalized; every other
-# byte of this ordinary (lock-refused) startup digest is compared unchanged.
+# Public output fixture for an ordinary (lock-refused) startup digest with
+# first-start fleet compaction applied. Only fixture locations are normalized;
+# every other byte of the digest is compared unchanged.
 startup_byte_fixture() {
   local rec root home fakebin out
   rec=$(new_world startup-byte-fixture)
@@ -2378,12 +2470,12 @@ EOF
 test_ordinary_startup_bytes_unchanged() {
   startup_byte_fixture > "$TMP_ROOT/startup-digest.txt"
   cmp -s "$ROOT/tests/fixtures/session-start-ordinary.digest" "$TMP_ROOT/startup-digest.txt" \
-    || fail "ordinary startup output changed from the pre-compaction public-output fixture: $(diff -u "$ROOT/tests/fixtures/session-start-ordinary.digest" "$TMP_ROOT/startup-digest.txt")"
-  pass "ordinary startup digest remains byte-identical to the pre-compaction fixture"
+    || fail "ordinary startup output changed from the public-output fixture: $(diff -u "$ROOT/tests/fixtures/session-start-ordinary.digest" "$TMP_ROOT/startup-digest.txt")"
+  pass "ordinary startup digest remains byte-identical to the public-output fixture"
 }
 
 test_reemit_compacts_only_waiting_lane_history() {
-  local rec root home fakebin out full active reemit_active id
+  local rec root home fakebin out startup_out reemit_out active reemit_active id mode
   rec=$(new_world reemit-compaction)
   IFS='|' read -r root home fakebin <<EOF
 $rec
@@ -2403,37 +2495,40 @@ EOF
   printf 'kind=ship\nbackend=orca\nterminal=terminal-recovery-id\nworktree=/isolated/orca\n' > "$home/state/orca.meta"
   printf 'kind=ship\nbackend=t3code\nt3_thread_id=thread-recovery-id\nworktree=/isolated/t3code\n' > "$home/state/t3code.meta"
   printf 'working: orphan earlier\npaused: orphan wait\n' > "$home/state/orphan.status"
-  full=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
-  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" --reemit)
-  for id in active paused held resumed; do
-    assert_contains "$out" "--- $id ---" "re-emit lost a lane identity"
-    assert_contains "$out" "meta summary: kind=scout window='' worktree=/isolated/$id\\ space" "re-emit lost lane kind/endpoint/location"
-    assert_contains "$out" "$home/state/$id.status" "re-emit lost full history pointer"
+  startup_out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH")
+  reemit_out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" --reemit)
+  for mode in startup re-emit; do
+    if [ "$mode" = startup ]; then out=$startup_out; else out=$reemit_out; fi
+    for id in active paused held resumed; do
+      assert_contains "$out" "--- $id ---" "$mode lost a lane identity"
+      assert_contains "$out" "meta summary: kind=scout window='' worktree=/isolated/$id\\ space" "$mode lost lane kind/endpoint/location"
+      assert_contains "$out" "$home/state/$id.status" "$mode lost full history pointer"
+    done
+    assert_contains "$out" "backend=orca terminal=terminal-recovery-id" "$mode lost Orca endpoint recovery"
+    assert_contains "$out" "backend=t3code t3_thread_id=thread-recovery-id" "$mode lost t3code endpoint recovery"
+    assert_contains "$out" "--- missing ---" "$mode lost incomplete lane"
+    assert_contains "$out" "endpoint: unknown (no window recorded)" "$mode hid missing endpoint"
+    assert_contains "$out" "no status file yet" "$mode hid missing history"
+    assert_contains "$out" "$home/state/<id>.meta" "$mode omitted full metadata recovery path"
+    assert_contains "$out" "bin/fm-crew-state.sh <id>" "$mode omitted targeted current-state recovery"
+    assert_not_contains "$out" "omitted-paused" "$mode retained non-recovery metadata"
+    assert_not_contains "$out" "old-paused" "$mode retained paused history"
+    assert_not_contains "$out" "old-held" "$mode retained held history"
+    assert_contains "$out" "waiting-paused" "$mode lost declared wait reason"
+    assert_contains "$out" "waiting-held" "$mode lost held latest event"
+    assert_contains "$out" "old-resumed" "$mode compacted a resumed lane"
+    assert_contains "$out" "orphan earlier" "$mode compacted orphan history without meta"
+    assert_contains "$out" $'Memory must stay full\nsecond memory line' "$mode compacted memory"
+    assert_not_contains "$out" "Everything below is printed in full" "$mode still promises full metas"
   done
-  assert_contains "$out" "backend=orca terminal=terminal-recovery-id" "re-emit lost Orca endpoint recovery"
-  assert_contains "$out" "backend=t3code t3_thread_id=thread-recovery-id" "re-emit lost t3code endpoint recovery"
-  assert_contains "$out" "--- missing ---" "re-emit lost incomplete lane"
-  assert_contains "$out" "endpoint: unknown (no window recorded)" "re-emit hid missing endpoint"
-  assert_contains "$out" "no status file yet" "re-emit hid missing history"
-  assert_contains "$out" "$home/state/<id>.meta" "re-emit omitted full metadata recovery path"
-  assert_contains "$out" "bin/fm-crew-state.sh <id>" "re-emit omitted targeted current-state recovery"
-  assert_not_contains "$out" "omitted-paused" "re-emit retained non-recovery metadata"
-  assert_not_contains "$out" "old-paused" "re-emit retained paused history"
-  assert_not_contains "$out" "old-held" "re-emit retained held history"
-  assert_contains "$out" "waiting-paused" "re-emit lost declared wait reason"
-  assert_contains "$out" "waiting-held" "re-emit lost held latest event"
-  assert_contains "$out" "old-resumed" "re-emit compacted a resumed lane"
-  assert_contains "$out" "orphan earlier" "re-emit compacted orphan history without meta"
-  assert_contains "$out" $'Memory must stay full\nsecond memory line' "re-emit compacted memory"
-  active=$(printf '%s\n' "$full" | awk '/^--- active ---$/ {p=1;next} /^--- / {p=0} p && /^status tail / {s=1} p && s {print}')
-  reemit_active=$(printf '%s\n' "$out" | awk '/^--- active ---$/ {p=1;next} /^--- / {p=0} p && /^status tail / {s=1} p && s {print}')
-  [ "$active" = "$reemit_active" ] || fail "active lane recent status changed during re-emit"
-  assert_not_contains "$out" "Everything below is printed in full" "re-emit still promises full metas"
-  pass "re-emit summarizes metadata and declared waits, retaining active/orphan history and recovery pointers"
+  active=$(printf '%s\n' "$startup_out" | awk '/^--- active ---$/ {p=1;next} /^--- / {p=0} p && /^status tail / {s=1} p && s {print}')
+  reemit_active=$(printf '%s\n' "$reemit_out" | awk '/^--- active ---$/ {p=1;next} /^--- / {p=0} p && /^status tail / {s=1} p && s {print}')
+  [ "$active" = "$reemit_active" ] || fail "active lane recent status changed between startup and re-emit"
+  pass "startup and re-emit summarize metadata and declared waits, retaining active/orphan history and recovery pointers"
 }
 
 test_reemit_backlog_projection_and_overlap() {
-  local rec root home fakebin out log
+  local rec root home fakebin out log mode flag
   rec=$(new_world reemit-backlog)
   IFS='|' read -r root home fakebin <<EOF
 $rec
@@ -2444,23 +2539,32 @@ EOF
   printf 'holder:other-main\n' > "$home/state/.lock"
   printf '# Backlog\n' > "$home/data/backlog.md"
   log="$home/tasks.log"
-  out=$(FM_FAKE_TASKS_AXI_OVERLAP=1 FM_FAKE_TASKS_AXI_LOG="$log" FM_LOCK_HOLDER=test-main \
-    run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" --reemit)
-  [ "$(printf '%s\n' "$out" | grep -c 'Compact startup digest')" -eq 1 ] || fail "re-emit duplicated an overlapping held in-flight row"
-  assert_contains "$out" "Held queued work" "re-emit dropped a non-overlapping held item"
-  assert_contains "$out" "2026-11-10" "re-emit dropped hold-until"
-  assert_contains "$out" "blocked-followup" "re-emit dropped dependency"
-  assert_not_contains "$out" "captain choice pending" "re-emit still prints long hold reasons"
-  assert_contains "$out" "hold reasons omitted" "re-emit failed to disclose backlog omissions"
-  assert_contains "$(cat "$log")" "--fields blocked_by,hold_kind,hold_until" "re-emit requested the wrong projection"
-  assert_not_contains "$(cat "$log")" "hold_reason" "re-emit requested hold reasons"
+  for mode in startup re-emit; do
+    : > "$log"
+    flag=
+    [ "$mode" = startup ] || flag=--reemit
+    out=$(FM_FAKE_TASKS_AXI_OVERLAP=1 FM_FAKE_TASKS_AXI_LOG="$log" FM_LOCK_HOLDER=test-main \
+      run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" ${flag:+"$flag"})
+    [ "$(printf '%s\n' "$out" | grep -c 'Compact startup digest')" -eq 1 ] || fail "$mode duplicated an overlapping held in-flight row"
+    assert_contains "$out" "Held queued work" "$mode dropped a non-overlapping held item"
+    assert_contains "$out" "2026-11-10" "$mode dropped hold-until"
+    assert_contains "$out" "blocked-followup" "$mode dropped dependency"
+    assert_not_contains "$out" "captain choice pending" "$mode still prints long hold reasons"
+    assert_contains "$out" "hold reasons omitted" "$mode failed to disclose backlog omissions"
+    assert_contains "$(cat "$log")" "--fields blocked_by,hold_kind,hold_until" "$mode requested the wrong projection"
+    assert_not_contains "$(cat "$log")" "hold_reason" "$mode requested hold reasons"
+  done
   # Manual/unavailable fallback stays conservative: title-line metadata intact.
   printf 'manual\n' > "$home/config/backlog-backend"
   printf '## In flight\n- [ship] manual-row (hold: preserve title reason)\n  private body\n' > "$home/data/backlog.md"
-  out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" --reemit)
-  assert_contains "$out" "preserve title reason" "manual re-emit dropped title-line hold metadata"
-  assert_not_contains "$out" "private body" "manual re-emit printed task bodies"
-  pass "re-emit omits hold reasons and duplicate rows only through tasks-axi, preserving recovery fields/fallback"
+  for mode in startup re-emit; do
+    flag=
+    [ "$mode" = startup ] || flag=--reemit
+    out=$(FM_LOCK_HOLDER=test-main run_named_harness_session_start claude "$home" "$root" "$fakebin:$BASE_PATH" ${flag:+"$flag"})
+    assert_contains "$out" "preserve title reason" "manual $mode dropped title-line hold metadata"
+    assert_not_contains "$out" "private body" "manual $mode printed task bodies"
+  done
+  pass "startup and re-emit omit hold reasons and duplicate rows only through tasks-axi, preserving recovery fields/fallback"
 }
 
 # make_fake_ntn <fakebin>: an ntn whose board data source reads unless
@@ -3253,6 +3357,7 @@ test_captain_board_leaves_out_only_proven_items
 test_reemit_compacts_only_waiting_lane_history
 test_reemit_backlog_projection_and_overlap
 test_context_digest_absent_empty_present
+test_secondmates_digest_lists_path_and_count
 test_lock_refusal_read_only_path
 test_lock_write_failure_read_only_path
 test_trace_context_effective_state_is_frozen_after_lock

@@ -80,7 +80,7 @@ Treat `data/captain.md` as the domain-local record of captain preferences, optio
 
 Read the complete digest once and trust it as this turn's startup and recovery input.
 If the harness shows only a preview and persists the full output to a file, read that file before acting.
-Do not separately re-read the context, backlog, metadata, or bulk status inputs it just printed unless a source was reported absent or corrupt, older history is specifically needed, or a targeted workflow must inspect before writing.
+Do not separately re-read the context files it printed in full or bulk-read the backlog, metadata, or status logs unless a source was reported absent or corrupt, omitted details or older history are specifically needed, routing needs `data/secondmates.md` (listed by path and count), or a targeted workflow must inspect before writing.
 An `ABSENT` captain, shared-captain, secondmate, or learnings file means the firstmate repo's built-in defaults, no shared captain preferences, no registered secondmates, or no captured learnings; rebuild an absent or stale project registry from the clones before dispatch.
 
 A session that is not main's named holder (`FM_LOCK_HOLDER`, normally claude) stays read-only: if the session lock cannot be acquired and verified, report its exact diagnostic and remain read-only; another active session is only one possible cause.

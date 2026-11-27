@@ -95,13 +95,21 @@ The Stop hook runs the supervision host in the arm's place, and everything above
 ================================================================================
 READ-ONCE CONTRACT
 ================================================================================
-Everything below is printed in full for this session start: every state/*.meta,
-a compact data/backlog.md listing, a bounded tail of every state/*.status,
-data/projects.md, data/secondmates.md, data/captain.md, data/captain-shared.md,
-and data/learnings.md.
+This digest compacts fleet records and summarizes data/secondmates.md, while
+keeping safety and memory inputs in full:
+  - each lane has a one-line meta summary (identity, endpoint, location and delivery pointers);
+    read @HOME@/state/<id>.meta for its full metadata, or bin/fm-crew-state.sh <id> for current state;
+  - declared paused/held lanes show only their latest status event, with a full log path;
+    active lanes and orphan logs keep bounded recent status tails;
+  - tasks-axi backlog hold reasons are omitted and overlapping in-flight/held rows appear once;
+    use bin/fm-tasks-axi.sh show <id> --full for a full task record;
+  - data/secondmates.md is listed as its path and entry count rather than full text;
+    read @HOME@/data/secondmates.md directly when routing or inspecting secondmate routes.
+Wake queue, open decisions, unread status, supervision instructions, data/projects.md,
+data/captain.md, data/captain-shared.md, and data/learnings.md are printed in full.
 Do NOT re-read any of them after reading this digest, and do NOT bulk-read
-data/backlog.md or state/*.status: re-reading everything defeats the entire
-point of this command.
+data/backlog.md, state/*.meta, or state/*.status: targeted full records above remain
+available when recovery needs omitted details.
 
 Go to a source directly only when:
   - this digest flagged it ABSENT (then rebuild or create it per AGENTS.md),
@@ -109,8 +117,9 @@ Go to a source directly only when:
   - an individual full status log is needed for older wake-event history, or a
     status line was capped and its tail matters (each task's full log path is
     printed with its tail),
-  - a full task body is needed (bin/fm-tasks-axi.sh show <id> --full, or data/backlog.md),
-  - the backlog listing disclosed omitted queued items and this turn needs them,
+  - a full task body or hold reason is needed (bin/fm-tasks-axi.sh show <id> --full, or data/backlog.md),
+  - the backlog listing disclosed omitted held or queued items and this turn needs them,
+  - secondmate routing or inspection needs the route table (@HOME@/data/secondmates.md),
   - the NETWORK CHECKS section reported its checks still IN PROGRESS and this
     turn needs their verdict (bin/fm-startup-network.sh report),
   - or a STARTUP TRUNCATED banner named the stage that would have printed it, in
@@ -124,22 +133,22 @@ FLEET STATE
 
 data/backlog.md
 --------------------------------------------------------------------------------
-compact backlog listing (tasks-axi; done rows omitted; every in-flight and blocked row shown in full; held bounded to 20; ready queued bounded to 20; task bodies omitted)
+compact backlog listing (tasks-axi; done rows omitted; hold reasons omitted, use bin/fm-tasks-axi.sh show <id> --full; overlapping in-flight/held rows shown once; held bounded to 20; ready queued bounded to 20; task bodies omitted)
 
 in flight:
 count: 1
-tasks[1]{id,state,kind,repo,title,blocked_by,hold_kind,hold_reason}:
-  compact-startup,in_flight,ship,firstmate,Compact startup digest,none,captain,captain choice pending
+tasks[1]{id,state,kind,repo,title,blocked_by,hold_kind,hold_until}:
+  compact-startup,in_flight,ship,firstmate,Compact startup digest,none,captain,2026-11-10
 
-held (captain- or time-gated; an in-flight item that is also held appears in both groups):
+held (captain- or time-gated; in-flight rows already shown above omitted; tool counts include overlaps):
 count: 1
-tasks[1]{id,state,kind,repo,title,blocked_by,hold_kind,hold_reason}:
-  held-queued,queued,ship,firstmate,Held queued work,none,captain,captain choice pending
+tasks[1]{id,state,kind,repo,title,blocked_by,hold_kind,hold_until}:
+  held-queued,queued,ship,firstmate,Held queued work,none,captain,2026-11-10
 (shown 1 of 1 held item(s))
 
 blocked queued:
 count: 1
-tasks[1]{id,state,kind,repo,title,blocked_by,hold_kind,hold_reason}:
+tasks[1]{id,state,kind,repo,title,blocked_by,hold_kind,hold_until}:
   blocked-followup,queued,scout,firstmate,Follow compact startup,compact-startup,"-","-"
 
 ready queued (dispatchable now):
@@ -155,13 +164,9 @@ Work under way (state/*.meta)
 --------------------------------------------------------------------------------
 
 --- lane ---
-kind=ship
-window=
-worktree=/isolated/sample
-custom=keep-full-at-startup
+meta summary: kind=ship window='' worktree=/isolated/sample
 endpoint: unknown (no window recorded)
-status tail (last 5 line(s), each capped at 220 characters, wake-EVENT history, not current state; full log: @HOME@/state/lane.status):
-working: older event
+status history compacted (declared paused/held; latest wake-EVENT, not current state; full log: @HOME@/state/lane.status):
 paused: declared wait
 
 Orphan status logs (state/*.status without matching .meta)

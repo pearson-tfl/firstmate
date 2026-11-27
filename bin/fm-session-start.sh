@@ -48,22 +48,28 @@
 #                       detected primary harness.
 #   5. read-once contract - the do-not-re-read contract covering every source
 #                       represented by the two digests below.
-#   6. fleet digest   - a compact data/backlog.md identity/metadata listing,
-#                       every state/*.meta, a bounded state/*.status tail,
-#                       the away posture (state/.afk-contract and the legacy
-#                       state/.afk daemon flag), and a cheap per-task
-#                       endpoint-liveness read, each bounded and crash-
-#                       isolated so one task's read can never abort the
-#                       digest: read-only, always runs. The per-task reads
-#                       run serially, so with a wedged backend the stage's
-#                       ceiling is tasks x the per-read bound
+#   6. fleet digest   - a compact data/backlog.md identity/metadata listing
+#                       (tasks-axi omits hold reasons, deduplicates overlapping
+#                       in-flight/held rows, and bounds held and ready queued
+#                       groups), a one-line meta summary per state/*.meta, a
+#                       compacted latest event for declared paused/held lanes
+#                       or bounded state/*.status tail for active/orphan logs
+#                       (each with its full log path), the away posture
+#                       (state/.afk-contract and the legacy state/.afk daemon
+#                       flag), and a cheap per-task endpoint-liveness read,
+#                       each bounded and crash-isolated so one task's read can
+#                       never abort the digest: read-only, always runs. The
+#                       per-task reads run serially, so with a wedged backend
+#                       the stage's ceiling is tasks x the per-read bound
 #                       (FM_SESSION_START_ENDPOINT_TIMEOUT, default 10s) and
 #                       can itself reach the digest's runtime bound.
 #   7. network checks - the result of the deferred network stage started back at
 #                       step 1, harvested WITHOUT waiting for it.
-#   8. context digest - data/projects.md, data/secondmates.md, data/captain.md,
-#                       data/captain-shared.md, data/learnings.md: read-only,
-#                       always safe, always runs.
+#   8. context digest - data/projects.md, data/captain.md,
+#                       data/captain-shared.md, and data/learnings.md in full,
+#                       plus data/secondmates.md as its path and entry count
+#                       (read directly when routing): read-only, always safe,
+#                       always runs.
 #   9. closing reminder - prints the context-specific watcher next step; this
 #                       script points back to the emitted harness supervision
 #                       block and deliberately never arms the watcher itself.
@@ -228,13 +234,15 @@
 #             the ordinary read-only path. A re-emit prints a short RE-EMIT CUE
 #             first, so a harness that spills a large output and shows only its
 #             head still tells the model to read the saved full output.
-#             Only this mode compacts fleet records: meta summaries retain lane
-#             identity, location and delivery pointers; declared paused/held
-#             status histories become their latest event plus a full-log path.
-#             Backlog hold reasons are omitted (targeted show recovers them),
-#             and overlapping in-flight/held rows print once. Active status
-#             tails and all safety, wake, supervision and memory output remain.
-#             Ordinary startup output is unchanged.
+#             Both ordinary startup and --reemit use the same compact fleet
+#             projection and data/secondmates.md path-with-count summary: meta
+#             summaries retain lane identity, location and delivery pointers;
+#             declared paused/held status histories become their latest event
+#             plus a full-log path; tasks-axi backlog hold reasons are omitted
+#             (bin/fm-tasks-axi.sh show <id> --full recovers them) and
+#             overlapping in-flight/held rows print once. Active status tails,
+#             orphan logs, and all safety, wake, supervision and memory output
+#             remain in full.
 #
 # CAPTAIN'S BOARD. With config/captain-board present (both modes, tasks-axi
 # backlogs only), a captain-held item whose title or hold reason cites a card
@@ -398,11 +406,12 @@ PRIMARY_HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || printf unknown)
 # shellcheck source=bin/fm-hold-reason-lib.sh
 . "$SCRIPT_DIR/fm-hold-reason-lib.sh"
 
-# Re-emit alone classifies declared waits to compact their status history.
-if [ "$REEMIT" -eq 1 ]; then
-  # shellcheck source=bin/fm-classify-lib.sh
-  . "$SCRIPT_DIR/fm-classify-lib.sh"
-fi
+# Classify declared waits to compact their status history on every session start.
+# shellcheck source=bin/fm-classify-lib.sh
+. "$SCRIPT_DIR/fm-classify-lib.sh"
+# Count canonical data/secondmates.md route entries with the shared parser.
+# shellcheck source=bin/fm-secondmate-registry-lib.sh
+. "$SCRIPT_DIR/fm-secondmate-registry-lib.sh"
 
 # One tasks-axi compatibility verdict per session start. The probe costs three
 # tasks-axi subprocesses and this digest needs the same answer twice - here for
@@ -428,8 +437,7 @@ case "$HELD_LIMIT" in ''|*[!0-9]*|0) HELD_LIMIT=20 ;; esac
 ENDPOINT_TIMEOUT=${FM_SESSION_START_ENDPOINT_TIMEOUT:-10}
 case "$ENDPOINT_TIMEOUT" in ''|*[!0-9]*) ENDPOINT_TIMEOUT=10 ;; esac
 [ "$ENDPOINT_TIMEOUT" -gt 0 ] 2>/dev/null || ENDPOINT_TIMEOUT=10
-BACKLOG_FIELDS=blocked_by,hold_kind,hold_reason
-[ "$REEMIT" -eq 0 ] || BACKLOG_FIELDS=blocked_by,hold_kind,hold_until
+BACKLOG_FIELDS=blocked_by,hold_kind,hold_until
 
 RULE='================================================================================'
 SUBRULE='--------------------------------------------------------------------------------'
@@ -454,6 +462,50 @@ print_file_or_absent() {
     fi
   else
     printf 'ABSENT\n'
+  fi
+}
+
+# print_secondmates_summary <path> <label>: list data/secondmates.md as its
+# path and entry count rather than full text, preserving ABSENT and
+# (present, empty) distinctions. Canonical entries are counted with the shared
+# secondmate_registry_parse_line parser; any unrecognized "- " bullet lines are
+# disclosed without dumping route text.
+print_secondmates_summary() {
+  local path=$1 label=$2 line entries=0 unrecognized=0 entry_word bullet_word
+  subsection "$label"
+  if [ ! -f "$path" ]; then
+    printf 'ABSENT\n'
+    return 0
+  fi
+  if [ ! -r "$path" ]; then
+    printf '%s (unreadable; check permissions before routing)\n' "$path"
+    return 0
+  fi
+  if [ ! -s "$path" ]; then
+    printf '(present, empty) - %s (0 entries)\n' "$path"
+    return 0
+  fi
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "- "*)
+        if secondmate_registry_parse_line "$line"; then
+          entries=$((entries + 1))
+        else
+          unrecognized=$((unrecognized + 1))
+        fi
+        ;;
+    esac
+  done < "$path"
+  entry_word=entries
+  [ "$entries" -eq 1 ] && entry_word=entry
+  if [ "$unrecognized" -gt 0 ]; then
+    bullet_word='unrecognized bullet lines'
+    [ "$unrecognized" -eq 1 ] && bullet_word='unrecognized bullet line'
+    printf '%s (%d %s, %d %s; read directly when routing or inspecting secondmate routes)\n' \
+      "$path" "$entries" "$entry_word" "$unrecognized" "$bullet_word"
+  else
+    printf '%s (%d %s; read directly when routing or inspecting secondmate routes)\n' \
+      "$path" "$entries" "$entry_word"
   fi
 }
 
@@ -571,7 +623,7 @@ print_held_bounded() {
 
 # Filter only rows already emitted by the in-flight listing, retaining the
 # tool's headers and explicit counts (which are labeled as pre-deduplication).
-print_reemit_held() {
+print_deduped_held() {
   local in_flight=$1 held=$2
   { printf '%s\n' "$in_flight" | strip_axi_help; printf '\034\n';
     printf '%s\n' "$held" | strip_axi_help; } | awk '
@@ -641,27 +693,18 @@ print_backlog_tasks_axi_compact() {
     err=$ready
   else
     check_captain_board "$path"
-    if [ "$REEMIT" -eq 1 ]; then
-      printf 'compact backlog listing (tasks-axi re-emit; hold reasons omitted, use bin/fm-tasks-axi.sh show <id> --full; overlapping in-flight/held rows shown once; held bounded to %s; ready queued bounded to %s; task bodies omitted)\n' "$HELD_LIMIT" "$QUEUED_LIMIT"
-    else
-      printf 'compact backlog listing (tasks-axi; done rows omitted; every in-flight and blocked row shown in full; held bounded to %s; ready queued bounded to %s; task bodies omitted)\n' \
-        "$HELD_LIMIT" "$QUEUED_LIMIT"
-    fi
+    printf 'compact backlog listing (tasks-axi; done rows omitted; hold reasons omitted, use bin/fm-tasks-axi.sh show <id> --full; overlapping in-flight/held rows shown once; held bounded to %s; ready queued bounded to %s; task bodies omitted)\n' \
+      "$HELD_LIMIT" "$QUEUED_LIMIT"
     printf '\nin flight:\n'
-    printf '%s\n' "$in_flight" | fm_hold_reason_decode_stream | strip_axi_help
-    if [ "$REEMIT" -eq 1 ]; then
-      printf '\nheld (captain- or time-gated; in-flight rows already shown above omitted; tool counts include overlaps):\n'
-      # IDs are the first field of tasks-axi listing rows. Do not parse titles
-      # or reasons as CSV: those fields may contain quoted commas/newlines.
-      # Re-emit requests no reason/body fields, so each identity is one row.
-      print_reemit_held "$in_flight" "$held" | omit_board_proven | print_held_bounded
-    else
-      printf '\nheld (captain- or time-gated; an in-flight item that is also held appears in both groups):\n'
-      printf '%s\n' "$held" | fm_hold_reason_decode_stream | strip_axi_help | omit_board_proven | print_held_bounded
-    fi
+    printf '%s\n' "$in_flight" | strip_axi_help
+    printf '\nheld (captain- or time-gated; in-flight rows already shown above omitted; tool counts include overlaps):\n'
+    # IDs are the first field of tasks-axi listing rows. Do not parse titles
+    # or reasons as CSV: those fields may contain quoted commas/newlines.
+    # This listing requests no reason/body fields, so each identity is one row.
+    print_deduped_held "$in_flight" "$held" | omit_board_proven | print_held_bounded
     [ -z "$BOARD_NOTE" ] || printf '%s\n' "$BOARD_NOTE"
     printf '\nblocked queued:\n'
-    printf '%s\n' "$blocked" | fm_hold_reason_decode_stream | strip_axi_help
+    printf '%s\n' "$blocked" | strip_axi_help
     printf '\nready queued (dispatchable now):\n'
     print_ready_queued_bounded "$ready"
     return 0
@@ -694,7 +737,7 @@ print_backlog_compact() {
 
 print_status_tail() {
   local status=$1 compact=${2:-1} line latest
-  if [ "$REEMIT" -eq 1 ] && [ "$compact" -eq 1 ]; then
+  if [ "$compact" -eq 1 ]; then
     latest=$(last_status_line "$status")
     if status_is_paused_or_captain_held "$latest"; then
       printf 'status history compacted (declared paused/held; latest wake-EVENT, not current state; full log: %s):\n' "$status"
@@ -1053,31 +1096,22 @@ fi
 # a stage that never ran, which the truncation banner names by stage.
 stage read-once
 section "READ-ONCE CONTRACT"
-if [ "$REEMIT" -eq 1 ]; then
-  cat <<EOF
-This context re-emit compacts fleet records, not safety or memory inputs:
+cat <<EOF
+This digest compacts fleet records and summarizes data/secondmates.md, while
+keeping safety and memory inputs in full:
   - each lane has a one-line meta summary (identity, endpoint, location and delivery pointers);
     read $STATE/<id>.meta for its full metadata, or bin/fm-crew-state.sh <id> for current state;
   - declared paused/held lanes show only their latest status event, with a full log path;
     active lanes and orphan logs keep bounded recent status tails;
   - tasks-axi backlog hold reasons are omitted and overlapping in-flight/held rows appear once;
-    use bin/fm-tasks-axi.sh show <id> --full for a full task record.
-Wake queue, open decisions, unread status, supervision instructions and memory files
-are not compacted. Read represented sources once; targeted full records above remain
-available when recovery needs omitted details. Do not bulk-read the fleet again.
-EOF
-else
-cat <<'EOF'
-Everything below is printed in full for this session start: every state/*.meta,
-a compact data/backlog.md listing, a bounded tail of every state/*.status,
-data/projects.md, data/secondmates.md, data/captain.md, data/captain-shared.md,
-and data/learnings.md.
+    use bin/fm-tasks-axi.sh show <id> --full for a full task record;
+  - data/secondmates.md is listed as its path and entry count rather than full text;
+    read $DATA/secondmates.md directly when routing or inspecting secondmate routes.
+Wake queue, open decisions, unread status, supervision instructions, data/projects.md,
+data/captain.md, data/captain-shared.md, and data/learnings.md are printed in full.
 Do NOT re-read any of them after reading this digest, and do NOT bulk-read
-data/backlog.md or state/*.status: re-reading everything defeats the entire
-point of this command.
-EOF
-fi
-cat <<'EOF'
+data/backlog.md, state/*.meta, or state/*.status: targeted full records above remain
+available when recovery needs omitted details.
 
 Go to a source directly only when:
   - this digest flagged it ABSENT (then rebuild or create it per AGENTS.md),
@@ -1085,8 +1119,9 @@ Go to a source directly only when:
   - an individual full status log is needed for older wake-event history, or a
     status line was capped and its tail matters (each task's full log path is
     printed with its tail),
-  - a full task body is needed (bin/fm-tasks-axi.sh show <id> --full, or data/backlog.md),
-  - the backlog listing disclosed omitted queued items and this turn needs them,
+  - a full task body or hold reason is needed (bin/fm-tasks-axi.sh show <id> --full, or data/backlog.md),
+  - the backlog listing disclosed omitted held or queued items and this turn needs them,
+  - secondmate routing or inspection needs the route table ($DATA/secondmates.md),
   - the NETWORK CHECKS section reported its checks still IN PROGRESS and this
     turn needs their verdict (bin/fm-startup-network.sh report),
   - or a STARTUP TRUNCATED banner named the stage that would have printed it, in
@@ -1109,11 +1144,7 @@ for meta in "$STATE"/*.meta; do
   META_FOUND=1
   id=$(basename "$meta" .meta)
   printf '\n--- %s ---\n' "$id"
-  if [ "$REEMIT" -eq 1 ]; then
-    print_meta_summary "$meta"
-  else
-    cat "$meta"
-  fi
+  print_meta_summary "$meta"
 
   window=$(fm_meta_get "$meta" window)
   target=$(fm_backend_target_of_meta "$meta")
@@ -1234,7 +1265,7 @@ fi
 stage context
 section "CONTEXT"
 print_file_or_absent "$DATA/projects.md" "data/projects.md"
-print_file_or_absent "$DATA/secondmates.md" "data/secondmates.md"
+print_secondmates_summary "$DATA/secondmates.md" "data/secondmates.md"
 print_file_or_absent "$DATA/captain.md" "data/captain.md"
 print_file_or_absent "$DATA/captain-shared.md" "data/captain-shared.md (shared, main-authoritative, read-only in secondmate homes)"
 print_file_or_absent "$DATA/learnings.md" "data/learnings.md"
