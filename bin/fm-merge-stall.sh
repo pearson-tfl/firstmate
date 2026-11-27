@@ -13,13 +13,15 @@
 # keys only off a `done:` line, and the merge poll reports only a merge, so a
 # PR the home could merge sat unmerged with nobody told.
 #
-# A task is a merge-stall candidate when all of these hold:
+# Each scan is a stateless per-sweep check: it derives every waiting task and
+# its current PR from live records and the forge, reaching one verdict per
+# task. A task is a merge-stall candidate when all of these hold:
 #   - its meta records kind=ship, yolo=on (the home merges its green PRs
 #     without asking), mode other than local-only, and a pr= URL or an open
 #     PR on its recorded branch;
 #   - no matching merge-notification marker or forge result confirms it ended;
-#     once the recorded PR is merged or closed, its identity is retired and the
-#     task's branch is searched again, so a later PR from the same task counts;
+#     once the recorded PR is merged or closed, it has ended for this scan and
+#     the task's branch is searched again, so a later PR from the same task counts;
 #   - its worker waits on the home: the declared wait is a `paused:` line, or
 #     the newest status event is `done:`, with current activity reconciled
 #     by bin/fm-crew-state.sh before either declaration is accepted; a worker
@@ -29,11 +31,12 @@
 #     worker activity is read; a held answer skips worker activity and suppresses
 #     merge reminders; an unreadable answer wakes the home to repair the
 #     authorization read without instructing it to merge.
-# A candidate's stall starts at its waiting line's [at=] time, or when first
-# seen, and is kept across scans and watcher restarts in state/.merge-stall
+# state/.merge-stall is only the notification log, never the candidate set:
 # (<task> TAB <url> TAB <since> TAB <last-wake> TAB <escalated> TAB <episode>).
-# Age, reminder history, and escalation belong to that exact waiting line;
-# replacing it starts a new episode and resolves the old episode's parent key.
+# A candidate's stall starts at its waiting line's [at=] time, or when first
+# logged; age, reminder history, and escalation belong to that exact waiting
+# line, and replacing it starts a new episode. A logged row the scan does not
+# log again ends its episode and resolves its parent key.
 #
 # Once a stall is FM_MERGE_STALL_SECS old (default 600), scan prints one line
 # for the watcher to wake the home with, directing it to merge through
@@ -59,9 +62,9 @@
 # One line per scan, for the least recently notified due stall, oldest first
 # among ties; terminal PRs never consume that slot.
 #
-# Nothing here merges, comments, or changes a PR. Unreadable task evidence
-# retains that task's previous episodes except the PR identity already retired
-# in this scan, and adds a diagnostic without stopping readable sibling tasks.
+# Nothing here merges, comments, or changes a PR. A task whose evidence is
+# unreadable keeps its logged rows verbatim, except a PR this scan confirmed
+# ended, and adds a diagnostic without stopping readable sibling tasks.
 # Activity, PR discovery, forge-state, and captain-hold reads each have
 # FM_MERGE_STALL_READ_TIMEOUT seconds (default 20). The watcher's
 # merge_stall_scan in bin/fm-watch.sh owns the task-count-scaled scan deadline.
@@ -179,14 +182,19 @@ resolve_stall() {
   esac
 }
 
+# Task <id>'s evidence is unreadable: its verdict keeps its logged rows.
 task_uncertain() {
-  local preserved
   scan_active
   diagnostics=$(fm_parent_channel_clean_note "${diagnostics:+$diagnostics; }$*")
-  rows=$(printf '%s' "$rows" | awk -F '\t' -v t="$id" '$1 != t')
-  [ -z "$rows" ] || rows="$rows"$'\n'
-  preserved=$(printf '%s' "$old" | awk -F '\t' -v t="$id" -v retired="$retired_url" '$1 == t && $2 != retired')
-  [ -z "$preserved" ] || rows="$rows$preserved"$'\n'
+  uncertain=1
+}
+
+# The first well-formed logged row of task <id>'s current episode, on <url>
+# when given, whose PR this scan has not confirmed ended.
+logged_row() {  # [<url>]
+  printf '%s\n' "$old_task" | awk -F '\t' -v u="${1:-}" -v e="$episode" -v ended=" $ended " '
+    $6 == e && $2 != "" && (u == "" || $2 == u) && !index(ended, " " $2 " ") \
+      && $3 ~ /^[0-9]+$/ && $4 ~ /^[0-9]+$/ && $5 ~ /^[0-9]+$/ { print; exit }'
 }
 
 # Find the open, ready PR whose head is task <id>'s branch on the owner/repo
@@ -255,30 +263,27 @@ EOF
   [ "$FM_PR_PROVIDER" = github ] && [ "$draft" = false ] || return 1
 }
 
-# Track task <id>'s waiting episode on <url>; 3 when the forge reads it merged or closed.
+# Log task <id>'s waiting episode on <url> into its verdict unless the forge
+# reads it a draft, or merged or closed (3, and the PR has ended this scan).
 consider_pr() {
-  episode=$(printf '%s' "$line" | cksum | awk '{print $1}')
-  since='' last=0 escalated=0
-  while IFS=$'\t' read -r o_task o_url o_since o_last o_esc o_episode; do
-    [ "$o_task" = "$id" ] && [ "$o_url" = "$url" ] && [ "$o_episode" = "$episode" ] || continue
-    case "$o_since:$o_last:$o_esc" in *[!0-9:]*|:*|*::*|*:) continue ;; esac
-    since=$o_since last=$o_last escalated=$o_esc
-    break
-  done <<EOF
-$old
+  local row since=0 last=0 escalated=0 age interval forge=
+  row=$(logged_row "$url")
+  if [ -n "$row" ]; then
+    IFS=$'\t' read -r _ _ since last escalated _ <<EOF
+$row
 EOF
-  if [ -z "$since" ]; then
+  else
     since=$(status_line_at_epoch "$line") || since=$NOW
     [ "$since" -le "$NOW" ] || since=$NOW
   fi
   row="$id"$'\t'"$url"$'\t'"$since"$'\t'"$last"$'\t'"$escalated"$'\t'"$episode"
-  rows="$rows$row"$'\n'
   age=$((NOW - since))
-  [ "$age" -ge "$STALL" ] || return 0
   interval=$STALL
   [ "$escalated" = 0 ] || interval=$ESCALATE
-  [ "$last" -eq 0 ] || [ $((NOW - last)) -ge "$interval" ] || return 0
-  forge=
+  if [ "$age" -lt "$STALL" ] || { [ "$last" -ne 0 ] && [ $((NOW - last)) -lt "$interval" ]; }; then
+    task_rows="$task_rows$row"$'\n'
+    return 0
+  fi
   if fm_pr_url_parse "$url" && [ "$FM_PR_PROVIDER" = github ]; then
     if forge=$(fm_exec_timed "$READ_TIMEOUT" 1 "$PR_STATE_BIN" "$url" 2>&1); then
       scan_active
@@ -290,13 +295,10 @@ EOF
     fi
   fi
   case "$forge" in
-    'STATE: '*|'DRAFT: '*)
-      rows=$(printf '%s' "$rows" | awk -F '\t' -v t="$id" -v u="$url" '!($1 == t && $2 == u)')
-      [ -z "$rows" ] || rows="$rows"$'\n'
-      case "$forge" in 'STATE: '*) retired_url=$url; return 3 ;; esac
-      return 0
-      ;;
+    'STATE: '*) ended="$ended $url"; return 3 ;;
+    'DRAFT: '*) return 0 ;;
   esac
+  task_rows="$task_rows$row"$'\n'
   [ "$hold_rc" -ne 0 ] || return 0
   if [ -z "$due_last" ] || [ "$last" -lt "$due_last" ] \
     || { [ "$last" -eq "$due_last" ] && [ "$since" -lt "$due_since" ]; }; then
@@ -311,6 +313,67 @@ if [ -e "$LEDGER" ] || [ -L "$LEDGER" ]; then
   old=$(cat "$LEDGER") || { echo 'fm-merge-stall: ledger read failed' >&2; exit 1; }
 fi
 
+# Reach task <id>'s verdict from live records: log its waiting episode in
+# task_rows, or leave task_rows empty when it is no candidate, or call
+# task_uncertain when its evidence is unreadable.
+judge_task() {
+  local recorded activity activity_rc=0
+  [ "$(meta_get "$meta" kind)" = ship ] || return 0
+  [ "$(meta_get "$meta" yolo)" = on ] || return 0
+  [ "$(meta_get "$meta" mode)" != local-only ] || return 0
+  line=$(waiting_line "$STATE/$id.status") || return 0
+  episode=$(printf '%s' "$line" | cksum | awk '{print $1}')
+  url=$(meta_get "$meta" pr)
+  if [ -n "$url" ]; then
+    fm_pr_url_parse "$url" || { task_uncertain "PR identity unreadable for $id: $url"; return 0; }
+    if fm_pr_poll_merge_already_notified "$STATE" "$id" "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER"; then
+      ended=" $url"
+      # A task with no branch copy left has no next PR to search for.
+      [ -n "$(meta_get "$meta" branch)" ] || return 0
+      url=
+    fi
+  fi
+  hold_rc=0
+  hold_error=$(fm_exec_timed "$READ_TIMEOUT" 1 env FM_HOME="$FM_HOME" "$CAPTAIN_HOLD_BIN" open "$id" 2>&1) || hold_rc=$?
+  scan_active
+  if [ "$hold_rc" -eq 0 ]; then
+    # A held task is never told to merge: its logged episode only watches for its PR to end.
+    url=$(logged_row | cut -f2)
+    [ -z "$url" ] || consider_pr || :
+    return 0
+  fi
+  if [ "$hold_rc" -eq 1 ]; then
+    hold_error=
+  else
+    hold_error=$(fm_parent_channel_clean_note "$hold_error")
+    hold_error="captain-hold read failed (rc=$hold_rc)${hold_error:+: $hold_error}"
+  fi
+  activity=$(fm_exec_timed "$READ_TIMEOUT" 1 env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_CREW_STATE_NO_FORGE=1 "$CREW_STATE_BIN" "$id" 2>&1) || activity_rc=$?
+  scan_active
+  if [ "$activity_rc" -ne 0 ]; then
+    task_uncertain "current activity read failed for $id (rc=$activity_rc): $activity"
+    return 0
+  fi
+  case "$activity" in
+    'state: paused '*|'state: done '*) ;;
+    'state: working '*|'state: parked '*|'state: blocked '*|'state: failed '*) return 0 ;;
+    *)
+      crew_state_is_worker_gone "$activity" && return 0
+      task_uncertain "current activity unreadable for $id: $activity"
+      return 0
+      ;;
+  esac
+  recorded=$url
+  if [ -z "$url" ]; then
+    discover_pr || return 0
+  fi
+  consider_pr && return 0
+  # A merged or closed recorded PR has ended; the task's next PR, if any, counts.
+  if [ -n "$recorded" ] && [ -n "$(meta_get "$meta" branch)" ] && discover_pr && [ "$url" != "$recorded" ]; then
+    consider_pr || :
+  fi
+}
+
 rows=
 diagnostics=
 due_row=
@@ -323,76 +386,14 @@ for meta in "$STATE"/*.meta; do
   scan_active
   [ -f "$meta" ] && [ ! -L "$meta" ] || continue
   id=${meta##*/}; id=${id%.meta}
-  [ "$(meta_get "$meta" kind)" = ship ] || continue
-  [ "$(meta_get "$meta" yolo)" = on ] || continue
-  [ "$(meta_get "$meta" mode)" != local-only ] || continue
-  line=$(waiting_line "$STATE/$id.status") || continue
-  retired_url=
-  url=$(meta_get "$meta" pr)
-  if [ -n "$url" ]; then
-    if ! fm_pr_url_parse "$url"; then
-      task_uncertain "PR identity unreadable for $id: $url"
-      continue
-    fi
-    if fm_pr_poll_merge_already_notified "$STATE" "$id" "$FM_PR_PROVIDER" "$FM_PR_HOST" "$FM_PR_PATH" "$FM_PR_NUMBER"; then
-      retired_url=$url
-      # A task with no branch copy left has no next PR to search for.
-      [ -n "$(meta_get "$meta" branch)" ] || continue
-      url=
-    fi
+  old_task=$(printf '%s\n' "$old" | awk -F '\t' -v t="$id" '$1 == t')
+  task_rows='' ended='' uncertain=0
+  judge_task
+  if [ "$uncertain" = 1 ]; then
+    task_rows=$(printf '%s\n' "$old_task" | awk -F '\t' -v ended="$ended " 'NF && !index(ended, " " $2 " ")')
+    [ -z "$task_rows" ] || task_rows="$task_rows"$'\n'
   fi
-  hold_rc=0
-  hold_error=$(fm_exec_timed "$READ_TIMEOUT" 1 env FM_HOME="$FM_HOME" "$CAPTAIN_HOLD_BIN" open "$id" 2>&1) || hold_rc=$?
-  scan_active
-  if [ "$hold_rc" -eq 0 ]; then
-    held_episode=$(printf '%s' "$line" | cksum | awk '{print $1}')
-    held_url=
-    while IFS=$'\t' read -r o_task o_url o_since o_last o_esc o_episode; do
-      [ "$o_task" = "$id" ] && [ -n "$o_url" ] && [ "$o_episode" = "$held_episode" ] && [ "$o_url" != "$retired_url" ] || continue
-      case "$o_since:$o_last:$o_esc" in *[!0-9:]*|:*|*::*|*:) continue ;; esac
-      held_url=$o_url
-      break
-    done <<EOF
-$old
-EOF
-    [ -n "$held_url" ] || continue
-    url=$held_url
-    consider_pr || :
-    continue
-  fi
-  if [ "$hold_rc" -eq 1 ]; then
-    hold_error=
-  else
-    hold_error=$(fm_parent_channel_clean_note "$hold_error")
-    hold_error="captain-hold read failed (rc=$hold_rc)${hold_error:+: $hold_error}"
-  fi
-  activity_rc=0
-  activity=$(fm_exec_timed "$READ_TIMEOUT" 1 env FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_CREW_STATE_NO_FORGE=1 "$CREW_STATE_BIN" "$id" 2>&1) || activity_rc=$?
-  scan_active
-  if [ "$activity_rc" -ne 0 ]; then
-    task_uncertain "current activity read failed for $id (rc=$activity_rc): $activity"
-    continue
-  fi
-  case "$activity" in
-    'state: paused '*|'state: done '*) ;;
-    'state: working '*|'state: parked '*|'state: blocked '*|'state: failed '*) continue ;;
-    *)
-      crew_state_is_worker_gone "$activity" && continue
-      task_uncertain "current activity unreadable for $id: $activity"
-      continue
-      ;;
-  esac
-  recorded=$url
-  if [ -z "$url" ]; then
-    discover_pr || continue
-  fi
-  consider_rc=0
-  consider_pr || consider_rc=$?
-  # A merged or closed recorded PR retires; the task's next PR, if any, counts.
-  if [ "$consider_rc" -eq 3 ] && [ -n "$recorded" ] && [ -n "$(meta_get "$meta" branch)" ] \
-    && discover_pr && [ "$url" != "$recorded" ]; then
-    consider_pr || :
-  fi
+  rows="$rows$task_rows"
 done
 
 scan_active
@@ -400,8 +401,8 @@ checkpoint=$(printf '%s\n%s' "$rows" "$old" | awk -F '\t' 'NF >= 5 && !seen[$1 F
 [ -z "$checkpoint" ] || checkpoint="$checkpoint"$'\n'
 save_ledger "$checkpoint" || exit 1
 
-# A stall that ended since the last scan: its row is gone from the rebuilt set.
-while IFS=$'\t' read -r o_task o_url o_since o_last o_esc o_episode; do
+# A logged episode this scan did not log again has ended.
+while IFS=$'\t' read -r o_task o_url o_since _ _ o_episode; do
   [ -n "$o_task" ] || continue
   if printf '%s' "$rows" | awk -F '\t' -v t="$o_task" -v u="$o_url" -v s="$o_since" -v e="$o_episode" \
     '$1 == t && $2 == u && $3 == s && $6 == e { found = 1 } END { exit !found }'; then
