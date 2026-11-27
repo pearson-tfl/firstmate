@@ -3226,6 +3226,86 @@ test_no_run_idle_pane_custom_paused_verb() {
   pass "no run + idle pane honors the configured paused verb"
 }
 
+# FM_CREW_STATE_CACHE_TTL lets repeated callers share one result: a caller that
+# opts in gets the earlier line back even after a source the reader does not key
+# on (the pane) changed, until the TTL passes or the task's status or metadata
+# changes. Without it every read is fresh and nothing is cached.
+test_cache_ttl_shares_one_result_until_status_meta_or_age_changes() {
+  reset_fakes
+  local d out; d=$(new_case cache-ttl)
+  mkdir -p "$d/wt"
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/mate.meta" "window=fm:fm-mate" "worktree=$d/wt" "kind=secondmate" "home=$d/wt"
+  printf 'working: reconciling routed items\n' > "$d/state/mate.status"
+
+  out=$(run_crew_state "$d" mate)
+  assert_contains "$out" "state: working" "fresh read sees the live secondmate"
+  [ ! -e "$d/state/.crew-state-cache" ] || fail "a read without FM_CREW_STATE_CACHE_TTL must not write a cache"
+
+  out=$(FM_CREW_STATE_CACHE_TTL=600 run_crew_state "$d" mate)
+  assert_contains "$out" "state: working" "an opted-in miss computes the live state"
+  FM_FAKE_TMUX_MISSING=1
+  out=$(FM_CREW_STATE_CACHE_TTL=600 run_crew_state "$d" mate)
+  assert_contains "$out" "state: working" "an opted-in caller within the TTL shares the earlier result"
+  out=$(run_crew_state "$d" mate)
+  assert_contains "$out" "state: unknown" "a caller without the TTL still reads the gone endpoint fresh"
+
+  printf 'needs-decision: pick a lane\n' >> "$d/state/mate.status"
+  out=$(FM_CREW_STATE_CACHE_TTL=600 run_crew_state "$d" mate)
+  assert_contains "$out" "state: unknown" "a status event forces a fresh read"
+
+  FM_FAKE_TMUX_MISSING=0
+  out=$(FM_CREW_STATE_CACHE_TTL=600 run_crew_state "$d" mate)
+  assert_contains "$out" "state: unknown" "the fresh result after the status event is the one shared"
+  fm_write_meta "$d/state/mate.meta" "window=fm:fm-mate" "worktree=$d/wt" "kind=secondmate" "home=$d/wt" "spawn_gen=s2"
+  out=$(FM_CREW_STATE_CACHE_TTL=600 run_crew_state "$d" mate)
+  assert_contains "$out" "state: parked" "a metadata change forces a fresh read"
+
+  FM_FAKE_TMUX_MISSING=1
+  sleep 2
+  out=$(FM_CREW_STATE_CACHE_TTL=1 run_crew_state "$d" mate)
+  assert_contains "$out" "state: unknown" "a result older than the TTL is recomputed"
+
+  rm -f "$d/state/mate.meta"
+  out=$(FM_CREW_STATE_CACHE_TTL=600 run_crew_state "$d" mate)
+  assert_contains "$out" "no metadata for mate" "a removed task is never answered from the cache"
+  FM_FAKE_TMUX_MISSING=0
+  pass "FM_CREW_STATE_CACHE_TTL shares one result until status, metadata, or age changes"
+}
+
+# The home-summary snapshot opts its per-task reads into that shared result, so
+# a summary refresh reuses the previous one's reading; the --json fleet view
+# keeps reading fresh, and FM_SNAPSHOT_CREW_STATE_CACHE_TTL=0 turns sharing off.
+test_home_summary_shares_crew_state_and_json_reads_fresh() {
+  reset_fakes
+  local d summary json
+  d=$(new_case summary-cache)
+  mkdir -p "$d/wt" "$d/data" "$d/config" "$d/projects"
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/mate.meta" "window=fm:fm-mate" "worktree=$d/wt" "kind=secondmate" "home=$d/wt"
+  printf 'working: reconciling routed items\n' > "$d/state/mate.status"
+  printf '## In flight\n\n## Queued\n\n## Done\n' > "$d/data/backlog.md"
+  snapshot() {  # <mode>
+    PATH="$d/fakebin:$PATH" FM_HOME="$d" FM_STATE_OVERRIDE="$d/state" FM_ROOT_OVERRIDE="$d/fixture-root" \
+      "$ROOT/bin/fm-fleet-snapshot.sh" "$1"
+  }
+  summary=$(snapshot --secondmate-home-summary)
+  printf '%s' "$summary" | jq -e '.valid == true' >/dev/null || fail "live secondmate gives a valid summary: $summary"
+  FM_FAKE_TMUX_MISSING=1
+  summary=$(snapshot --secondmate-home-summary)
+  printf '%s' "$summary" | jq -e '.valid == true' >/dev/null \
+    || fail "a summary refresh within the TTL reuses the shared reading: $summary"
+  json=$(snapshot --json)
+  printf '%s' "$json" | jq -e '.tasks[] | select(.id == "mate") | .current_state.state == "unknown"' >/dev/null \
+    || fail "--json reads the gone endpoint fresh: $json"
+  summary=$(FM_SNAPSHOT_CREW_STATE_CACHE_TTL=0 snapshot --secondmate-home-summary)
+  printf '%s' "$summary" | jq -e '.valid == false and .invalidity.ids == ["mate"]' >/dev/null \
+    || fail "FM_SNAPSHOT_CREW_STATE_CACHE_TTL=0 reads fresh: $summary"
+  FM_FAKE_TMUX_MISSING=0
+  unset -f snapshot
+  pass "the home summary shares crew-state results; --json and a zero TTL read fresh"
+}
+
 # A trailing keyed resolved: event is a decision-CLOSING event, not a run-state
 # verb. It must never become the current state or leak its resolution prose as the
 # detail: a healthy idle secondmate that just closed a keyed decision falls through
@@ -6196,6 +6276,8 @@ test_no_run_idle_pane_uses_keyed_log
 test_no_run_idle_pane_paused
 test_no_run_idle_pane_custom_paused_verb
 test_no_run_idle_secondmate_resolved_event_not_state
+test_cache_ttl_shares_one_result_until_status_meta_or_age_changes
+test_home_summary_shares_crew_state_and_json_reads_fresh
 test_dead_window_ignores_stale_status_log
 test_gone_window_in_live_session_ignores_stale_status_log
 test_no_run_tmux_unreadable_reads_unreachable_not_gone

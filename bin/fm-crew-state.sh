@@ -162,14 +162,74 @@
 #      classified by step 4. Backends with no classifier keep reading a failed
 #      capture as gone. The fallback's own comment owns the per-verdict rules.
 #
-# Read-only and side-effect free. Always exits 0 on a successful read regardless
-# of state; exit 2 only on a usage error (no id).
+# Shared result cache (opt-in): a caller that can use a result up to N seconds
+# old sets FM_CREW_STATE_CACHE_TTL=N, so repeated callers share one computed
+# line instead of each re-reading every source. The line is kept in
+# state/.crew-state-cache/<id> and reused while it is younger than N seconds,
+# state/<id>.meta exists, and neither state/<id>.meta nor state/<id>.status
+# changed after its computation started; a status event therefore always forces
+# a fresh read. Unset or 0 (the default) never reads or writes the cache.
+#
+# Read-only and side-effect free apart from that opt-in cache. Always exits 0 on
+# a successful read regardless of state; exit 2 only on a usage error (no id).
 set -u
+
+# The cache check runs first, before even resolving the script directory, so a
+# hit costs no process beyond this one. It therefore needs the state directory
+# from FM_STATE_OVERRIDE or FM_HOME; without either the cache is not used.
+# shortcut: the store skips a meta or status change only when its mtime is newer
+# than the start mark, so a write in the same filesystem clock tick can survive
+# until the TTL; a TTL-bounded observational caller tolerates that.
+CACHE_TTL=${FM_CREW_STATE_CACHE_TTL:-0}
+case "$CACHE_TTL" in ''|*[!0-9]*) CACHE_TTL=0 ;; esac
+CACHE_FILE=
+CACHE_MARK=
+CACHE_STATE=${FM_STATE_OVERRIDE:-${FM_HOME:+$FM_HOME/state}}
+if [ "$CACHE_TTL" -gt 0 ] && [ -n "$CACHE_STATE" ] && [ -n "${1:-}" ] && [ "${1##*/}" = "$1" ] && [ "${1#.}" = "$1" ]; then
+  CACHE_DIR=$CACHE_STATE/.crew-state-cache
+  CACHE_FILE=$CACHE_DIR/$1
+  printf -v CACHE_STARTED '%(%s)T' -1
+  if [ -f "$CACHE_FILE" ] && [ -f "$CACHE_STATE/$1.meta" ] \
+    && [ ! "$CACHE_STATE/$1.meta" -nt "$CACHE_FILE" ] && [ ! "$CACHE_STATE/$1.status" -nt "$CACHE_FILE" ] \
+    && { IFS= read -r cached_at && IFS= read -r cached_line; } < "$CACHE_FILE" 2>/dev/null; then
+    case "$cached_at" in
+      ''|*[!0-9]*) ;;
+      *)
+        if [ -n "$cached_line" ] && [ $((CACHE_STARTED - cached_at)) -ge 0 ] \
+          && [ $((CACHE_STARTED - cached_at)) -lt "$CACHE_TTL" ]; then
+          printf '%s\n' "$cached_line"
+          exit 0
+        fi
+        ;;
+    esac
+  fi
+  [ -d "$CACHE_DIR" ] || mkdir -p -- "$CACHE_DIR" 2>/dev/null
+  CACHE_MARK=$CACHE_FILE.mark.$$
+  : > "$CACHE_MARK" 2>/dev/null || CACHE_MARK=
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+
+# Store the computed line only when nothing it was read from changed while it
+# was computed. Marks a killed read left behind for this id are swept here.
+crew_state_cache_store() {  # <line>
+  local mark stale=()
+  for mark in "$CACHE_FILE".mark.*; do
+    [ -e "$mark" ] && [ "$mark" != "$CACHE_MARK" ] && stale+=("$mark")
+  done
+  [ "${#stale[@]}" -eq 0 ] || rm -f -- "${stale[@]}" 2>/dev/null
+  if [ -f "$CACHE_MARK" ] && [ -f "$CACHE_STATE/$ID.meta" ] \
+    && [ ! "$CACHE_STATE/$ID.meta" -nt "$CACHE_MARK" ] && [ ! "$CACHE_STATE/$ID.status" -nt "$CACHE_MARK" ] \
+    && printf '%s\n%s\n' "$CACHE_STARTED" "$1" > "$CACHE_MARK" 2>/dev/null \
+    && mv -f -- "$CACHE_MARK" "$CACHE_FILE" 2>/dev/null; then
+    return 0
+  fi
+  rm -f -- "$CACHE_MARK" 2>/dev/null
+  return 0
+}
 
 # shellcheck source=bin/fm-tmux-lib.sh
 . "$SCRIPT_DIR/fm-tmux-lib.sh"
@@ -229,6 +289,7 @@ emit() {  # <state> <source> [detail]
   fi
   line="state: $1${SEP}source: $2"
   [ -n "${3:-}" ] && line="$line${SEP}$3"
+  [ -z "$CACHE_MARK" ] || crew_state_cache_store "$line"
   printf '%s\n' "$line"
   exit 0
 }

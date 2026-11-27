@@ -6,8 +6,9 @@
 # The command does not acquire the session lock, drain wakes, arm watchers,
 # mutate backlog state, or write reports. Its default ledger collector may
 # atomically refresh parent-side cached copies of remote home summaries under
-# state/secondmate-summary-cache; those observational cache writes are its only
-# fleet-state mutation.
+# state/secondmate-summary-cache, and --secondmate-home-summary may refresh
+# bin/fm-crew-state.sh's shared current-state cache; those observational cache
+# writes are its only fleet-state mutations.
 #
 # Top-level fields:
 #   schema: stable schema id.
@@ -154,6 +155,7 @@ esac
 # hang or explode the parent snapshot.
 FM_SNAPSHOT_SECONDMATES=${FM_SNAPSHOT_SECONDMATES:-20}
 FM_SNAPSHOT_CREW_STATE_TIMEOUT=${FM_SNAPSHOT_CREW_STATE_TIMEOUT:-10}
+FM_SNAPSHOT_CREW_STATE_CACHE_TTL=${FM_SNAPSHOT_CREW_STATE_CACHE_TTL:-1800}
 FM_SNAPSHOT_LOCAL_READ_CONCURRENCY=${FM_SNAPSHOT_LOCAL_READ_CONCURRENCY:-8}
 FM_SNAPSHOT_BUDGET=${FM_SNAPSHOT_BUDGET:-5}
 FM_SNAPSHOT_CACHE_DIR=${FM_SNAPSHOT_CACHE_DIR:-$STATE/secondmate-summary-cache}
@@ -180,6 +182,12 @@ validate_positive_bound() {  # <name> <value>
       ;;
   esac
 }
+case "$FM_SNAPSHOT_CREW_STATE_CACHE_TTL" in
+  ''|*[!0-9]*)
+    echo "fm-fleet-snapshot: FM_SNAPSHOT_CREW_STATE_CACHE_TTL must be a non-negative integer" >&2
+    exit 2
+    ;;
+esac
 case "$FM_SNAPSHOT_SECONDMATES" in
   ''|*[!0-9]*)
     echo "fm-fleet-snapshot: FM_SNAPSHOT_SECONDMATES must be a non-negative integer" >&2
@@ -267,6 +275,10 @@ that home.
 Each local per-task current-state read is bounded by FM_SNAPSHOT_CREW_STATE_TIMEOUT
 (default 10 seconds); a read that hits the bound reports state unknown. Local task
 observations run concurrently, up to FM_SNAPSHOT_LOCAL_READ_CONCURRENCY (default 8).
+--secondmate-home-summary lets those reads share a result up to
+FM_SNAPSHOT_CREW_STATE_CACHE_TTL seconds old (default 1800, 0 disables) through
+bin/fm-crew-state.sh's opt-in cache, which any status or metadata change for
+the task invalidates; --json always reads fresh.
 Remote secondmate endpoint liveness is not probed by this command.
 Terminal contradiction evidence uses
 FM_SNAPSHOT_TERMINAL_LINES, FM_SNAPSHOT_TERMINAL_BYTES, and
@@ -287,9 +299,15 @@ EOF
 }
 
 OUTPUT_MODE=json
+CREW_STATE_CACHE_TTL=0
 case "${1:---json}" in
   --json) ;;
-  --secondmate-home-summary) OUTPUT_MODE=secondmate-home-summary ;;
+  --secondmate-home-summary)
+    OUTPUT_MODE=secondmate-home-summary
+    # The published summary refreshes on a timer and is eventually consistent,
+    # so its per-task reads share one recent result rather than recomputing.
+    CREW_STATE_CACHE_TTL=$FM_SNAPSHOT_CREW_STATE_CACHE_TTL
+    ;;
   --contribution-input) OUTPUT_MODE=contribution-input ;;
   -h|--help) usage; exit 0 ;;
   *) usage >&2; exit 2 ;;
@@ -332,6 +350,7 @@ crew_state_json() {  # <id> [<captured-meta>] [<captured-status>]
       FM_DATA_OVERRIDE="$DATA" \
       FM_PROJECTS_OVERRIDE="$PROJECTS" \
       FM_CONFIG_OVERRIDE="$CONFIG" \
+      FM_CREW_STATE_CACHE_TTL="$CREW_STATE_CACHE_TTL" \
       "$SCRIPT_DIR/fm-crew-state.sh" "$id" 2>/dev/null || true
   )
   raw=$(printf '%s\n' "$raw" | head -1)
