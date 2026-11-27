@@ -42,6 +42,8 @@
 #      corr-less reply it cannot correlate, names overlapping requests rather
 #      than guessing, and refuses a stale reply to an already-answered request
 #  21. An escalation queues exactly one check wake for main, even when retried
+#  22. The helper's scan stays linear: thousands of answered handled requests
+#      and a long parent channel neither stall it nor change its answer
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -1987,6 +1989,47 @@ test_helper_carries_corr_and_refuses_uncorrelated_replies() {
   pass "the helper carries corr by itself and refuses uncorrelated, overlapping, and stale replies"
 }
 
+test_helper_scales_to_a_large_handled_inbox() {
+  local remote rstate inbox n=3000 i corr open skilled err rc elapsed bound=60
+  remote="$TMP_ROOT/large-inbox-home"
+  rstate="$remote/state"
+  inbox="$rstate/parent-route/big.inbox"
+  mkdir -p "$inbox/handled" || fail "could not create the large inbox"
+  printf '%s\n' big > "$remote/.fm-secondmate-home"
+  printf 'schema=fm-secondmate-parent.v1\nroute=remote\n' > "$remote/.fm-secondmate-parent"
+  # Records in the writer's framing, written directly so setup stays fast.
+  for ((i = 1; i <= n; i++)); do
+    printf -v corr '%016x' "$i"
+    printf 'schema=fm-task-inbox.v1\nat=2026-01-01T00:00:00Z\nbody-terminator=1\n--\n%scorr=%s request %d\n' \
+      "$FM_FROMFIRST_MARK" "$corr" "$i" > "$inbox/handled/$i.msg"
+    printf 'working [at=%d]: unrelated progress %d\n' "$i" "$i"
+    printf 'done [at=%d] [corr=%s]: answered %d (via-helper)\n' "$i" "$corr" "$i"
+  done > "$rstate/parent-replies.status" || fail "could not write the large inbox"
+  skilled=$(fm_pending_reply_new_id)
+  deliver_marked "$rstate/parent-route" big "$skilled" \
+    "skilled question"$'\n\n'"$(fm_required_skills_section tdd request)" handled
+  {
+    printf 'working [corr=%s]: skill-start tdd path=/s/tdd/SKILL.md route=red first\n' "$skilled"
+    printf 'working [corr=%s]: skill-shaped tdd: tests first\n' "$skilled"
+    printf 'done [corr=%s]: skilled answered\n' "$skilled"
+  } >> "$rstate/parent-replies.status"
+  open=$(fm_pending_reply_new_id)
+  deliver_marked "$rstate/parent-route" big "$open" "still open" handled
+
+  SECONDS=0
+  rc=0
+  err=$(FM_HOME="$remote" "$REPORT" "done" "corr=0000000000000005" "late follow-up" 2>&1 >/dev/null) || rc=$?
+  [ "$rc" -ne 0 ] || fail "a stale reply in a large inbox must be refused"
+  assert_equals "error: corr=0000000000000005 was already answered on the parent channel (stale reply); the open request is: $open - pass that corr instead" \
+    "$err" "the stale refusal changed in a large inbox"
+  FM_HOME="$remote" "$REPORT" "done" "open answered" || fail "the auto reply in a large inbox must be written"
+  elapsed=$SECONDS
+  tail -1 "$rstate/parent-replies.status" | grep -Fq "corr=$open" \
+    || fail "the auto reply must carry the one open corr"
+  [ "$elapsed" -le "$bound" ] || fail "two helper calls on $n handled requests took ${elapsed}s, over ${bound}s"
+  pass "the helper answers a $n-record handled inbox in ${elapsed}s with the same choice"
+}
+
 test_remote_parent_replies_is_not_wrong_home() {
   local home state sm_home corr rec hits
   home=$(setup_parent remote-parent-replies)
@@ -2295,6 +2338,7 @@ test_same_basename_reply_resolves_after_recovery_failure
 test_child_status_wrong_home_is_not_copied
 test_mechanical_helper_writes_parent_channel
 test_helper_carries_corr_and_refuses_uncorrelated_replies
+test_helper_scales_to_a_large_handled_inbox
 test_remote_parent_replies_is_not_wrong_home
 test_local_parent_replies_is_wrong_home_evidence
 test_escalated_undelivered_correlation_stays_retryable

@@ -127,6 +127,14 @@ fm_required_skill_note_is_proof() {  # <note>
   return 1
 }
 
+# 0 when status <line>'s note opens with a proof keyword. The note is a
+# contiguous part of the line, so a line holding neither keyword is settled
+# without parsing its note.
+fm_required_skill_line_is_proof() {  # <line>
+  case "$1" in *skill-start\ *|*skill-shaped\ *) ;; *) return 1 ;; esac
+  fm_required_skill_note_is_proof "$(status_line_note "$1")"
+}
+
 # Print, one per line, each skill in <list> with no <kind> proof in <status-file>.
 fm_required_skills_missing() {  # <status-file> <start|shaped> <comma-list> [corr]
   local status=$1 kind=$2 list=$3 corr=${4:-} name line found candidate valid

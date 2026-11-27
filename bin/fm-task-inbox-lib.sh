@@ -349,7 +349,27 @@ EOF
     [ "$count" -gt 0 ] || return 1
     count=$((count - 1))
   fi
-  dd if="$1" bs=1 skip="$body_offset" count="$count" 2>/dev/null
+  [ "$count" -ge 0 ] || return 1
+  tail -c +"$((body_offset + 1))" "$1" | head -c "$count"
+}
+
+# Bulk line view of many records for scans that need no exact bytes. Reads
+# record paths on stdin, one per line, and for each record fm_task_inbox_body
+# can frame prints "<path><TAB><n>" then its n body lines. One process for the
+# whole set; a body's final newline is not represented.
+fm_task_inbox_body_lines() {
+  LC_ALL=C awk '{
+    file = $0; framed = 0; synthetic = 0; n = 0
+    while ((getline line < file) > 0) {
+      if (framed) { body[++n] = line; continue }
+      if (line == "body-terminator=1") synthetic = 1
+      if (line == "--") framed = 1
+    }
+    close(file)
+    if (!framed || (synthetic && n == 0)) next
+    printf "%s\t%d\n", file, n
+    for (i = 1; i <= n; i++) print body[i]
+  }'
 }
 
 # The constant self-describing doorbell line for the inbox containing a record.

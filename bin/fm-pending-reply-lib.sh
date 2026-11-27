@@ -210,7 +210,8 @@ fm_pending_reply_extract_corr() {  # <text>
 # word: xcorr=<id> or corr=<id>ff is a different token, not this one.
 fm_pending_reply_text_has_corr() {  # <text> <corr_id>
   local text=$1 corr=$2 re
-  re="(^|[^[:alnum:]_])$(fm_pending_reply_corr_token "$corr")([^[:alnum:]_]|\$)"
+  # The token is fm_pending_reply_corr_token's shape, inlined: this runs per line.
+  re="(^|[^[:alnum:]_])corr=${corr}([^[:alnum:]_]|\$)"
   [[ $text =~ $re ]]
 }
 
@@ -621,7 +622,7 @@ fm_pending_reply_line_resolves() {  # <line> <corr_id>
     *pending-reply-missed*) return 1 ;;
   esac
   fm_pending_reply_text_has_corr "$line" "$corr" || return 1
-  ! fm_required_skill_note_is_proof "$(status_line_note "$line")"
+  ! fm_required_skill_line_is_proof "$line"
 }
 
 # Scan a status file for a correlated resolve. Prints the matching line or empty.
@@ -1772,44 +1773,65 @@ fm_pending_reply_mate_inbox_dir() {  # <home> <state>
   esac
 }
 
+# Every marked request in <inbox-dir>, parsed once: one
+# "<seq><TAB><path><TAB><corr><TAB><required-skills>" row per record that
+# carries the from-firstmate marker and a corr, pending then handled in glob
+# order. A record without the marker is not a reply-bearing request, whatever
+# its text quotes. The fields are what fm_task_inbox_seq_of,
+# fm_pending_reply_extract_corr, and fm_required_skills_from_text give for the
+# record's fm_task_inbox_body, read in one pass so cost stays linear.
+fm_pending_reply_mate_requests() {  # <inbox-dir>
+  local inbox=$1 msg
+  [ -n "$inbox" ] && [ -d "$inbox" ] || return 0
+  for msg in "$inbox"/*.msg "$inbox"/handled/*.msg; do
+    [ -f "$msg" ] && printf '%s\n' "$msg"
+  done | fm_task_inbox_body_lines | FM_PR_MARK=$FM_FROMFIRST_MARK \
+    FM_PR_SKILLS=$FM_REQUIRED_SKILLS_LINE LC_ALL=C awk '
+    BEGIN {
+      mark = ENVIRON["FM_PR_MARK"]; skills = ENVIRON["FM_PR_SKILLS"]
+      re = "corr="
+      for (i = 0; i < 16; i++) re = re "[A-Fa-f0-9]"
+    }
+    {
+      path = $0; sub(/\t[0-9]+$/, "", path)
+      n = substr($0, length(path) + 2) + 0
+      corr = ""; list = ""; haslist = 0; marked = 0
+      for (i = 1; i <= n; i++) {
+        if ((getline line) <= 0) exit
+        if (i == 1) marked = (index(line, mark) == 1)
+        if (corr == "" && match(line, re)) corr = tolower(substr(line, RSTART + 5, 16))
+        if (!haslist && index(line, skills) == 1) { haslist = 1; list = substr(line, length(skills) + 1) }
+      }
+      if (!marked || corr == "") next
+      seq = path; sub(/.*\//, "", seq)
+      if (sub(/\.msg$/, "", seq) && seq ~ /^[0-9]+$/) { sub(/^0+/, "", seq); if (seq == "") seq = 0 }
+      else seq = 0
+      printf "%s\t%s\t%s\t%s\n", seq, path, corr, list
+    }'
+}
+
 # The corr ids of marked requests in <inbox-dir>, pending and handled, oldest
-# first and each once. A record without the from-firstmate marker is not a
-# reply-bearing request, whatever its text quotes.
+# first and each once.
 fm_pending_reply_mate_received_corrs() {  # <inbox-dir>
-  local inbox=$1 msg body corr
-  [ -d "$inbox" ] || return 0
-  {
-    for msg in "$inbox"/*.msg "$inbox"/handled/*.msg; do
-      [ -f "$msg" ] || continue
-      printf '%s\t%s\n' "$(fm_task_inbox_seq_of "$(basename "$msg")" || echo 0)" "$msg"
-    done
-  } | sort -n -k1,1 | while IFS=$'\t' read -r _ msg; do
-    body=$(fm_task_inbox_body "$msg") || continue
-    case "$body" in "$FM_FROMFIRST_MARK"*) ;; *) continue ;; esac
-    corr=$(fm_pending_reply_extract_corr "$body")
-    [ -n "$corr" ] && printf '%s\n' "$corr"
-  done | awk '!seen[$0]++'
+  fm_pending_reply_mate_requests "$1" | sort -n -k1,1 | cut -f3 | awk '!seen[$0]++'
+}
+
+# <comma-list> with empty and repeated names dropped, first occurrence kept.
+fm_pending_reply_skill_union() {  # <comma-list>
+  local name out='' IFS=,
+  for name in $1; do
+    [ -n "$name" ] || continue
+    case ",$out," in *",$name,"*) continue ;; esac
+    out="${out}${out:+,}$name"
+  done
+  printf '%s' "$out"
 }
 
 # The required-skills list the marked request <corr_id> in <inbox-dir> carries
 # (bin/fm-required-skill-lib.sh), or empty.
 fm_pending_reply_mate_required_skills() {  # <inbox-dir> <corr_id>
-  local inbox=$1 corr=$2 msg body list name out=''
-  [ -n "$inbox" ] && [ -d "$inbox" ] || return 0
-  for msg in "$inbox"/*.msg "$inbox"/handled/*.msg; do
-    [ -f "$msg" ] || continue
-    body=$(fm_task_inbox_body "$msg") || continue
-    case "$body" in "$FM_FROMFIRST_MARK"*) ;; *) continue ;; esac
-    [ "$(fm_pending_reply_extract_corr "$body")" = "$corr" ] || continue
-    list=$(fm_required_skills_from_text "$body")
-    local IFS=,
-    for name in $list; do
-      [ -n "$name" ] || continue
-      case ",$out," in *",$name,"*) continue ;; esac
-      out="${out}${out:+,}$name"
-    done
-  done
-  printf '%s' "$out"
+  fm_pending_reply_skill_union "$(fm_pending_reply_mate_requests "$1" | C=$2 awk -F'\t' '
+    $3 == ENVIRON["C"] { l = $0; sub(/^[^\t]*\t[^\t]*\t[^\t]*\t/, "", l); if (l != "") printf "%s,", l }')"
 }
 
 # 0 when <channel> already holds a line that resolves <corr_id>, applying the
@@ -1825,15 +1847,60 @@ fm_pending_reply_mate_answered() {  # <channel> <corr_id> [inbox-dir]
 # open is a stale reply and is refused. Prints the chosen corr; errors go to
 # stderr with return 1.
 fm_pending_reply_mate_reply_corr() {  # <home> <state> <channel> [corr_id]
-  local home=$1 state=$2 channel=$3 corr=${4-} inbox c open=''
+  local home=$1 state=$2 channel=$3 corr=${4-} inbox c open='' requests lines cnt list i line answered
   local n=0
   inbox=$(fm_pending_reply_mate_inbox_dir "$home" "$state") || inbox=
-  while IFS= read -r c; do
+  requests=$(mktemp "${TMPDIR:-/tmp}/fm-mate-requests.XXXXXX") || return 1
+  lines=$(mktemp "${TMPDIR:-/tmp}/fm-mate-lines.XXXXXX") || { rm -f "$requests"; return 1; }
+  [ -z "$inbox" ] || fm_pending_reply_mate_requests "$inbox" > "$requests"
+  # One pass joins each received corr, oldest first, with its required skills
+  # and the channel lines naming it; a corr no line names cannot be answered,
+  # and every gate below reads only lines that name the corr.
+  while IFS=$'\t' read -r c cnt list; do
     [ -n "$c" ] || continue
-    fm_pending_reply_mate_answered "$channel" "$c" "$inbox" && continue
+    # With no required skills the gates reduce to fm_pending_reply_find_resolve_line's
+    # per-line test, run here in this shell; otherwise the gates read the lines.
+    answered=0
+    i=0
+    if [ -z "$list" ]; then
+      while [ "$i" -lt "$cnt" ]; do
+        IFS= read -r line
+        [ "$answered" = 1 ] || ! fm_pending_reply_line_resolves "$line" "$c" || answered=1
+        i=$((i + 1))
+      done
+    else
+      while [ "$i" -lt "$cnt" ]; do
+        IFS= read -r line
+        printf '%s\n' "$line"
+        i=$((i + 1))
+      done > "$lines"
+      [ "$cnt" -eq 0 ] || [ -z "$(fm_pending_reply_find_resolve_line "$lines" "$c" \
+        "$(fm_pending_reply_skill_union "$list")")" ] || answered=1
+    fi
+    [ "$answered" = 0 ] || continue
     open="$open $c"
     n=$((n + 1))
-  done < <([ -z "$inbox" ] || fm_pending_reply_mate_received_corrs "$inbox")
+  done < <(sort -n -k1,1 "$requests" | LC_ALL=C awk -F'\t' '
+    phase == 1 {
+      l = $0; sub(/^[^\t]*\t[^\t]*\t[^\t]*\t/, "", l)
+      if (l != "") skills[$3] = ($3 in skills) ? skills[$3] "," l : l
+      next
+    }
+    phase == 2 { if (!($3 in want)) { want[$3] = 1; order[++n] = $3 }; next }
+    {
+      rest = $0
+      for (k in got) delete got[k]
+      while ((p = index(rest, "corr=")) > 0) {
+        k = substr(rest, p + 5, 16)
+        if (length(k) == 16 && k !~ /[^0-9a-f]/ && (k in want) && !(k in got)) {
+          got[k] = 1; cnt[k]++; bucket[k] = bucket[k] $0 "\n"
+        }
+        rest = substr(rest, p + 5)
+      }
+    }
+    END { for (i = 1; i <= n; i++) { c = order[i]; printf "%s\t%d\t%s\n%s", c, cnt[c], skills[c], bucket[c] } }
+  ' phase=1 "$requests" phase=2 - phase=3 "$(if [ -f "$channel" ]; then printf '%s' "$channel"; else printf /dev/null; fi)")
+  rm -f "$requests" "$lines"
   if [ -n "$corr" ]; then
     # A second line on an answered request is a legitimate follow-up only
     # while nothing else is waiting; with a request open it is the stale
