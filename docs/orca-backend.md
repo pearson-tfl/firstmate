@@ -94,7 +94,7 @@ Orca returns `orca_worktree_id=` as that composite of the Orca repo id and the w
 ## Current lifecycle and safety
 
 Spawn registers the repository, creates an independent worktree, reuses only the verified `result.terminal.handle` returned by Orca or creates a terminal explicitly, passes the [shell-ownership check](#shell-ownership), installs harness hooks, records metadata, and launches the selected harness.
-Registration, worktree creation, and terminal creation work against real Orca (real Orca); the full spawn, including hooks and the harness launch, has not run there.
+The [whole-task proof](verification/runtime-backends.md#orca-whole-task-proof) records full spawn with real agents (real Orca).
 Exact command flags and response parsing are owned by `bin/backends/orca.sh` and script help.
 
 Every capture reads the drawn screen with `orca terminal read --screen`, never the accumulated output stream (fake Orca).
@@ -106,7 +106,8 @@ The composer read declares those omitted blank rows to the shared classifier (`b
 Without a row limit that read is the viewport, so Orca serves the viewport-only read the Kimi trust gate requires (fake Orca); the interrupt screen checks do not rely on it, because it has never been verified with a real Devin or Command Code on it (code).
 An ordinary metadata-routed `fm-send.sh` text steer becomes a durable steering-inbox record, and only its best-effort constant doorbell passes through Orca's submit machinery (fake Orca).
 On the typed plane, `fm-send.sh` verifies composer clearance through the fleet-wide classifier in `bin/fm-composer-lib.sh`, retrying Enter without retyping when a slash popup first fills an argument placeholder (fake Orca).
-The composer read is the bottom rows of the drawn screen, so a stale startup banner cannot compete with the bottom-anchored composer (fake Orca); no real agent's composer has yet been classified on Orca.
+The composer read is the bottom rows of the drawn screen, so a stale startup banner cannot compete with the bottom-anchored composer (fake Orca).
+The [whole-task proof](verification/runtime-backends.md#orca-whole-task-proof) records real steering-inbox delivery, without a separate composer-classification observation.
 A bare shell row is `unknown`, not an empty agent composer, and plain-text captures degrade a glyph row carrying trailing text to `unknown` rather than a false `pending` (fake Orca).
 Grok alone retains its isolated rendered-tail fallback (code).
 
