@@ -380,7 +380,8 @@ fi
 
 POLL=${FM_POLL:-15}                   # seconds between cycles
 # Idle backoff: after a poll that saw no worker change - no new status or
-# turn-end signal, no changed pane, no window added or removed - the next plain
+# turn-end signal, no changed pane (a busy pane past its turn bound under a
+# declared wait does not count), no window added or removed - the next plain
 # wait doubles, up to FM_POLL_IDLE_MAX seconds (default four polls), and any
 # change returns it to POLL. The cap is held to 240 seconds, the guard grace's
 # 300-second floor less its 60-second margin, so a backed-off watcher's beacon
@@ -5221,7 +5222,6 @@ EOF
         fi
       fi
     else
-      WATCH_POLL_CHANGED=1
       printf '%s' "$h" > "$hf"
       echo 0 > "$cf"
       paused_bound=1
@@ -5231,6 +5231,10 @@ EOF
         wedge_episode_end "$key"
         clear_write_tracking "$key"
       fi
+      # A busy pane the declared-wait cadence took (its footer ticks every read)
+      # is bounded by PAUSE_RESURFACE_SECS, not by this poll, so its new hash
+      # alone is no worker change for the idle backoff.
+      [ "$paused_bound" -eq 0 ] || WATCH_POLL_CHANGED=1
       if ! afk_present && status_is_paused_or_captain_held "$last" && [ "$busy_now" -ne 0 ]; then
         case "$(pause_state_class "$w" "$task")" in
           paused) handle_paused_stale "$w" "$task" "$h" ;;

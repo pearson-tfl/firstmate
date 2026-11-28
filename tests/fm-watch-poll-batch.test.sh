@@ -5,7 +5,7 @@
 # only a resumed call for the windows after it and then sits out up to four polls,
 # the stale classification those captures feed is unchanged, and an idle
 # poll backs its wait off until a worker changes; a settled escalated inbox
-# keeps that backoff, and the inactive-outcome scan runs only when its inputs change or once a minute.
+# keeps that backoff, as does a busy pane past its turn bound under a declared wait, and the inactive-outcome scan runs only when its inputs change or once a minute.
 set -u
 
 # shellcheck source=tests/watch-triage-helpers.sh
@@ -203,6 +203,44 @@ reset_gap=$(( BEATS[7] - BEATS[6] ))
 [ "$idle_gap" -ge 6 ] || fail "a settled escalated inbox should let polls back off toward 8s; beats: ${BEATS[*]}"
 [ "$reset_gap" -le 3 ] || fail "an inbox no longer escalated should return the wait to the 1s poll; beats: ${BEATS[*]}"
 pass "watcher: an already-escalated unread instruction keeps the idle backoff; an active ladder keeps FM_POLL"
+
+# --- a busy pane past its turn bound under a declared wait keeps the backoff --
+# A busy pane whose footer changes every read takes a new hash every poll. Past
+# its turn bound under a declared wait, the long pause cadence owns it, so its
+# churn leaves the idle backoff alone; the same churning pane with no declared
+# wait is on the wedge timer and keeps FM_POLL.
+busy_churn_case() {  # <id> <status-verb> -> case dir
+  local dir state gen
+  dir=$(real_tmux_case "$1")
+  state="$dir/state"
+  add_window "$state" "$1" "$(changing_pane)"
+  printf 'window=pb:fm-%s\nharness=pi\nkind=ship\n' "$1" > "$state/$1.meta"
+  gen=$("$ROOT/bin/fm-busy-event.sh" arm "$state" "$1") || fail "could not arm the busy record"
+  "$ROOT/bin/fm-busy-event.sh" apply "$state" "$1" busy --gen "$gen" --source pi-ext --event agent-start \
+    || fail "could not record the pane busy"
+  touch -t 200001010000 "$state/$1.meta"   # no completed turn since long ago
+  printf '%s [at=%s]: waiting\n' "$2" "$(date +%s)" > "$state/$1.status"
+  seen_sig "$state/$1.status" > "$state/.seen-$1_status"
+  printf '%s\n' "$dir"
+}
+busy_churn_beats() {  # <id> <status-verb>: six poll beats into BEATS, case dir in DIR
+  DIR=$(busy_churn_case "$1" "$2")
+  STATE="$DIR/state"
+  watch_bg "$STATE" "$DIR/fakebin" "$DIR/watch.out" env FM_POLL_IDLE_MAX=8 FM_BUSY_TURN_MAX_SECS=1 FM_STALE_ESCALATE_SECS=999
+  PID=$!
+  collect_beats "$PID" "$STATE" 6
+  reap "$PID"
+}
+busy_churn_beats bzp paused
+[ -e "$STATE/.paused-pb_fm-bzp" ] \
+  || fail "the busy declared-wait pane should be on the pause cadence; out: $(cat "$DIR/watch.out")"
+idle_gap=$(( BEATS[5] - BEATS[4] ))
+[ "$idle_gap" -ge 6 ] || fail "a churning busy pane past its turn bound under a declared wait should let polls back off toward 8s; beats: ${BEATS[*]}"
+busy_churn_beats bzw working
+[ -s "$STATE/.stale-since-pb_fm-bzw" ] || fail "the undeclared churning busy pane should be on the wedge timer; out: $(cat "$DIR/watch.out")"
+busy_gap=$(( BEATS[5] - BEATS[4] ))
+[ "$busy_gap" -le 3 ] || fail "the same churning pane with no declared wait should keep the 1s poll; beats: ${BEATS[*]}"
+pass "watcher: a churning busy pane past its turn bound under a declared wait keeps the idle backoff; with no declared wait it keeps FM_POLL"
 
 # --- a skipped missing window is retried within four polls under backoff -----
 # A missing window may sit out a poll only while the next poll, at the longest
