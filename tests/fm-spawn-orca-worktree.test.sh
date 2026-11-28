@@ -1178,6 +1178,7 @@ test_orca_cswap_pin_reaches_launch_and_resume_env() {
   [ -d "$case_dir/xdg-state/firstmate/orca-claude-pin" ] || fail "spawn did not write an Orca Claude pin record directory"
   grep -RFx "$pin_root" "$case_dir/xdg-state/firstmate/orca-claude-pin" >/dev/null \
     || fail "the pin record must contain the cswap root $pin_root"
+  # shellcheck disable=SC2016 # zsh -c must expand $1/$2, not this test shell
   resume_dir=$(
     env -u CLAUDE_CONFIG_DIR ORCA_TERMINAL_HANDLE=term-1 XDG_STATE_HOME="$case_dir/xdg-state" \
       HOME="$case_dir/user-home" \
@@ -1185,6 +1186,7 @@ test_orca_cswap_pin_reaches_launch_and_resume_env() {
       zsh "$wt" "$ROOT/bin/fm-orca-claude-pin.sh"
   )
   [ "$resume_dir" = "$pin_root" ] || fail "the resume snippet must export the pinned root, got ${resume_dir:-<empty>}"
+  # shellcheck disable=SC2016 # zsh -c must expand $1/$2, not this test shell
   resume_dir=$(
     env -u CLAUDE_CONFIG_DIR -u ORCA_TERMINAL_HANDLE XDG_STATE_HOME="$case_dir/xdg-state" \
       HOME="$case_dir/user-home" \
