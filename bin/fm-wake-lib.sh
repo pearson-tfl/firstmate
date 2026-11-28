@@ -1055,6 +1055,22 @@ _fm_recovery_marker_ack() {
   fm_lock_release "$lock"
 }
 
+# _fm_recovery_marker_arm_quiet <token|''>: 0 when the arm-check leaves a
+# marker holding <token> (empty: no marker) unwritten, with the action it
+# returns in FM_RECOVERY_MARKER_ACTION (none or wait); 1 when it may write.
+# The locked arm-check and its lock-free poll form both decide through it.
+_fm_recovery_marker_arm_quiet() {  # <token|''>
+  FM_RECOVERY_MARKER_ACTION='none'
+  case "$1" in
+    pending:handling:*|announced:handling:*|announced:downtime:*)
+      # shellcheck disable=SC2034 # Read by callers after this function returns.
+      FM_RECOVERY_MARKER_ACTION='wait'
+      ;;
+    pending:downtime:*) return 1 ;;
+    ''|acked:*) [ ! -s "$FM_WAKE_QUEUE" ] ;;
+  esac
+}
+
 _fm_recovery_marker_arm_check() {
   local marker=$1 lock line quarantine
   FM_RECOVERY_MARKER_ACTION='none'
@@ -1097,13 +1113,12 @@ _fm_recovery_marker_arm_check() {
     return 0
   fi
   line=$FM_RECOVERY_MARKER_TOKEN
+  if _fm_recovery_marker_arm_quiet "$line"; then
+    fm_lock_release "$lock"
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+    return 0
+  fi
   case "$line" in
-    pending:handling:*|announced:handling:*|announced:downtime:*)
-      FM_RECOVERY_MARKER_ACTION='wait'
-      fm_lock_release "$lock"
-      fm_lock_release "$FM_WAKE_QUEUE_LOCK"
-      return 0
-      ;;
     pending:downtime:*)
       if ! _fm_recovery_marker_write_locked "$marker" downtime "${line##*:}" announced; then
         fm_lock_release "$lock"
@@ -1286,6 +1301,22 @@ fm_recovery_marker_begin_handling() {
 
 fm_recovery_marker_arm_check() {
   fm_recovery_transition "$1" arm-check
+}
+
+# fm_recovery_marker_arm_check_poll <marker>: the arm-check for a caller that
+# repeats it every poll. When a lock-free read of the marker and the queue
+# shows a state the locked arm-check would leave unwritten (action none or
+# wait), it returns that action without taking either lock; any state that
+# could need a write takes the locked arm-check. A writer that changes the
+# state after the read is seen by the next poll, as it would be by the next
+# locked check.
+fm_recovery_marker_arm_check_poll() {  # <marker>
+  if [ ! -e "$1" ] && [ ! -L "$1" ]; then
+    _fm_recovery_marker_arm_quiet '' && return 0
+  elif fm_recovery_marker_read "$1"; then
+    _fm_recovery_marker_arm_quiet "$FM_RECOVERY_MARKER_TOKEN" && return 0
+  fi
+  fm_recovery_marker_arm_check "$1"
 }
 
 fm_recovery_marker_reopen_announced() {

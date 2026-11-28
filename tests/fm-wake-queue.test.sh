@@ -2409,6 +2409,57 @@ test_branch_stale_ack_that_consumes_nothing_names_its_granted_wake() {
   pass "wake drain: a branch acknowledgement that consumes nothing names the exact command for its granted wake"
 }
 
+# The per-poll arm-check answers a state it would leave unwritten (none, wait)
+# without either lock, so a held queue lock cannot stall it, and still takes
+# the locked transition for any state that needs a write.
+test_recovery_arm_check_poll_skips_locks_only_for_unwritten_states() {
+  local dir state holder out
+  dir=$(make_case recovery-arm-poll)
+  state="$dir/state"
+  FM_STATE_OVERRIDE="$state" bash -c '. "$1"; fm_lock_acquire_wait "$2" && sleep 30' \
+    _ "$ROOT/bin/fm-wake-lib.sh" "$state/.wake-queue.lock" &
+  holder=$!
+  for _ in $(seq 1 50); do [ -d "$state/.wake-queue.lock" ] && break; sleep 0.1; done
+  [ -d "$state/.wake-queue.lock" ] || fail "the fixture could not hold the queue lock"
+  # The check within 5 s, or 124 while it still waits (a held lock).
+  arm_poll() {
+    local pid t=0
+    FM_STATE_OVERRIDE="$state" bash -c \
+      '. "$1"; fm_recovery_marker_arm_check_poll "$2" || exit 9; printf "%s" "$FM_RECOVERY_MARKER_ACTION"' \
+      _ "$ROOT/bin/fm-wake-lib.sh" "$state/.watcher-down" > "$dir/arm.out" &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null && [ "$t" -lt 50 ]; do sleep 0.1; t=$((t + 1)); done
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+      return 124
+    fi
+    wait "$pid" || return
+    cat "$dir/arm.out"
+  }
+  out=$(arm_poll) || fail "an absent marker with an empty queue waited on the held lock (rc=$?)"
+  [ "$out" = none ] || fail "absent marker, empty queue: expected none, got '$out'"
+  [ ! -e "$state/.watcher-down" ] || fail "a none answer must not write the marker"
+  printf 'announced:downtime:fixture\n' > "$state/.watcher-down"
+  out=$(arm_poll) || fail "an announced episode waited on the held lock (rc=$?)"
+  [ "$out" = wait ] || fail "announced episode: expected wait, got '$out'"
+  printf 'acked:downtime:fixture\n' > "$state/.watcher-down"
+  out=$(arm_poll) || fail "an acknowledged episode with an empty queue waited on the held lock (rc=$?)"
+  [ "$out" = none ] || fail "acknowledged, empty queue: expected none, got '$out'"
+  printf 'queued row\n' > "$state/.wake-queue"
+  if arm_poll >/dev/null; then
+    fail "a queued row under an acknowledged marker needs the locked write, yet the check returned without the lock"
+  fi
+  kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+  rm -rf "$state/.wake-queue.lock"
+  out=$(arm_poll) || fail "the locked arm-check failed once the lock was free (rc=$?)"
+  [ "$out" = recover ] || fail "acknowledged marker with a queued row: expected recover, got '$out'"
+  case "$(cat "$state/.watcher-down")" in
+    announced:downtime:*) ;;
+    *) fail "recover should announce a fresh episode, marker is: $(cat "$state/.watcher-down")" ;;
+  esac
+  pass "recovery arm-check per poll: unwritten states skip both locks; a needed write still takes them"
+}
+
 test_recovery_ack_failure_is_reported() {
   local dir state fakebin real_mv rc generation
   dir=$(make_case recovery-ack-failure)
@@ -3907,6 +3958,7 @@ test_handover_restore_undoes_only_its_own_stop
 test_stale_recovery_generation_cannot_touch_a_newer_episode
 test_stale_ack_that_consumes_nothing_names_the_current_wake
 test_branch_stale_ack_that_consumes_nothing_names_its_granted_wake
+test_recovery_arm_check_poll_skips_locks_only_for_unwritten_states
 test_recovery_ack_failure_is_reported
 test_interruption_before_and_after_raw_commit
 test_wake_queue_prune_task

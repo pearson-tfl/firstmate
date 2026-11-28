@@ -998,6 +998,52 @@ test_nonterminal_stale_pause_transitions_reclassify_unchanged_hash() {
   pass "unchanged stale hashes reclassify when a crew enters or leaves pause"
 }
 
+# A paused window whose pane and status log stay unchanged is rechecked
+# against crew state at most once every four polls, not on every poll; a new
+# status line rechecks it on the next poll.
+test_unchanged_paused_window_rechecks_crew_state_every_four_polls() {
+  local dir state fakebin out capture_file window key pane_hash sig pid calls i
+  dir=$(make_case paused-recheck-throttle); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; capture_file="$dir/pane.txt"; window="test:fm-throttle"
+  printf 'idle awaiting external\n' > "$capture_file"
+  printf 'window=%s\nkind=ship\n' "$window" > "$state/throttle.meta"
+  printf 'paused: awaiting the upstream release\n' > "$state/throttle.status"
+  sig=$(seen_sig "$state/throttle.status"); printf '%s' "$sig" > "$state/.seen-throttle_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  pane_hash=$(hash_text "idle awaiting external")
+  printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '%s' "$pane_hash" > "$state/.stale-$key"
+  printf '1\n' > "$state/.count-$key"
+  : > "$state/.paused-$key"
+  cat > "$fakebin/fm-crew-state.sh" <<SH
+#!/usr/bin/env bash
+printf 'call\n' >> "$dir/crew-calls.log"
+printf '%s\n' 'state: paused · source: status-log · awaiting the upstream release'
+SH
+  chmod +x "$fakebin/fm-crew-state.sh"
+  : > "$dir/crew-calls.log"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" FM_FAKE_TMUX_CAPTURE="$capture_file" \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_PAUSE_RESURFACE_SECS=999 \
+    FM_POLL=1 FM_POLL_IDLE_MAX=0 FM_SIGNAL_GRACE=1 FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  i=0
+  while [ "$i" -lt 6 ]; do
+    wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "the paused window woke the watcher: $(cat "$out")"; }
+    i=$((i + 1))
+  done
+  calls=$(grep -c call "$dir/crew-calls.log")
+  [ "$calls" -ge 1 ] && [ "$calls" -le 5 ] \
+    || { reap "$pid"; fail "six unchanged paused polls should recheck crew state at most twice (each recheck reads it up to twice), read it $calls times"; }
+  printf 'paused: awaiting the upstream release, still\n' >> "$state/throttle.status"
+  sig=$(seen_sig "$state/throttle.status"); printf '%s' "$sig" > "$state/.seen-throttle_status"
+  : > "$dir/crew-calls.log"
+  wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "the status append woke the watcher: $(cat "$out")"; }
+  wait_poll_cycle "$state" "$pid" || { reap "$pid"; fail "the status append woke the watcher: $(cat "$out")"; }
+  reap "$pid"
+  [ "$(grep -c call "$dir/crew-calls.log")" -ge 1 ] || fail "a new status line should recheck crew state on the next poll"
+  pass "an unchanged paused window rechecks crew state every four polls; a status change rechecks at once"
+}
+
 test_nonterminal_paused_rechecks_authoritative_state() {
   local dir state fakebin out capture_file window key pane_hash sig pid
   dir=$(make_case nonterminal-paused-recheck); state="$dir/state"; fakebin="$dir/fakebin"
@@ -1497,4 +1543,5 @@ fm_test_run \
   test_paused_until_wrong_year_is_bounded_by_the_cadence \
   test_paused_until_that_passed_is_rechecked_before_the_cadence \
   test_paused_bg_job_without_until_stays_silent_after_the_job_ends \
-  test_paused_bg_job_until_timeout_rechecks_after_the_job_ends
+  test_paused_bg_job_until_timeout_rechecks_after_the_job_ends \
+  test_unchanged_paused_window_rechecks_crew_state_every_four_polls

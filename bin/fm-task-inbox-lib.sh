@@ -622,6 +622,24 @@ fm_task_inbox_idle() {  # <state-dir> <task-id>
   ! compgen -G "$dir/*.msg" >/dev/null
 }
 
+# fm_task_inbox_settled <state-dir> <task-id>: 0 when fm_task_inbox_due_action
+# is quiet for a reason elapsed time cannot end - the oldest unhandled record
+# is already escalated and not composer-blocked - so the inbox needs nothing
+# until a record or its bookkeeping changes. Any other quiet is a ladder grace
+# that time ends, so a poller may back off only on this one.
+fm_task_inbox_settled() {  # <state-dir> <task-id>
+  local dir esc oldest rec_base result
+  fm_task_inbox_dir_to dir "$1" "$2"
+  [ ! -e "${FM_CONFIG_OVERRIDE:-${FM_HOME:-}/config}/wait-no-turns" ] || return 1
+  [ ! -s "$dir/.proof-pending" ] || return 1
+  { IFS= read -r esc < "$dir/.escalated"; } 2>/dev/null || return 1
+  oldest=$(fm_task_inbox_oldest_unhandled "$1" "$2") || return 1
+  [ "${oldest##*/}" = "$esc" ] || return 1
+  rec_base='' result=''
+  { IFS=$'\t' read -r rec_base _ _ result < "$dir/.ring-state"; } 2>/dev/null || true
+  [ "$rec_base" != "$esc" ] || [ "$result" != composer-blocked ]
+}
+
 fm_task_inbox_due_action() {  # <state-dir> <task-id>
   local dir oldest base now grace max ladder rec_base count last result
   dir=$(fm_task_inbox_dir "$1" "$2")

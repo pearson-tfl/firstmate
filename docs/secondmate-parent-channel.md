@@ -47,7 +47,7 @@ A missed-reply escalation includes the complete first sighting path and line num
 
 - No mirror of the mate's chat: chat can mix outcomes with other conversation, so choosing which sentence is an outcome would itself be model behavior, and every harness exposes turn text differently.
 - No threshold escalation of a child's open decision or blocker: a decision the mate escalates is a captain hold, which is published; a decision the mate neither answers nor escalates is a supervision-quality question, separable from channel delivery.
-- No second watcher or standalone scanner: a lightweight ledger pass runs inside the existing inactive-outcome command on every watcher poll and reuses its receipts and upstream append.
+- No second watcher or standalone scanner: a lightweight ledger pass runs inside the existing inactive-outcome command, which the watcher poll runs whenever a state file it reads changes and otherwise within a minute, or on every poll once polls are further apart, and reuses its receipts and upstream append.
 - No orphan lifecycle: teardown refuses instead of removing an undelivered outcome, the same way it refuses on other unlanded conditions.
 
 ## Regression coverage

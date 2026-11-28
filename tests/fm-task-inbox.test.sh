@@ -142,6 +142,27 @@ age_path() {  # <path>  (set mtime well past any grace under test)
   touch -t 202001010000 "$1"
 }
 
+# fm_task_inbox_settled: only an escalation of the oldest unread record that
+# is not composer-blocked is settled; a ladder grace, an escalation of another
+# record, and a composer-blocked escalation are not.
+test_settled_only_for_an_escalated_oldest_record() {
+  local state="$TMP_ROOT/settled/state" rec
+  mkdir -p "$state"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "first") || fail "could not write the fixture record"
+  ! inbox_lib "$state" fm_task_inbox_settled "$state" t1 || fail "an unescalated record inside its grace is not settled"
+  inbox_lib "$state" fm_task_inbox_record_escalated "$state" t1 "$rec" || fail "could not record the escalation"
+  inbox_lib "$state" fm_task_inbox_settled "$state" t1 || fail "an escalated oldest record should be settled"
+  [ "$(inbox_lib "$state" fm_task_inbox_due_action "$state" t1)" = quiet ] \
+    || fail "a settled inbox should be one fm_task_inbox_due_action leaves quiet"
+  printf '%s\tescalated\t0\tcomposer-blocked\n' "${rec##*/}" > "$state/t1.inbox/.ring-state"
+  ! inbox_lib "$state" fm_task_inbox_settled "$state" t1 || fail "a composer-blocked escalation awaits a recovery ring, so it is not settled"
+  rm -f "$state/t1.inbox/.ring-state"
+  mv "$rec" "$state/t1.inbox/handled/"
+  inbox_lib "$state" fm_task_inbox_write "$state" t1 "second" >/dev/null || fail "could not write the second record"
+  ! inbox_lib "$state" fm_task_inbox_settled "$state" t1 || fail "an escalation naming a handled record does not settle the new oldest one"
+  pass "inbox: settled only while the oldest unread record is already escalated and not composer-blocked"
+}
+
 test_write_is_durable_and_exact() {
   local state rec rec2 doorbell doorbell2 doorbell3 expected actual expected2 actual2 last_byte text
   state="$TMP_ROOT/write/state"; mkdir -p "$state"
@@ -1584,3 +1605,4 @@ test_composer_block_recovery() {
   pass "watcher: composer-blocked escalation recovers once only after positive empty proof; ack remains required"
 }
 test_composer_block_recovery
+test_settled_only_for_an_escalated_oldest_record

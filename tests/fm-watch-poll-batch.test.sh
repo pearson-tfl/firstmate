@@ -2,9 +2,10 @@
 # tests/fm-watch-poll-batch.test.sh - the watcher's per-poll pane read against
 # a REAL tmux server on a private socket: every recorded tmux window of one
 # poll is captured through a single tmux client call, a missing window costs
-# only a resumed call for the windows after it, the stale classification those
-# captures feed is unchanged, and an idle poll backs its wait off until a
-# worker changes.
+# only a resumed call for the windows after it and then sits out up to four polls,
+# the stale classification those captures feed is unchanged, and an idle
+# poll backs its wait off until a worker changes; a settled escalated inbox
+# keeps that backoff, and the inactive-outcome scan runs only when its inputs change or once a minute.
 set -u
 
 # shellcheck source=tests/watch-triage-helpers.sh
@@ -78,8 +79,11 @@ captures=$(grep -c 'capture-pane' "$DIR/tmux-calls.log")
 [ "$captures" -ge 2 ] || fail "expected at least two polls of captures, got $captures calls"
 grep 'capture-pane' "$DIR/tmux-calls.log" | while IFS= read -r call; do
   n=$(printf '%s\n' "$call" | grep -o 'capture-pane' | wc -l | tr -d ' ')
-  [ "$n" -eq 5 ] || { echo "a capture call covered $n windows, not all 5: $call" >&2; exit 1; }
+  # The missing zz-gone sits out the polls after its failed capture.
+  [ "$n" -eq 5 ] || [ "$n" -eq 4 ] || { echo "a capture call covered $n windows, not all 5 (or 4 once zz-gone failed): $call" >&2; exit 1; }
 done || fail "every poll should capture all recorded windows in one tmux call"
+grep 'capture-pane' "$DIR/tmux-calls.log" | head -1 | grep -q 'pb:fm-zz-gone' \
+  || fail "the first poll should include the not-yet-failed window"
 pass "watcher: one tmux client call captures every recorded window per poll, and the stale verdict is unchanged"
 
 # --- a 22-window home: per-poll lookups stay fast enough to wake on time -----
@@ -119,7 +123,11 @@ grep -q '^display-message -p [^ ]*:0 ; capture-pane -p -t pb:fm-rc -S -40 ; disp
 if grep 'capture-pane' "$DIR/tmux-calls.log" | grep -v 'pb:fm-ra' | grep -q 'pb:fm-rb'; then
   fail "the resumed call should not retry the missing window"$'\n'"$(cat "$DIR/tmux-calls.log")"
 fi
-pass "watcher: a missing window ends its batch call and the poll resumes with the windows after it"
+polls=$(grep -c 'capture-pane -p -t pb:fm-ra' "$DIR/tmux-calls.log")
+gone=$(grep -c 'capture-pane -p -t pb:fm-rb' "$DIR/tmux-calls.log")
+[ "$polls" -ge 2 ] && [ "$gone" -eq 1 ] \
+  || fail "a window whose capture failed should sit out the next polls; $gone calls named it over $polls polls"$'\n'"$(cat "$DIR/tmux-calls.log")"
+pass "watcher: a missing window ends its batch call, the poll resumes with the windows after it, and later polls skip it"
 
 # --- idle backoff: the wait doubles while nothing changes, and resets --------
 DIR=$(real_tmux_case backoff)
@@ -154,3 +162,109 @@ reset_gap=$(( beats[5] - beats[4] ))
 [ "$idle_gap" -ge 6 ] || fail "idle polls should back off toward 8s; beats: ${beats[*]}"
 [ "$reset_gap" -le 3 ] || fail "a changed window set should return the wait to the 1s poll; beats: ${beats[*]}"
 pass "watcher: idle polls back off to FM_POLL_IDLE_MAX and a worker change restores FM_POLL"
+
+# Poll beats of a running watcher: <count> distinct beacon mtimes, into BEATS.
+collect_beats() {  # <pid> <state> <count> [<at-beat> <command>]
+  local pid=$1 state=$2 want=$3 at=${4:-0} cmd=${5:-} last='' now tick=0
+  BEATS=()
+  while [ "$tick" -lt 900 ]; do   # 0.1s ticks
+    tick=$((tick + 1))
+    kill -0 "$pid" 2>/dev/null || fail "the watcher exited: $(cat "$DIR/watch.out")"
+    now=$(file_mtime "$state/.last-watcher-beat")
+    if [ -n "$now" ] && [ "$now" != "$last" ]; then
+      BEATS+=("$now")
+      last=$now
+      [ "${#BEATS[@]}" -ne "$at" ] || eval "$cmd"
+      [ "${#BEATS[@]}" -lt "$want" ] || return 0
+    fi
+    sleep 0.1
+  done
+  fail "expected $want polls within 900 ticks, saw ${#BEATS[@]}: ${BEATS[*]}"
+}
+
+# --- a settled escalated inbox leaves the idle backoff alone -----------------
+# A recorded task whose oldest unread instruction is already escalated waits on
+# a person, so its polls back off; once that escalation is gone the inbox is a
+# timed ladder again and the poll returns to FM_POLL.
+DIR=$(real_tmux_case inbox-backoff)
+STATE="$DIR/state"
+record_window "$STATE" inb               # recorded, with no window
+prime_signals "$STATE" "$DIR"
+mkdir -p "$STATE/inb.inbox/handled"
+printf 'schema=fm-task-inbox.v1\n--\nan unread instruction\n' > "$STATE/inb.inbox/001.msg"
+printf '001.msg\n' > "$STATE/inb.inbox/.escalated"
+watch_bg "$STATE" "$DIR/fakebin" "$DIR/watch.out" env FM_POLL_IDLE_MAX=8
+PID=$!
+# shellcheck disable=SC2016 # collect_beats evaluates the command later.
+collect_beats "$PID" "$STATE" 8 6 'rm -f "$STATE/inb.inbox/.escalated"'
+reap "$PID"
+idle_gap=$(( BEATS[5] - BEATS[4] ))
+reset_gap=$(( BEATS[7] - BEATS[6] ))
+[ "$idle_gap" -ge 6 ] || fail "a settled escalated inbox should let polls back off toward 8s; beats: ${BEATS[*]}"
+[ "$reset_gap" -le 3 ] || fail "an inbox no longer escalated should return the wait to the 1s poll; beats: ${BEATS[*]}"
+pass "watcher: an already-escalated unread instruction keeps the idle backoff; an active ladder keeps FM_POLL"
+
+# --- a skipped missing window is retried within four polls under backoff -----
+# A missing window may sit out a poll only while the next poll, at the longest
+# wait the backoff can pick, still comes within four 1s polls of its failed
+# capture. So whenever the watcher skipped it, its next retry follows the
+# previous try within four seconds plus one poll's own run time.
+DIR=$(real_tmux_case gone-backoff)
+STATE="$DIR/state"
+# A secondmate's unchanged window is captured every poll and never woken on,
+# so each poll shows as one capture call without counting as a change.
+add_window "$STATE" lv "$(static_pane lv)"
+printf 'window=pb:fm-lv\nharness=claude\nkind=secondmate\n' > "$STATE/lv.meta"
+record_window "$STATE" mw                # recorded, with no window
+prime_signals "$STATE" "$DIR"
+cat > "$DIR/fakebin/tmux" <<SH
+#!/usr/bin/env bash
+case "\$*" in *capture-pane*) printf '%s %s\\n' "\$(date +%s.%N)" "\$*" >> "$DIR/captures.log" ;; esac
+exec "$REAL_TMUX" -S "$SOCKET" "\$@"
+SH
+chmod +x "$DIR/fakebin/tmux"
+watch_bg "$STATE" "$DIR/fakebin" "$DIR/watch.out" env FM_POLL_IDLE_MAX=8
+PID=$!
+collect_beats "$PID" "$STATE" 8
+reap "$PID"
+# Each capture call is one poll. After a poll that skipped mw, the next poll
+# must come within six seconds of mw's last try: four 1s polls plus a poll's
+# run time. The case must also have skipped once and backed off past 4s.
+verdict=$(awk '{
+    t = $1; tried = index($0, "pb:fm-mw") > 0
+    if (n > 0 && t - prev >= 4) backoff = 1
+    if (pending && t - last > 6) late = late sprintf(" %.1fs", t - last)
+    pending = 0
+    if (tried) last = t; else if (n > 0) { pending = 1; skipped = 1 }
+    prev = t; n++
+  } END { printf "late=%s skipped=%d backoff=%d", late, skipped, backoff }' "$DIR/captures.log")
+case "$verdict" in
+  "late= skipped=1 backoff=1") ;;
+  *) fail "a skipped missing window should be retried within four polls of its last try under backoff ($verdict)"$'\n'"$(cat "$DIR/captures.log")" ;;
+esac
+pass "watcher: under the idle backoff a skipped missing window is still retried within four polls of its last try"
+
+# --- the inactive-outcome scan runs when its inputs change ------------------
+# A copied code root whose fm-inactive-reconcile.sh only logs each call: with
+# nothing changing, polls inside a minute run the scan once; a new record
+# runs it again on the next poll.
+DIR=$(real_tmux_case inactive-scan)
+STATE="$DIR/state"
+cp -R "$ROOT/bin" "$DIR/root-bin"
+printf '#!/usr/bin/env bash\nprintf "scan %%s\\n" "$*" >> "%s"\n' "$DIR/scans.log" > "$DIR/root-bin/fm-inactive-reconcile.sh"
+chmod +x "$DIR/root-bin/fm-inactive-reconcile.sh"
+: > "$DIR/scans.log"
+WATCH_SAVED=$WATCH
+WATCH="$DIR/root-bin/fm-wat""ch.sh"
+watch_bg "$STATE" "$DIR/fakebin" "$DIR/watch.out" env FM_POLL_IDLE_MAX=0
+PID=$!
+WATCH=$WATCH_SAVED
+collect_beats "$PID" "$STATE" 5
+before=$(grep -c '^scan scan$' "$DIR/scans.log")
+printf 'window=pb:fm-late\nharness=claude\nkind=ship\n' > "$STATE/late.meta"
+collect_beats "$PID" "$STATE" 3
+reap "$PID"
+after=$(grep -c '^scan scan$' "$DIR/scans.log")
+[ "$before" -eq 1 ] || fail "five unchanged polls inside a minute should scan once, scanned $before times"
+[ "$after" -eq 2 ] || fail "a new record should scan once more on the next poll, scanned $after times in all"
+pass "watcher: the inactive-outcome scan runs on its first poll and when a record changes, not every poll"

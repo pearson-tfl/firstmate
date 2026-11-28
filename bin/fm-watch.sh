@@ -393,6 +393,8 @@ case "$POLL:$POLL_IDLE_MAX" in
   *) POLL_IDLE_MAX=$((10#$POLL_IDLE_MAX)) ;;
 esac
 [ "$POLL_IDLE_MAX" -le 240 ] || POLL_IDLE_MAX=240
+# Four polls: the bound a skipped per-window recheck keeps (watch_poll_defer_ok).
+case "$POLL" in ''|*[!0-9]*) POLL_DEFER_MAX=0 ;; *) POLL_DEFER_MAX=$((10#$POLL * 4)) ;; esac
 WATCH_POLL_WAIT=$POLL WATCH_POLL_CHANGED=1 WATCH_POLL_WINDOWS=
 # The liveness beacon is touched once per cycle, immediately before the
 # terminal wait below (event_wait_or_sleep) as well as at the top of the next
@@ -1454,8 +1456,34 @@ watch_window_is_busy() {  # <window> <tail40>
 # capture ends tmux's output early, so that window is recorded failed and the
 # batch resumes after it; output with no marker at all leaves the remaining
 # windows to the per-window capture.
+#
+# A window whose capture failed (a missing window) is left out of the batch,
+# and recorded failed, while watch_poll_defer_ok still brings its retry within
+# four polls of that failure, so a home full of ended windows does not pay one
+# resumed client call per missing window on every poll (WPB_GONE_WIN,
+# WPB_GONE_AT).
 WPB_TARGET=() WPB_TEXT=() WPB_OK=() WPB_HASH=()
+WPB_GONE_WIN=() WPB_GONE_AT=()
 WATCH_HASH_DIR=
+watch_poll_gone_recent() {  # <window>
+  local i
+  for ((i = 0; i < ${#WPB_GONE_WIN[@]}; i++)); do
+    [ "${WPB_GONE_WIN[i]}" = "$1" ] || continue
+    watch_poll_defer_ok "${WPB_GONE_AT[i]}" "$POLL_DEFER_MAX"
+    return
+  done
+  return 1
+}
+watch_poll_gone_set() {  # <window> <failed 0|1>
+  local i
+  local -a keep_win=() keep_at=()
+  for ((i = 0; i < ${#WPB_GONE_WIN[@]}; i++)); do
+    [ "${WPB_GONE_WIN[i]}" = "$1" ] && continue
+    keep_win+=("${WPB_GONE_WIN[i]}") keep_at+=("${WPB_GONE_AT[i]}")
+  done
+  [ "$2" -eq 0 ] || { keep_win+=("$1"); keep_at+=("$SECONDS"); }
+  WPB_GONE_WIN=(${keep_win[@]+"${keep_win[@]}"}) WPB_GONE_AT=(${keep_at[@]+"${keep_at[@]}"})
+}
 watch_poll_capture() {
   local w start=0 k n rc token rest head next item i
   local -a targets=() new=()
@@ -1463,6 +1491,10 @@ watch_poll_capture() {
   for w in ${WPW[@]+"${WPW[@]}"}; do
     watch_window_facts "$w"
     [ "$WF_BACKEND" = tmux ] || continue
+    if watch_poll_gone_recent "$w"; then
+      WPB_TARGET+=("$w") WPB_TEXT+=('') WPB_OK+=(1) WPB_HASH+=('')
+      continue
+    fi
     targets+=("$w")
   done
   n=${#targets[@]}
@@ -1499,6 +1531,7 @@ watch_poll_capture() {
       WPB_TEXT+=("$item")
       WPB_OK+=(0)
       WPB_HASH+=('')
+      [ "${#WPB_GONE_WIN[@]}" -eq 0 ] || watch_poll_gone_set "${targets[k]}" 0
       k=$((k + 1))
     done
     [ "$k" -lt "$n" ] || break
@@ -1507,6 +1540,7 @@ watch_poll_capture() {
     WPB_TEXT+=('')
     WPB_OK+=(1)
     WPB_HASH+=('')
+    watch_poll_gone_set "${targets[k]}" 1
     start=$((k + 1))
   done
   # Hash every text this watcher has not already hashed for its window.
@@ -3047,6 +3081,46 @@ busy_turn_over_age() {  # <task>
 # captain themself for a verified hold. Only the captain-held verb takes the second
 # wording; a caller that reached the bounded cadence off pause tracking alone, with
 # no declaring verb left on the log, keeps the external-wait wording it always had.
+# paused_recheck_recent <key> <hash> <task>: 0 while a window whose unchanged
+# pane last took the declared-pause cadence (handle_paused_stale) still has
+# that pane hash, an unchanged status log, and its pause flag, and skipping
+# still rechecks within four polls of that read (watch_poll_defer_ok). Its markers
+# are already written, and every time bound
+# the recheck serves (a declared clearing time, the PAUSE_RESURFACE_SECS
+# re-surface) is minutes or more, so this poll may skip the crew-state read;
+# any change to the pane or the log rechecks at once.
+PRC_WIN=() PRC_KEY=() PRC_AT=()
+paused_recheck_key_to() {  # <var> <key> <hash> <task>
+  local _sk
+  watch_stat_key _sk "$STATE/$4.status"
+  if [ -z "$_sk" ] || [ "$_sk" = - ] || [ ! -e "$STATE/.paused-$2" ]; then
+    printf -v "$1" '%s' ''
+  else
+    printf -v "$1" '%s|%s' "$3" "$_sk"
+  fi
+}
+paused_recheck_recent() {  # <key> <hash> <task>
+  local i k
+  paused_recheck_key_to k "$1" "$2" "$3"
+  [ -n "$k" ] || return 1
+  for ((i = 0; i < ${#PRC_WIN[@]}; i++)); do
+    [ "${PRC_WIN[i]}" = "$1" ] || continue
+    [ "${PRC_KEY[i]}" = "$k" ] && watch_poll_defer_ok "${PRC_AT[i]}" "$POLL_DEFER_MAX"
+    return
+  done
+  return 1
+}
+paused_recheck_record() {  # <key> <hash> <task>
+  local i k
+  paused_recheck_key_to k "$1" "$2" "$3"
+  for ((i = 0; i < ${#PRC_WIN[@]}; i++)); do
+    [ "${PRC_WIN[i]}" = "$1" ] || continue
+    PRC_KEY[i]=$k PRC_AT[i]=$SECONDS
+    return 0
+  done
+  PRC_WIN+=("$1") PRC_KEY+=("$k") PRC_AT+=("$SECONDS")
+}
+
 handle_paused_stale() {  # <window> <task> <hash>
   local win=$1 task=$2 h=$3 key statusf mtime age detail reason declaration last until now min_age
   key=$(window_key "$win")
@@ -3917,6 +3991,23 @@ watch_poll_wait_next() {
   fi
 }
 
+# watch_poll_defer_ok <since> <limit>: 0 when work last done at SECONDS
+# <since> may skip this poll and still run within <limit> seconds of <since>
+# (plus this poll's own run time), because the next poll comes no later than
+# the longest wait watch_poll_wait_next can choose. A non-integer POLL never
+# defers.
+watch_poll_defer_ok() {  # <since> <limit>
+  local next
+  case "$POLL" in ''|*[!0-9]*) return 1 ;; esac
+  next=$POLL
+  if [ "$POLL_IDLE_MAX" -gt "$POLL" ]; then
+    next=$((WATCH_POLL_WAIT * 2))
+    [ "$next" -le "$POLL_IDLE_MAX" ] || next=$POLL_IDLE_MAX
+    [ "$next" -ge "$POLL" ] || next=$POLL
+  fi
+  [ $((SECONDS - $1 + next)) -le "$2" ]
+}
+
 # The event wait's scratch directory, given to it as TMPDIR. A stop kills the
 # wait before its own cleanup removes its reader FIFO, so the watcher owns the
 # directory and removes it after each wait and in watcher_cleanup.
@@ -4424,6 +4515,36 @@ rerecord_device_shifted_pr_poll() {  # <id>
   return 0
 }
 
+# inactive_scan_due: 0 when the poll should run bin/fm-inactive-reconcile.sh
+# scan. The scan reads the state files keyed here (one stat call) and the
+# clock, so it runs when one of them changed since the last successful scan,
+# and otherwise within a minute of the last scan (watch_poll_defer_ok), or
+# every poll once polls are a minute apart, which covers its own cadence (at least 60 s)
+# and the inputs no state file records, such as a pushed head or a parent
+# append that failed. Leaves the new key in INACTIVE_SCAN_NEXT_KEY.
+INACTIVE_SCAN_KEY='' INACTIVE_SCAN_AT='' INACTIVE_SCAN_NEXT_KEY=''
+inactive_scan_due() {
+  local f
+  local -a scan_files=()
+  for f in "$STATE"/*.meta "$STATE"/*.status "$STATE"/*.turn-ended "$FM_WAKE_QUEUE" \
+    "$STATE/terminal-outcomes" "$FM_HOME/.fm-secondmate-home"; do
+    { [ -e "$f" ] || [ -L "$f" ]; } && scan_files+=("$f")
+  done
+  INACTIVE_SCAN_NEXT_KEY=none
+  if [ "${#scan_files[@]}" -gt 0 ]; then
+    if [ "$_FM_CLASSIFY_UNAME_S" = Darwin ]; then
+      INACTIVE_SCAN_NEXT_KEY=$(LC_ALL=C /usr/bin/stat -f $'%N\t%HT:%z:%i:%Fc:%Fm' -- "${scan_files[@]}" 2>/dev/null) || INACTIVE_SCAN_NEXT_KEY=
+    else
+      INACTIVE_SCAN_NEXT_KEY=$(LC_ALL=C stat -c $'%n\t%F:%s:%i:%z:%y' -- "${scan_files[@]}" 2>/dev/null) || INACTIVE_SCAN_NEXT_KEY=
+    fi
+  fi
+  if [ -n "$INACTIVE_SCAN_AT" ] && watch_poll_defer_ok "$INACTIVE_SCAN_AT" 60 \
+    && [ -n "$INACTIVE_SCAN_NEXT_KEY" ] && [ "$INACTIVE_SCAN_NEXT_KEY" = "$INACTIVE_SCAN_KEY" ]; then
+    return 1
+  fi
+  return 0
+}
+
 resurface_after_downtime() {
   # Handling successors already have a predecessor-delivered wake on the way.
   # Re-announcing from this cycle is what turned a lost handshake into an
@@ -4431,7 +4552,7 @@ resurface_after_downtime() {
   # handoff after consuming the predecessor's rows, making any row left for
   # main a recoverable downtime episode.
   if [ "${FM_WATCH_HANDLING_SUCCESSOR:-0}" = 1 ]; then
-    if ! fm_recovery_marker_arm_check "$WATCHER_DOWNTIME_MARKER"; then
+    if ! fm_recovery_marker_arm_check_poll "$WATCHER_DOWNTIME_MARKER"; then
       watcher_fail_exit "watcher: recovery state could not be consumed safely"
     fi
     [ "$FM_RECOVERY_MARKER_ACTION" = recover ] || return 0
@@ -4439,7 +4560,7 @@ resurface_after_downtime() {
     wake "check: rearm-resurface"
   fi
   if [ "$WATCHER_RECOVERY_PENDING" -ne 1 ]; then
-    if ! fm_recovery_marker_arm_check "$WATCHER_DOWNTIME_MARKER"; then
+    if ! fm_recovery_marker_arm_check_poll "$WATCHER_DOWNTIME_MARKER"; then
       watcher_fail_exit "watcher: recovery state could not be consumed safely"
     fi
     [ "$FM_RECOVERY_MARKER_ACTION" = recover ] || return 0
@@ -4535,15 +4656,18 @@ while :; do
   # The existing poll loop also owns the bounded inactive-outcome cadence.
   # This is mechanical and silent unless a durable terminal-outcome obligation
   # was created, so quiet cycles never wake firstmate or consume model tokens.
-  inactive_out=
-  if inactive_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-    "$SCRIPT_DIR/fm-inactive-reconcile.sh" scan 2>/dev/null); then
-    if [ -n "$inactive_out" ]; then
-      wake "check: inactive-outcome"
+  if inactive_scan_due; then
+    inactive_out=
+    if inactive_out=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-inactive-reconcile.sh" scan 2>/dev/null); then
+      INACTIVE_SCAN_KEY=$INACTIVE_SCAN_NEXT_KEY INACTIVE_SCAN_AT=$SECONDS
+      if [ -n "$inactive_out" ]; then
+        wake "check: inactive-outcome"
+      fi
+    else
+      watcher_exit_if_ground_gone
+      triage_log "inactive-outcome reconciliation unavailable"
     fi
-  else
-    watcher_exit_if_ground_gone
-    triage_log "inactive-outcome reconciliation unavailable"
   fi
 
   # Slow per-task checks (firstmate writes these, e.g. a merged-PR poll).
@@ -4867,8 +4991,12 @@ EOF
     # Steering-inbox loss detection runs before the secondmate stale
     # exemption below, because a mate's steers land in an inbox too.
     if [ -n "$task" ] && ! fm_task_inbox_idle "$STATE" "$task"; then
-      WATCH_POLL_CHANGED=1
       inbox_steer_check "$w" "$task"
+      # An escalation already raised waits on a person, not on time, so it
+      # leaves the idle backoff alone; every other non-idle inbox keeps 15 s polls.
+      if [ "$INBOX_STEER_ACTED" -ne 0 ] || ! fm_task_inbox_settled "$STATE" "$task"; then
+        WATCH_POLL_CHANGED=1
+      fi
     fi
     key=$WF_KEY
     # The status log is read once per window per poll, here (watch_status_facts).
@@ -5052,14 +5180,18 @@ EOF
                 ;;
             esac
           else
-            if [ -e "$pf" ] || status_is_paused_or_captain_held "$last"; then
+            if paused_recheck_recent "$key" "$h" "$task"; then
+              :
+            elif [ -e "$pf" ] || status_is_paused_or_captain_held "$last"; then
               case "$(pause_state_class "$w" "$task")" in
-                paused)  handle_paused_stale "$w" "$task" "$h" ;;
+                paused)  handle_paused_stale "$w" "$task" "$h"
+                         paused_recheck_record "$key" "$h" "$task" ;;
                 working) clear_pause_state "$key"
                          printf '%s' "$h" > "$sf"
                          wedge_timer_check "$w" "$ssf" "non-terminal stale (provably working after a declared pause)" "$ewf" "$task" "$h" "$dialog"
                          triage_log "absorbed non-terminal stale (provably working): $w" ;;
-                *)       handle_paused_stale "$w" "$task" "$h" ;;
+                *)       handle_paused_stale "$w" "$task" "$h"
+                         paused_recheck_record "$key" "$h" "$task" ;;
               esac
             else
               wedge_timer_check "$w" "$ssf" "non-terminal stale" "$ewf" "$task" "$h" "$dialog"
