@@ -1168,7 +1168,6 @@ resolve_relaunch_profile() {
   [ -z "$ACCOUNT_NUMBER" ] || account_override="cswap:$ACCOUNT_NUMBER"
   account_selection=$(fm_worker_account_select "$TARGET_HARNESS" "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" \
     "$account_model" "$TARGET_HARNESS" "" "$account_mate" "$account_project" "$account_override") || return 1
-  fm_worker_account_backend_check "$BACKEND" "$TARGET_HARNESS" "$account_selection" || return 1
   TARGET_ACCOUNT_ROOT=${account_selection#*$'\t'}
   TARGET_ACCOUNT_ROOT=${TARGET_ACCOUNT_ROOT%%$'\t'*}
   fm_omp_profile_select "$TARGET_HARNESS" "${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" \

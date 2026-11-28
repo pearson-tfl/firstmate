@@ -8,7 +8,8 @@
 # Sourced by bin/fm-spawn.sh, bin/fm-control.sh, and bin/fm-teardown.sh.
 # Orca reopen cannot re-run the launch wrap: spawn writes a pin record keyed by
 # the seat working directory, the login-shell snippet in bin/fm-orca-claude-pin.sh
-# exports that root as CLAUDE_CONFIG_DIR, and teardown clears the record.
+# exports that root as CLAUDE_CONFIG_DIR (or unsets it for a `default` record,
+# the ordinary ~/.claude login), and teardown clears the record.
 #
 # Pinnable runners, each a credential store inside a root its vendor lets a
 # process select:
@@ -59,19 +60,6 @@
 # shellcheck source=bin/fm-timeout-lib.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fm-timeout-lib.sh"
 
-fm_worker_account_backend_check() {
-  local declared root rest
-  [ "$1" = orca ] && [ "$2" = claude ] && [ -n "$3" ] || return 0
-  declared=${3%%$'\t'*}
-  rest=${3#*$'\t'}
-  root=${rest%%$'\t'*}
-  if [ -z "$root" ]; then
-    echo "error: backend=orca cannot guarantee the ordinary Claude account pin ($declared) because that login is ~/.claude, which Orca's wrapper treats as the user default and replaces with the selected managed profile on resume; pin an explicit root or a cswap lane, or choose another backend" >&2
-    return 1
-  fi
-  return 0
-}
-
 # fm_worker_account_orca_pin_state
 # Prints the directory that holds Orca Claude pin records for this HOME.
 fm_worker_account_orca_pin_state() {
@@ -103,12 +91,13 @@ fm_worker_account_orca_pin_key() {
 }
 
 # fm_worker_account_orca_pin_write <workdir> <root>
-# Writes the absolute Claude config root for this seat working directory.
+# Writes the absolute Claude config root for this seat working directory, or
+# `default` for the ordinary login (CLAUDE_CONFIG_DIR unset).
 fm_worker_account_orca_pin_write() {
   local dir=$1 root=$2 state key dest tmp
   case "$root" in
-  /*) ;;
-  *) echo "error: Orca Claude pin root must be an absolute path" >&2; return 1 ;;
+  /* | default) ;;
+  *) echo "error: Orca Claude pin root must be an absolute path or 'default'" >&2; return 1 ;;
   esac
   state=$(fm_worker_account_orca_pin_state) || return 1
   key=$(fm_worker_account_orca_pin_key "$dir") || return 1

@@ -4,7 +4,9 @@
 # Sourced from the login-shell startup file when ORCA_TERMINAL_HANDLE is set.
 # Reads the pin record Firstmate wrote for this working directory and exports
 # CLAUDE_CONFIG_DIR to that root so Orca's claude wrapper passes through
-# (CLAUDE_CONFIG_DIR differs from the injected managed profile).
+# (CLAUDE_CONFIG_DIR differs from the injected managed profile). A `default`
+# record unsets it instead: the ordinary ~/.claude login needs the variable
+# unset, because Claude keys its Keychain entry to any value that is set.
 # Outside Orca, or when no pin record exists, this file changes nothing.
 #
 # Back out: remove the source line from the login-shell startup file.
@@ -29,6 +31,7 @@ _fm_orca_claude_pin() {
     _fm_orca_claude_pin_root=$(sed -n '1p' "$_fm_orca_claude_pin_file")
     case $_fm_orca_claude_pin_root in
     /*) export CLAUDE_CONFIG_DIR="$_fm_orca_claude_pin_root" ;;
+    default) unset CLAUDE_CONFIG_DIR ;;
     esac
   fi
   unset _fm_orca_claude_pin_state _fm_orca_claude_pin_cwd _fm_orca_claude_pin_key \

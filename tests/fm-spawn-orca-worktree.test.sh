@@ -1112,10 +1112,11 @@ EOF
   done
 }
 
-# An ordinary Claude pin is ~/.claude, which Orca's wrapper treats as the
-# user default and replaces on resume. Refuse it before provisioning.
-test_orca_refuses_ordinary_claude_pin_before_provisioning() {
-  local case_dir home id=orca-pin-ordinary fb out status
+# An ordinary Claude pin is ~/.claude with CLAUDE_CONFIG_DIR unset. Orca types
+# plain claude --resume over its managed profile, so spawn writes a `default`
+# record and the resume snippet unsets the inherited variable.
+test_orca_ordinary_claude_pin_writes_default_record() {
+  local case_dir home id=orca-pin-ordinary fb out status wt resume_dir
   case_dir="$TMP_ROOT/$id"
   home="$case_dir/home"
   fm_test_spawn_home "$home" claude
@@ -1130,18 +1131,53 @@ test_orca_refuses_ordinary_claude_pin_before_provisioning() {
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
     FM_SPAWN_NO_GUARD=1 XDG_STATE_HOME="$case_dir/xdg-state" \
-    FM_TEST_ORCA_DIR="$case_dir" FM_TEST_ORCA_LOG="$case_dir/terminal.log" PATH="$fb:$PATH" \
+    FM_TEST_ORCA_DIR="$case_dir" FM_TEST_ORCA_LOG="$case_dir/terminal.log" \
+    FM_TEST_ORCA_CONSUME=1 PATH="$fb:$PATH" \
     bash "$SPAWN" "$id" "$case_dir/project" --mode no-mistakes --yolo off --backend orca 2>&1)
   status=$?
-  expect_code 1 "$status" "Orca must refuse an ordinary Claude pin: $out"
-  assert_contains "$out" 'backend=orca cannot guarantee the ordinary Claude account pin' "the refusal must explain the account boundary"
-  assert_contains "$out" 'choose another backend' "the refusal must give an actionable remedy"
-  assert_absent "$case_dir/orca-worktrees" "a refused pin must not provision a worktree"
-  assert_absent "$case_dir/terminal-created" "a refused pin must not create a terminal"
-  assert_absent "$case_dir/terminal.log" "a refused pin must not type into Orca"
-  assert_absent "$home/state/$id.meta" "a refused pin must not publish a task record"
-  assert_absent "$case_dir/claude-worker" "a refused pin must not run a worker"
-  pass "Orca refuses an ordinary Claude pin before provisioning"
+  expect_code 0 "$status" "Orca must launch an ordinary-pinned Claude seat: $out"
+  wt=$(grep '^worktree=' "$home/state/$id.meta" | cut -d= -f2-)
+  [ -n "$wt" ] || fail "meta did not record a worktree"
+  grep -RFx default "$case_dir/xdg-state/firstmate/orca-claude-pin" >/dev/null \
+    || fail "the pin record for an ordinary pin must be 'default'"
+  # shellcheck disable=SC2016 # zsh -c must expand $1/$2, not this test shell
+  resume_dir=$(
+    env CLAUDE_CONFIG_DIR=/orca/managed ORCA_TERMINAL_HANDLE=term-1 XDG_STATE_HOME="$case_dir/xdg-state" \
+      HOME="$case_dir/user-home" \
+      /bin/zsh -f -c 'cd -- "$1" && . "$2" && printf %s "${CLAUDE_CONFIG_DIR-unset}"' \
+      zsh "$wt" "$ROOT/bin/fm-orca-claude-pin.sh"
+  )
+  [ "$resume_dir" = unset ] || fail "a default record must unset CLAUDE_CONFIG_DIR, got $resume_dir"
+  pass "Orca ordinary Claude pin writes a default record the resume snippet turns into an unset CLAUDE_CONFIG_DIR"
+}
+
+# The record writer and the resume snippet, directly: an absolute root is
+# exported, `default` unsets, a malformed record changes nothing, and the
+# writer refuses a relative root.
+test_orca_pin_record_formats() {
+  local case_dir dir out
+  case_dir="$TMP_ROOT/orca-pin-formats"
+  dir="$case_dir/seat"
+  mkdir -p "$dir"
+  snippet() {
+    # shellcheck disable=SC2016 # sh -c must expand $1/$2, not this test shell
+    env CLAUDE_CONFIG_DIR=/orca/managed ORCA_TERMINAL_HANDLE=term-1 XDG_STATE_HOME="$case_dir/xdg-state" \
+      /bin/sh -c 'cd -- "$1" && . "$2" && printf %s "${CLAUDE_CONFIG_DIR-unset}"' sh "$dir" "$ROOT/bin/fm-orca-claude-pin.sh"
+  }
+  write() {
+    XDG_STATE_HOME="$case_dir/xdg-state" bash -c '. "$1" && fm_worker_account_orca_pin_write "$2" "$3"' \
+      bash "$ROOT/bin/fm-worker-account-lib.sh" "$dir" "$1" 2>&1
+  }
+  write /pinned/root >/dev/null || fail "the writer must accept an absolute root"
+  [ "$(snippet)" = /pinned/root ] || fail "an absolute record must be exported"
+  write default >/dev/null || fail "the writer must accept default"
+  [ "$(snippet)" = unset ] || fail "a default record must unset CLAUDE_CONFIG_DIR"
+  out=$(write relative/root) && fail "the writer must refuse a relative root"
+  assert_contains "$out" "absolute path or 'default'" "the writer refusal must name the accepted forms"
+  [ "$(snippet)" = unset ] || fail "a refused write must keep the previous record"
+  printf 'relative/root\n' > "$(find "$case_dir/xdg-state/firstmate/orca-claude-pin" -type f)"
+  [ "$(snippet)" = /orca/managed ] || fail "a malformed record must change nothing"
+  pass "Orca pin records: absolute exports, default unsets, malformed is inert, the writer refuses a relative root"
 }
 
 # A cswap lane pin has its own config root. Spawn must wrap the launch with
@@ -1201,7 +1237,7 @@ test_orca_pinned_claude_relaunch_preserves_existing_work() {
   local case_dir home id=orca-pin-relaunch fb out status before
   case_dir=$(orca_relaunch_case pin-relaunch "$id")
   home="$case_dir/home"
-  printf 'ordinary\n' > "$home/config/claude-account"
+  printf 'relative/root\n' > "$home/config/claude-account"
   mkdir -p "$case_dir/user-home/.claude"
   printf '{}\n' > "$case_dir/user-home/.claude/.credentials.json"
   fb=$(make_orca_fakebin "$case_dir")
@@ -1213,25 +1249,25 @@ test_orca_pinned_claude_relaunch_preserves_existing_work() {
     FM_SPAWN_NO_GUARD=1 FM_TEST_ORCA_DIR="$case_dir" FM_TEST_ORCA_STALE=1 PATH="$fb:$PATH" \
     bash "$SPAWN" "$id" --relaunch --harness claude 2>&1)
   status=$?
-  expect_code 1 "$status" "an ordinary pinned Claude relaunch on Orca must refuse: $out"
-  assert_contains "$out" 'backend=orca cannot guarantee the ordinary Claude account pin' "relaunch must explain the refusal"
+  expect_code 1 "$status" "an unresolvable Claude pin relaunch on Orca must refuse: $out"
+  assert_contains "$out" "must hold 'ordinary' or one absolute path" "relaunch must explain the refusal"
   [ "$(cat "$home/state/$id.meta")" = "$before" ] || fail "a refused relaunch replaced existing metadata"
   [ "$(cat "$case_dir/wt/unlanded.txt")" = unlanded ] || fail "a refused relaunch changed unlanded work"
   assert_absent "$case_dir/terminal-created" "a refused relaunch must not create a replacement terminal"
   assert_absent "$case_dir/claude-worker" "a refused relaunch must not run a worker"
-  pass "Orca refuses a pinned Claude relaunch while preserving existing metadata and unlanded work"
+  pass "Orca refuses an unresolvable pinned Claude relaunch while preserving existing metadata and unlanded work"
 }
 
 
-test_orca_control_ordinary_pin_relaunch_refuses_before_stop() {
-  local case_dir home id=orca-control-pin-ordinary fb out status before brief_before
+test_orca_control_unresolvable_pin_relaunch_refuses_before_stop() {
+  local case_dir home id=orca-control-pin-bad fb out status before brief_before
   case_dir=$(orca_relaunch_case "$id" "$id")
   home="$case_dir/home"
   fb=$(make_orca_fakebin "$case_dir")
   fm_test_cswap_fakes "$fb" "$case_dir"
   mkdir -p "$case_dir/user-home/.claude"
   printf '{}\n' > "$case_dir/user-home/.claude/.credentials.json"
-  printf 'ordinary\n' > "$home/config/claude-account"
+  printf 'relative/root\n' > "$home/config/claude-account"
   before=$(cat "$home/state/$id.meta")
   brief_before=$(cat "$home/data/$id/brief.md")
   out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" HOME="$case_dir/user-home" \
@@ -1241,21 +1277,22 @@ test_orca_control_ordinary_pin_relaunch_refuses_before_stop() {
     FM_TEST_ORCA_DIR="$case_dir" FM_TEST_ORCA_SEND_LOG="$case_dir/terminal.log" PATH="$fb:$PATH" \
     bash "$ROOT/bin/fm-control.sh" "$id" relaunch --harness claude --note 'Preserve the running worker' 2>&1)
   status=$?
-  expect_code 1 "$status" "control must refuse an ordinary pin before stopping: $out"
-  assert_contains "$out" 'backend=orca cannot guarantee the ordinary Claude account pin' "control must report the compatibility refusal"
+  expect_code 1 "$status" "control must refuse an unresolvable pin before stopping: $out"
+  assert_contains "$out" "must hold 'ordinary' or one absolute path" "control must report the pin refusal"
   [ "$(cat "$home/state/$id.meta")" = "$before" ] || fail "control changed metadata"
   [ "$(cat "$home/data/$id/brief.md")" = "$brief_before" ] || fail "control changed the brief"
   [ "$(cat "$case_dir/wt/unlanded.txt")" = unlanded ] || fail "control changed unlanded work"
   assert_absent "$case_dir/terminal.log" "control must not send stop commands or keys"
   assert_absent "$case_dir/terminal-closed" "control must not close the old worker terminal"
   assert_absent "$case_dir/terminal-created" "control must not create a replacement terminal"
-  pass "control rejects an ordinary Orca Claude pin before stopping the worker"
+  pass "control rejects an unresolvable Orca Claude pin before stopping the worker"
 }
 
-test_orca_control_ordinary_pin_relaunch_refuses_before_stop
+test_orca_control_unresolvable_pin_relaunch_refuses_before_stop
 
 test_orca_pinned_claude_relaunch_preserves_existing_work
-test_orca_refuses_ordinary_claude_pin_before_provisioning
+test_orca_ordinary_claude_pin_writes_default_record
+test_orca_pin_record_formats
 test_orca_cswap_pin_reaches_launch_and_resume_env
 test_orca_source_preserves_values_without_utf8_locale
 test_orca_launch_uses_controlled_tmux_environment
